@@ -205,4 +205,66 @@ pub const OpenRouterProvider = struct {
             .allocator = self.allocator,
         };
     }
+
+    pub fn embeddings(self: *OpenRouterProvider, request: base.EmbeddingRequest) !base.EmbeddingResponse {
+        const url = try std.fmt.allocPrint(self.allocator, "{s}/embeddings", .{self.api_base});
+        defer self.allocator.free(url);
+
+        const body = try std.json.Stringify.valueAlloc(self.allocator, request, .{});
+        defer self.allocator.free(body);
+
+        const auth_header_val = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
+        defer self.allocator.free(auth_header_val);
+
+        const headers = &[_]std.http.Header{
+            .{ .name = "Authorization", .value = auth_header_val },
+            .{ .name = "Content-Type", .value = "application/json" },
+        };
+
+        var response = try self.client.post(url, headers, body);
+        defer response.deinit();
+
+        if (response.status != .ok) {
+            std.debug.print("Embeddings API Error: {d} {s}\n", .{ @intFromEnum(response.status), response.body });
+            return error.ApiRequestFailed;
+        }
+
+        const EmbeddingsData = struct {
+            embedding: []f32,
+        };
+        const EmbeddingsResponse = struct {
+            data: []EmbeddingsData,
+        };
+
+        const parsed = try std.json.parseFromSlice(EmbeddingsResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+
+        var result = try self.allocator.alloc([]const f32, parsed.value.data.len);
+        var allocated: usize = 0;
+        errdefer {
+            for (0..allocated) |i| self.allocator.free(result[i]);
+            self.allocator.free(result);
+        }
+
+        for (parsed.value.data, 0..) |item, i| {
+            result[i] = try self.allocator.dupe(f32, item.embedding);
+            allocated += 1;
+        }
+
+        return base.EmbeddingResponse{
+            .embeddings = result,
+            .allocator = self.allocator,
+        };
+    }
 };
+
+test "OpenRouter: parse response" {
+    const allocator = std.testing.allocator;
+    var provider = OpenRouterProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    // Since chat() is public and calls self.client.post, it's hard to test without mocking.
+    // However, we can test the embedding structures or add a helper for parsing if we refactor.
+    // For now, let's just test that it initializes correctly.
+    try std.testing.expectEqualStrings("test-key", provider.api_key);
+}

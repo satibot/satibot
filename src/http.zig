@@ -97,3 +97,10 @@ pub const Client = struct {
         return req;
     }
 };
+
+test "Client: init and deinit" {
+    const allocator = std.testing.allocator;
+    var client = Client.init(allocator);
+    defer client.deinit();
+    try std.testing.expect(client.allocator.ptr == allocator.ptr);
+}

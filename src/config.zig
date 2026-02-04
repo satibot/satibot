@@ -12,6 +12,7 @@ pub const AgentsConfig = struct {
 
 pub const DefaultAgentConfig = struct {
     model: []const u8,
+    embeddingModel: ?[]const u8 = null,
 };
 
 pub const ProvidersConfig = struct {
@@ -67,7 +68,6 @@ pub fn load(allocator: std.mem.Allocator) !std.json.Parsed(Config) {
 pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Parsed(Config) {
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            std.debug.print("Config file not found at {s}. Using defaults.\n", .{path});
             const default_json =
                 \\{
                 \\  "agents": { "defaults": { "model": "anthropic/claude-opus-4-5" } },

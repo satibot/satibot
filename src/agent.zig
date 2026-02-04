@@ -115,6 +115,43 @@ pub const Agent = struct {
             .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
             .execute = tools.whatsapp_send_message,
         }) catch {};
+        self.registry.register(.{
+            .name = "vector_upsert",
+            .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+            .execute = tools.vector_upsert,
+        }) catch {};
+        self.registry.register(.{
+            .name = "vector_search",
+            .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
+            .execute = tools.vector_search,
+        }) catch {};
+        self.registry.register(.{
+            .name = "graph_upsert_node",
+            .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
+            .execute = tools.graph_upsert_node,
+        }) catch {};
+        self.registry.register(.{
+            .name = "graph_upsert_edge",
+            .description = "Add an edge (relation) between two nodes in the graph. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"relation\": \"knows\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
+            .execute = tools.graph_upsert_edge,
+        }) catch {};
+        self.registry.register(.{
+            .name = "graph_query",
+            .description = "Query relations for a specific node in the graph. Arguments: {\"start_node\": \"node_id\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
+            .execute = tools.graph_query,
+        }) catch {};
+        self.registry.register(.{
+            .name = "rag_search",
+            .description = "Perform a RAG (Retrieval-Augmented Generation) search. Arguments: {\"query\": \"what is...\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
+            .execute = tools.rag_search,
+        }) catch {};
+
         return self;
     }
 
@@ -134,9 +171,22 @@ pub const Agent = struct {
         var iterations: usize = 0;
         const max_iterations = 10;
 
+        const get_embeddings = struct {
+            fn exec(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
+                const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+                    return error.NoApiKey;
+                };
+                var provider = providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+                defer provider.deinit();
+                const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
+                return try provider.embeddings(.{ .input = input, .model = emb_model });
+            }
+        }.exec;
+
         const tool_ctx = tools.ToolContext{
             .allocator = self.allocator,
             .config = self.config,
+            .get_embeddings = get_embeddings,
         };
 
         while (iterations < max_iterations) : (iterations += 1) {

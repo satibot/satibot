@@ -31,3 +31,44 @@ pub const LLMResponse = struct {
         }
     }
 };
+pub const EmbeddingResponse = struct {
+    embeddings: [][]const f32,
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *EmbeddingResponse) void {
+        for (self.embeddings) |e| {
+            self.allocator.free(e);
+        }
+        self.allocator.free(self.embeddings);
+    }
+};
+
+pub const EmbeddingRequest = struct {
+    input: []const []const u8,
+    model: []const u8,
+};
+
+test "LLMResponse: deinit" {
+    const allocator = std.testing.allocator;
+    var resp = LLMResponse{
+        .content = try allocator.dupe(u8, "hello"),
+        .tool_calls = null,
+        .allocator = allocator,
+    };
+    resp.deinit();
+}
+
+test "EmbeddingResponse: deinit" {
+    const allocator = std.testing.allocator;
+    var embeddings = try allocator.alloc([]const f32, 1);
+    const row = try allocator.alloc(f32, 2);
+    row[0] = 1.0;
+    row[1] = 0.0;
+    embeddings[0] = row;
+
+    var resp = EmbeddingResponse{
+        .embeddings = embeddings,
+        .allocator = allocator,
+    };
+    resp.deinit();
+}

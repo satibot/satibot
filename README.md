@@ -15,6 +15,10 @@ Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](http
   - Browse skills: <https://agent-skills.md/>
   - Install: `./scripts/install-skill.sh <github-url-or-path>`
 - Context management: use memory, file, etc.
+- **RAG & Knowledge base**: Built-in support for:
+  - **VectorDB**: Semantic search and long-term memory.
+  - **GraphDB**: Relationship mapping and complex knowledge retrieval.
+  - **RAG**: Retrieval-Augmented Generation for fact-based responses.
 
 ## Usage
 
@@ -38,6 +42,8 @@ zig build run -- agent -m "Follow-up message" -s my-session
 - `src/agent/context.zig`: Conversation history management
 - `src/agent/session.zig`: Session persistence
 - `src/agent/tools.zig`: Tool system and registry
+- `src/agent/vector_db.zig`: Local vector database for semantic search
+- `src/agent/graph_db.zig`: Local graph database for relationship mapping
 
 ## Architecture
 
@@ -129,7 +135,7 @@ graph TD
         AgentRun --> Context[src/agent/context.zig: Context.add_message]
         AgentRun --> ToolExec[src/agent/tools.zig: Tool.execute]
     end
-    
+
     AgentRun --> SessionSave[src/agent/session.zig: save]
 ```
 
