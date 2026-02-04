@@ -251,3 +251,203 @@ pub fn install_skill(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     return try std.fmt.allocPrint(ctx.allocator, "Skill installed successfully!\nOutput:\n{s}", .{stdout});
 }
+
+pub fn telegram_send_message(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const config = ctx.config.tools.telegram orelse {
+        return try ctx.allocator.dupe(u8, "Error: Telegram not configured.");
+    };
+
+    const parsed = try std.json.parseFromSlice(struct {
+        chat_id: ?[]const u8 = null,
+        text: []const u8,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const chat_id = parsed.value.chat_id orelse config.chatId orelse {
+        return try ctx.allocator.dupe(u8, "Error: chat_id not provided and no default configured.");
+    };
+
+    var client = @import("../http.zig").Client.init(ctx.allocator);
+    defer client.deinit();
+
+    const url = try std.fmt.allocPrint(ctx.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{config.botToken});
+    defer ctx.allocator.free(url);
+
+    const body = try std.json.Stringify.valueAlloc(ctx.allocator, .{
+        .chat_id = chat_id,
+        .text = parsed.value.text,
+    }, .{});
+    defer ctx.allocator.free(body);
+
+    const headers = &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+    };
+
+    var response = client.post(url, headers, body) catch |err| {
+        return try std.fmt.allocPrint(ctx.allocator, "Error sending Telegram message: {any}", .{err});
+    };
+    defer response.deinit();
+
+    if (response.status != .ok) {
+        return try std.fmt.allocPrint(ctx.allocator, "Error: Telegram API returned status {d}. Response: {s}", .{ @intFromEnum(response.status), response.body });
+    }
+
+    return try ctx.allocator.dupe(u8, "Message sent to Telegram successfully");
+}
+
+pub fn discord_send_message(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const config = ctx.config.tools.discord orelse {
+        return try ctx.allocator.dupe(u8, "Error: Discord not configured.");
+    };
+
+    const parsed = try std.json.parseFromSlice(struct {
+        content: []const u8,
+        username: ?[]const u8 = null,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var client = @import("../http.zig").Client.init(ctx.allocator);
+    defer client.deinit();
+
+    const body = try std.json.Stringify.valueAlloc(ctx.allocator, .{
+        .content = parsed.value.content,
+        .username = parsed.value.username,
+    }, .{});
+    defer ctx.allocator.free(body);
+
+    const headers = &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+    };
+
+    var response = client.post(config.webhookUrl, headers, body) catch |err| {
+        return try std.fmt.allocPrint(ctx.allocator, "Error sending Discord message: {any}", .{err});
+    };
+    defer response.deinit();
+
+    // Discord webhook returns 204 No Content on success
+    if (response.status != .no_content and response.status != .ok) {
+        return try std.fmt.allocPrint(ctx.allocator, "Error: Discord API returned status {d}. Response: {s}", .{ @intFromEnum(response.status), response.body });
+    }
+
+    return try ctx.allocator.dupe(u8, "Message sent to Discord successfully");
+}
+
+pub fn whatsapp_send_message(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const config = ctx.config.tools.whatsapp orelse {
+        return try ctx.allocator.dupe(u8, "Error: WhatsApp not configured.");
+    };
+
+    const parsed = try std.json.parseFromSlice(struct {
+        to: ?[]const u8 = null,
+        text: []const u8,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const to = parsed.value.to orelse config.recipientPhoneNumber orelse {
+        return try ctx.allocator.dupe(u8, "Error: 'to' phone number not provided and no default configured.");
+    };
+
+    var client = @import("../http.zig").Client.init(ctx.allocator);
+    defer client.deinit();
+
+    const url = try std.fmt.allocPrint(ctx.allocator, "https://graph.facebook.com/v17.0/{s}/messages", .{config.phoneNumberId});
+    defer ctx.allocator.free(url);
+
+    const body = try std.json.Stringify.valueAlloc(ctx.allocator, .{
+        .messaging_product = "whatsapp",
+        .to = to,
+        .type = "text",
+        .text = .{ .body = parsed.value.text },
+    }, .{});
+    defer ctx.allocator.free(body);
+
+    const auth_header = try std.fmt.allocPrint(ctx.allocator, "Bearer {s}", .{config.accessToken});
+    defer ctx.allocator.free(auth_header);
+
+    const headers = &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+        .{ .name = "Authorization", .value = auth_header },
+    };
+
+    var response = client.post(url, headers, body) catch |err| {
+        return try std.fmt.allocPrint(ctx.allocator, "Error sending WhatsApp message: {any}", .{err});
+    };
+    defer response.deinit();
+
+    if (response.status != .ok) {
+        return try std.fmt.allocPrint(ctx.allocator, "Error: WhatsApp API returned status {d}. Response: {s}", .{ @intFromEnum(response.status), response.body });
+    }
+
+    return try ctx.allocator.dupe(u8, "Message sent to WhatsApp successfully");
+}
+
+test "ToolRegistry: register and get" {
+    const allocator = std.testing.allocator;
+    var registry = ToolRegistry.init(allocator);
+    defer registry.deinit();
+
+    try registry.register(.{
+        .name = "test",
+        .description = "test tool",
+        .parameters = "{}",
+        .execute = struct {
+            fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                _ = ctx;
+                _ = args;
+                return "ok";
+            }
+        }.exec,
+    });
+
+    const tool = registry.get("test");
+    try std.testing.expect(tool != null);
+    try std.testing.expectEqualStrings("test", tool.?.name);
+}
+
+test "Tools: write and read file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    // Use absolute path for tools since they use cwd
+    const old_cwd = try std.process.getCwdAlloc(allocator);
+    defer allocator.free(old_cwd);
+
+    // We can't easily change CWD for the whole process in a thread-safe way in tests,
+    // but tools use std.fs.cwd().
+    // Actually, it's better if tools took a Dir or used a path relative to a root.
+    // For now, let's just test with a real relative path in the tmp dir if we can.
+    // Wait, tmpDir gives us a Dir. We can't easily make std.fs.cwd() point to it.
+
+    // Let's just test the logic by manually creating a file and reading it.
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const file_path = "test_file.txt";
+    const content = "hello tools";
+
+    // Test write_file
+    // Use a sub-path within the current directory to avoid cluttering,
+    // but tmpDir is better. Let's try to use absolute paths in the arguments.
+    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(tmp_path);
+    const full_path = try std.fs.path.join(allocator, &.{ tmp_path, file_path });
+    defer allocator.free(full_path);
+
+    const write_args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\", \"content\": \"{s}\"}}", .{ full_path, content });
+    defer allocator.free(write_args);
+
+    const write_res = try write_file(ctx, write_args);
+    defer allocator.free(write_res);
+    try std.testing.expectEqualStrings("File written successfully", write_res);
+
+    // Test read_file
+    const read_args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{full_path});
+    defer allocator.free(read_args);
+
+    const read_res = try read_file(ctx, read_args);
+    defer allocator.free(read_res);
+    try std.testing.expectEqualStrings(content, read_res);
+}

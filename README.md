@@ -4,22 +4,17 @@
 
 # minbot
 
-A port of nanobot logic to Zig. Ziglang-based agent framework for:
+Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `minbot` is a Ziglang-based agent framework for:
 
+- Chat tools intergation: Telegram, Discord, WhatsApp, etc.
 - LLM providers (OpenRouter, Anthropic, etc.)
 - Tool execution: shell commands, HTTP requests, etc.
 - Conversation history
-- Session persistence
-- Easy to add SKILL from any source
+- Session persistence: Full session persistence in `~/.bots/sessions/`.
+- Easy to add SKILL from any source, the agent can browse, search, and install its own skills.
   - Browse skills: <https://agent-skills.md/>
   - Install: `./scripts/install-skill.sh <github-url-or-path>`
 - Context management: use memory, file, etc.
-
-## Status
-
-Work in progress. Currently porting core functionality and implementing providers.
-
-For technical details on the migration to **Zig 0.15.2**, see [DEVELOPMENT_NOTES.md](DEVELOPMENT_NOTES.md).
 
 ## Usage
 
@@ -62,7 +57,7 @@ src/main.zig (runAgent)
     └── src/agent/session.zig (save)
 ```
 
-#### Agent loop
+#### ReAct Loop
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
@@ -76,11 +71,11 @@ src/main.zig (runAgent)
                              │
          ┌───────────────────┴───────────────────┐
          │           AGENT LOOP                  │
-         │       (max 5 iterations)              │
+         │       (max 10 iterations)             │
          │                                       │
          │    ┌─────────────────────────────┐    │
          │    │   LLM chatStream() call     │◄───┼──────────┐
-         │    │   (OpenRouter provider)     │    │          │
+         │    │   (Selects Provider)        │    │          │
          │    └─────────────┬───────────────┘    │          │
          │                  │                    │          │
          │                  ▼                    │          │
@@ -106,8 +101,8 @@ src/main.zig (runAgent)
          │          ▼               │            │          │
          │  ┌───────────────┐       │            │          │
          │  │ Add tool      │       │            │          │
-         │  │ results to    │───────┼────────────┼──────────┘
-         │  │ context       │       │            │ (continue loop)
+         │  │ results/errors│───────┼────────────┼──────────┘
+         │  │ to context    │       │            │ (continue loop)
          │  └───────────────┘       │            │
          │                          │            │
          └──────────────────────────┼────────────┘
@@ -138,13 +133,43 @@ graph TD
     AgentRun --> SessionSave[src/agent/session.zig: save]
 ```
 
-## Development
+## Configuration
 
-This project is built with Zig 0.15.2. To build and run:
+The agent's configuration is stored in `~/.bots/config.json`. You can configure your providers and chat tools there:
 
-```bash
-zig -v
-# should be 0.15.2
-
-zig build run -- agent -m "Your message"
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-3-7-sonnet"
+    }
+  },
+  "providers": {
+    "openrouter": {
+      "apiKey": "YOUR_OPENROUTER_KEY"
+    },
+    "anthropic": {
+      "apiKey": "YOUR_ANTHROPIC_KEY"
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "apiKey": "YOUR_BRAVE_SEARCH_KEY"
+      }
+    },
+    "telegram": {
+      "botToken": "YOUR_BOT_TOKEN",
+      "chatId": "YOUR_DEFAULT_CHAT_ID"
+    },
+    "discord": {
+      "webhookUrl": "YOUR_WEBHOOK_URL"
+    },
+    "whatsapp": {
+      "accessToken": "YOUR_META_ACCESS_TOKEN",
+      "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
+      "recipientPhoneNumber": "YOUR_DEFAULT_RECIPIENT"
+    }
+  }
+}
 ```

@@ -18,8 +18,11 @@ pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []co
     defer allocator.free(filename);
 
     const path = try std.fs.path.join(allocator, &.{ session_dir, filename });
-    defer allocator.free(path);
+    try saveToPath(allocator, path, messages);
+}
 
+pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []const base.LLMMessage) !void {
+    defer allocator.free(path);
     const file = try std.fs.createFileAbsolute(path, .{});
     defer file.close();
 
@@ -76,4 +79,44 @@ fn dupe_tool_calls(allocator: std.mem.Allocator, calls: []const base.ToolCall) !
         };
     }
     return new_calls;
+}
+
+test "Session: save and load" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const messages = &[_]base.LLMMessage{
+        .{ .role = "user", .content = "hello" },
+        .{ .role = "assistant", .content = "hi" },
+    };
+    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(tmp_path);
+    const path = try std.fs.path.join(allocator, &.{ tmp_path, "test_session.json" });
+    defer allocator.free(path);
+
+    try saveToPath(allocator, try allocator.dupe(u8, path), messages);
+
+    const loaded = try load_internal(allocator, try allocator.dupe(u8, path));
+    defer {
+        for (loaded) |msg| {
+            allocator.free(msg.role);
+            if (msg.content) |c| allocator.free(c);
+            if (msg.tool_calls) |calls| {
+                for (calls) |call| {
+                    allocator.free(call.id);
+                    allocator.free(call.function_name);
+                    allocator.free(call.arguments);
+                }
+                allocator.free(calls);
+            }
+        }
+        allocator.free(loaded);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), loaded.len);
+    try std.testing.expectEqualStrings("user", loaded[0].role);
+    try std.testing.expectEqualStrings("hello", loaded[0].content.?);
+    try std.testing.expectEqualStrings("assistant", loaded[1].role);
+    try std.testing.expectEqualStrings("hi", loaded[1].content.?);
 }

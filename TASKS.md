@@ -57,3 +57,15 @@
   - [x] Implement `list_marketplace` tool
   - [x] Implement `search_marketplace` tool
   - [x] Implement `install_skill` tool
+- [x] **Chat Tools Integration**
+  - [x] Implement `telegram_send_message` tool
+  - [x] Implement `discord_send_message` tool
+  - [x] Implement `whatsapp_send_message` tool
+
+## Phase 6: Testing
+
+- [x] **Unit Testing**
+  - [x] Setup Zig test runner in `build.zig`
+  - [x] Implemented tests for `config.zig`, `session.zig`, `context.zig`, `tools.zig`, `agent.zig`, and `anthropic.zig`.
+  - [x] Fixed memory safety issues (segfaults) in tests by ensuring correct string allocation.
+  - [x] Verified all tests pass with `zig build test`.

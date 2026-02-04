@@ -14,5 +14,12 @@ pub const providers = struct {
 
 test {
     _ = config;
-    _ = agent;
+    _ = agent.Agent;
+    _ = agent.context;
+    _ = agent.tools;
+    _ = agent.session;
+    _ = http;
+    _ = providers.base;
+    _ = providers.openrouter;
+    _ = providers.anthropic;
 }

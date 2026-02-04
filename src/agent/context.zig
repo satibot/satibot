@@ -56,3 +56,45 @@ pub const Context = struct {
         return self.messages.items;
     }
 };
+
+test "Context: init and add_message" {
+    const allocator = std.testing.allocator;
+    var ctx = Context.init(allocator);
+    defer ctx.deinit();
+
+    try ctx.add_message(.{
+        .role = "user",
+        .content = "hello",
+    });
+
+    const messages = ctx.get_messages();
+    try std.testing.expectEqual(@as(usize, 1), messages.len);
+    try std.testing.expectEqualStrings("user", messages[0].role);
+    try std.testing.expectEqualStrings("hello", messages[0].content.?);
+}
+
+test "Context: tool calls" {
+    const allocator = std.testing.allocator;
+    var ctx = Context.init(allocator);
+    defer ctx.deinit();
+
+    const tool_calls = &[_]base.ToolCall{
+        .{
+            .id = "call_1",
+            .function_name = "test_tool",
+            .arguments = "{}",
+        },
+    };
+
+    try ctx.add_message(.{
+        .role = "assistant",
+        .content = "thinking",
+        .tool_calls = tool_calls,
+    });
+
+    const messages = ctx.get_messages();
+    try std.testing.expectEqual(@as(usize, 1), messages.len);
+    try std.testing.expect(messages[0].tool_calls != null);
+    try std.testing.expectEqual(@as(usize, 1), messages[0].tool_calls.?.len);
+    try std.testing.expectEqualStrings("call_1", messages[0].tool_calls.?[0].id);
+}

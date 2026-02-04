@@ -29,13 +29,6 @@ const AnthropicMessage = struct {
 const AnthropicContent = union(enum) {
     text: []const u8,
     blocks: []const AnthropicContentBlock,
-
-    pub fn jsonStringify(self: @This(), writer: anytype) !void {
-        switch (self) {
-            .text => |t| try std.json.stringify(t, .{}, writer),
-            .blocks => |b| try std.json.stringify(b, .{}, writer),
-        }
-    }
 };
 
 const AnthropicContentBlock = struct {
@@ -352,18 +345,15 @@ pub const AnthropicProvider = struct {
                     try text_content.appendSlice(self.allocator, t);
                 }
             } else if (std.mem.eql(u8, block.type, "tool_use")) {
-                // Convert input JSON value to string
-                var args_buf = std.ArrayListUnmanaged(u8){};
-                defer args_buf.deinit(self.allocator);
-
-                if (block.input) |input| {
-                    try std.json.stringify(input, .{}, args_buf.writer(self.allocator));
-                }
+                const args = if (block.input) |input|
+                    try std.json.Stringify.valueAlloc(self.allocator, input, .{})
+                else
+                    try self.allocator.dupe(u8, "{}");
 
                 try tool_calls.append(self.allocator, .{
                     .id = try self.allocator.dupe(u8, block.id orelse ""),
                     .function_name = try self.allocator.dupe(u8, block.name orelse ""),
-                    .arguments = try args_buf.toOwnedSlice(self.allocator),
+                    .arguments = args,
                 });
             }
         }
@@ -378,3 +368,30 @@ pub const AnthropicProvider = struct {
         };
     }
 };
+
+test "Anthropic: parseResponse" {
+    const allocator = std.testing.allocator;
+    var provider = AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const response_json =
+        \\{
+        \\  "id": "msg_123",
+        \\  "type": "message",
+        \\  "role": "assistant",
+        \\  "content": [
+        \\    { "type": "text", "text": "Hello!" },
+        \\    { "type": "tool_use", "id": "tool_1", "name": "test_tool", "input": {"arg": 1} }
+        \\  ]
+        \\}
+    ;
+
+    var response = try provider.parseResponse(response_json);
+    defer response.deinit();
+
+    try std.testing.expectEqualStrings("Hello!", response.content.?);
+    try std.testing.expect(response.tool_calls != null);
+    try std.testing.expectEqual(@as(usize, 1), response.tool_calls.?.len);
+    try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
+    try std.testing.expectEqualStrings("test_tool", response.tool_calls.?[0].function_name);
+}

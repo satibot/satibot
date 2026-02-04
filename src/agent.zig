@@ -97,6 +97,24 @@ pub const Agent = struct {
             .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
             .execute = tools.install_skill,
         }) catch {};
+        self.registry.register(.{
+            .name = "telegram_send_message",
+            .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+            .execute = tools.telegram_send_message,
+        }) catch {};
+        self.registry.register(.{
+            .name = "discord_send_message",
+            .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
+            .parameters = "{\"type\": [\"object\"], \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
+            .execute = tools.discord_send_message,
+        }) catch {};
+        self.registry.register(.{
+            .name = "whatsapp_send_message",
+            .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+            .execute = tools.whatsapp_send_message,
+        }) catch {};
         return self;
     }
 
@@ -200,3 +218,24 @@ pub const Agent = struct {
         try session.save(self.allocator, self.session_id, self.ctx.get_messages());
     }
 };
+
+test "Agent: init and tool registration" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent = Agent.init(allocator, parsed.value, "test-session");
+    defer agent.deinit();
+
+    try std.testing.expect(agent.registry.get("list_files") != null);
+    try std.testing.expect(agent.registry.get("telegram_send_message") != null);
+    try std.testing.expect(agent.registry.get("discord_send_message") != null);
+    try std.testing.expect(agent.registry.get("whatsapp_send_message") != null);
+}
