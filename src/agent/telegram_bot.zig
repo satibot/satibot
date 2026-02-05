@@ -57,11 +57,33 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
                     const session_id = try std.fmt.allocPrint(allocator, "tg_{d}", .{msg.chat.id});
                     defer allocator.free(session_id);
 
+                    // Handle /new command to start fresh session
+                    var actual_text = text;
+                    if (std.mem.startsWith(u8, text, "/new")) {
+                        // Delete the session file to start fresh
+                        const home = std.posix.getenv("HOME") orelse "/tmp";
+                        const session_path = try std.fmt.allocPrint(allocator, "{s}/.bots/sessions/{s}.json", .{ home, session_id });
+                        defer allocator.free(session_path);
+                        std.fs.deleteFileAbsolute(session_path) catch {}; // Ignore if file doesn't exist
+
+                        // If user sent "/new" alone, send confirmation and skip LLM
+                        if (text.len == 4) {
+                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
+                            continue;
+                        }
+                        // If "/new <message>", use the message after /new
+                        actual_text = std.mem.trimLeft(u8, text[4..], " ");
+                        if (actual_text.len == 0) {
+                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
+                            continue;
+                        }
+                    }
+
                     var agent = Agent.init(allocator, config, session_id);
                     defer agent.deinit();
 
                     // We wrap the agent run to capture errors
-                    agent.run(text) catch |err| {
+                    agent.run(actual_text) catch |err| {
                         std.debug.print("Error running agent: {any}\n", .{err});
                         const error_msg = if (err == error.NetworkRetryFailed)
                             try std.fmt.allocPrint(allocator, "⚠️ Connection failed after multiple retries.\n\nThe OpenRouter model '{s}' is currently overloaded or unstable. Please try again in a moment or switch to a different model in config.json.", .{config.agents.defaults.model})
