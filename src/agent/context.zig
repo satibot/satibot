@@ -1,3 +1,24 @@
+// Conversation history
+
+// Where: ~/.bots/sessions/
+// Using a shared directory like ~/.bots/ allows sharing memory and config
+// across different bot instances.
+
+// It keeps the user's home directory clean.
+// It prevents conflicts with other "bot" frameworks.
+// It allows you to store other project-specific data (like config.json or vector_db)
+// in the same root folder.
+// 2. File Type: .json (JSON)
+// JSON is the ideal file type for conversation history in an agent framework because:
+
+// Structured Data: Conversations aren't just text; they contain roles
+// (user, assistant, tool, system), tool calls, tool results, and metadata
+// (model used, timestamps). JSON handles this nesting naturally.
+// Easy Parsing: Zig’s std.json makes it trivial to serialize and deserialize
+// the LLMMessage structs directly.
+// Interoperability: If you ever want to build a web UI or a dashboard for
+// your bot, JSON is the universal language for the web.
+
 const std = @import("std");
 const base = @import("../providers/base.zig");
 

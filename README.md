@@ -15,7 +15,7 @@ Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](http
   - Browse skills: <https://agent-skills.md/>
   - Install: `./scripts/install-skill.sh <github-url-or-path>`
 - Context management: use memory, file, etc.
-- **RAG & Knowledge base**: Built-in support for:
+- **RAG & Knowledge base**: Local base with built-in support for:
   - **VectorDB**: Semantic search and long-term memory.
   - **GraphDB**: Relationship mapping and complex knowledge retrieval.
   - **RAG**: Retrieval-Augmented Generation for fact-based responses.
@@ -28,6 +28,10 @@ zig build run -- agent -m "Your message"
 
 # Run with a specific session ID to persist history
 zig build run -- agent -m "Follow-up message" -s my-session
+
+# RAG is enabled by default to remember conversations. 
+# To disable it for a specific run:
+zig build run -- agent -m "Don't remember this" --no-rag
 ```
 
 ## Structure

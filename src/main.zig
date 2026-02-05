@@ -30,7 +30,7 @@ pub fn main() !void {
 fn usage() !void {
     std.debug.print("Usage: minbot <command> [args...]\n", .{});
     std.debug.print("Commands:\n", .{});
-    std.debug.print("  agent -m \"msg\" [-s id]   Run the agent\n", .{});
+    std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] Run the agent (RAG enabled by default)\n", .{});
     std.debug.print("  onboard              Initialize configuration\n", .{});
 }
 
@@ -41,6 +41,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     var message: []const u8 = "";
     var session_id: []const u8 = "default";
+    var save_to_rag = true;
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "-m") and i + 1 < args.len) {
@@ -49,6 +50,10 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         } else if (std.mem.eql(u8, args[i], "-s") and i + 1 < args.len) {
             session_id = args[i + 1];
             i += 1;
+        } else if (std.mem.eql(u8, args[i], "--no-rag")) {
+            save_to_rag = false;
+        } else if (std.mem.eql(u8, args[i], "--rag")) {
+            save_to_rag = true;
         }
     }
 
@@ -61,6 +66,10 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer agent.deinit();
 
     try agent.run(message);
+
+    if (save_to_rag) {
+        try agent.index_conversation();
+    }
 }
 
 fn runTestLlm(allocator: std.mem.Allocator) !void {

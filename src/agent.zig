@@ -160,6 +160,16 @@ pub const Agent = struct {
         self.registry.deinit();
     }
 
+    fn get_embeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
+        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+            return error.NoApiKey;
+        };
+        var provider = providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+        defer provider.deinit();
+        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
+        return try provider.embeddings(.{ .input = input, .model = emb_model });
+    }
+
     pub fn run(self: *Agent, message: []const u8) !void {
         try self.ctx.add_message(.{ .role = "user", .content = message });
 
@@ -170,18 +180,6 @@ pub const Agent = struct {
 
         var iterations: usize = 0;
         const max_iterations = 10;
-
-        const get_embeddings = struct {
-            fn exec(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
-                const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
-                    return error.NoApiKey;
-                };
-                var provider = providers.openrouter.OpenRouterProvider.init(allocator, api_key);
-                defer provider.deinit();
-                const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
-                return try provider.embeddings(.{ .input = input, .model = emb_model });
-            }
-        }.exec;
 
         const tool_ctx = tools.ToolContext{
             .allocator = self.allocator,
@@ -266,6 +264,38 @@ pub const Agent = struct {
         }
 
         try session.save(self.allocator, self.session_id, self.ctx.get_messages());
+    }
+
+    pub fn index_conversation(self: *Agent) !void {
+        const messages = self.ctx.get_messages();
+        var full_text = std.ArrayList(u8).init(self.allocator);
+        defer full_text.deinit();
+
+        for (messages) |msg| {
+            if (msg.content) |content| {
+                if (content.len > 0) {
+                    try full_text.appendSlice(msg.role);
+                    try full_text.appendSlice(": ");
+                    try full_text.appendSlice(content);
+                    try full_text.appendSlice("\n\n");
+                }
+            }
+        }
+
+        if (full_text.items.len == 0) return;
+
+        const tool_ctx = tools.ToolContext{
+            .allocator = self.allocator,
+            .config = self.config,
+            .get_embeddings = get_embeddings,
+        };
+
+        const args = try std.json.stringifyAlloc(self.allocator, .{ .text = full_text.items }, .{});
+        defer self.allocator.free(args);
+
+        const result = try tools.vector_upsert(tool_ctx, args);
+        defer self.allocator.free(result);
+        std.debug.print("Session indexed to RAG: {s}\n", .{result});
     }
 };
 
