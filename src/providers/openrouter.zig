@@ -1,3 +1,15 @@
+// Migrated to curl for Stability: OpenRouter provider now uses curl
+// as an external process for all HTTP requests.
+// True Incremental Streaming:
+// Previously, chatStream waited for the entire response to complete before processing it.
+// I refactored the streaming implementation to spawn curl in a child process
+// and read from its stdout pipe incrementally.
+// This enables real-time response output as chunks arrive from the API.
+// Enhanced Tool Call Support:
+// Implemented a robust streaming parser for OpenRouter that correctly handles
+// tool call deltas (accumulating partial function names and arguments across
+// multiple chunks).
+
 const std = @import("std");
 const http = @import("../http.zig");
 const base = @import("base.zig");
@@ -5,6 +17,7 @@ const base = @import("base.zig");
 // Response structures for OpenRouter/OpenAI API
 const CompletionResponse = struct {
     id: []const u8,
+    model: []const u8,
     choices: []const Choice,
 };
 
@@ -47,6 +60,48 @@ pub const OpenRouterProvider = struct {
         self.client.deinit();
     }
 
+    fn execCurl(self: *OpenRouterProvider, url: []const u8, body: []const u8) ![]u8 {
+        const auth_header = try std.fmt.allocPrint(self.allocator, "Authorization: Bearer {s}", .{self.api_key});
+        defer self.allocator.free(auth_header);
+
+        const result = std.process.Child.run(.{
+            .allocator = self.allocator,
+            .argv = &[_][]const u8{
+                "curl",
+                "-s",
+                "-X",
+                "POST",
+                url,
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                auth_header,
+                "-H",
+                "User-Agent: curl/8.7.1",
+                "-H",
+                "HTTP-Referer: https://github.com/satibot/satibot",
+                "-H",
+                "X-Title: SatiBot",
+                "-d",
+                body,
+            },
+            // 10MB limit
+            .max_output_bytes = 10 * 1024 * 1024,
+        }) catch |err| {
+            std.debug.print("[OpenRouter] curl execution failed: {any}\n", .{err});
+            return error.ReadFailed;
+        };
+        defer self.allocator.free(result.stdout);
+        defer self.allocator.free(result.stderr);
+
+        if (result.term.Exited != 0) {
+            std.debug.print("[OpenRouter] curl failed with exit code {any}: {s}\n", .{ result.term, result.stderr });
+            return error.ApiRequestFailed;
+        }
+
+        return try self.allocator.dupe(u8, result.stdout);
+    }
+
     pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
@@ -59,24 +114,13 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
 
-        const auth_header_val = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
-        defer self.allocator.free(auth_header_val);
+        const response_body = try self.execCurl(url, body);
+        defer self.allocator.free(response_body);
 
-        const headers = &[_]std.http.Header{
-            .{ .name = "Authorization", .value = auth_header_val },
-            .{ .name = "Content-Type", .value = "application/json" },
-        };
-
-        var response = try self.client.post(url, headers, body);
-        defer response.deinit();
-
-        if (response.status != .ok) {
-            std.debug.print("API Error: {d} {s}\n", .{ @intFromEnum(response.status), response.body });
-            return error.ApiRequestFailed;
-        }
-
-        const parsed = try std.json.parseFromSlice(CompletionResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(CompletionResponse, self.allocator, response_body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
+
+        std.debug.print("[Model: {s}]\n", .{parsed.value.model});
 
         if (parsed.value.choices.len == 0) {
             return error.NoChoicesReturned;
@@ -126,72 +170,122 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
 
-        const auth_header_val = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
-        defer self.allocator.free(auth_header_val);
+        const auth_header = try std.fmt.allocPrint(self.allocator, "Authorization: Bearer {s}", .{self.api_key});
+        defer self.allocator.free(auth_header);
 
-        const headers = &[_]std.http.Header{
-            .{ .name = "Authorization", .value = auth_header_val },
-            .{ .name = "Content-Type", .value = "application/json" },
-        };
+        var child = std.process.Child.init(&[_][]const u8{
+            "curl",
+            "-s",
+            "-N", // Wait for data, don't buffer
+            "-X",
+            "POST",
+            url,
+            "-H",
+            "Content-Type: application/json",
+            "-H",
+            auth_header,
+            "-H",
+            "User-Agent: curl/8.7.1",
+            "-H",
+            "HTTP-Referer: https://github.com/satibot/satibot",
+            "-H",
+            "X-Title: SatiBot",
+            "-d",
+            body,
+        }, self.allocator);
 
-        var req = try self.client.postStream(url, headers, body);
-        defer req.deinit();
+        child.stdout_behavior = .Pipe;
+        child.stderr_behavior = .Pipe;
 
-        var head_buf: [4096]u8 = undefined;
-        var response = try req.receiveHead(&head_buf);
-
-        if (response.head.status != .ok) {
-            return error.ApiRequestFailed;
-        }
+        try child.spawn();
 
         var full_content = std.ArrayListUnmanaged(u8){};
         errdefer full_content.deinit(self.allocator);
 
-        var response_body_buf: [8192]u8 = undefined;
-        var reader = response.reader(&response_body_buf);
+        // Tool calls are delivered in chunks
+        var tool_calls_map = std.AutoHashMap(usize, struct {
+            id: std.ArrayListUnmanaged(u8),
+            name: std.ArrayListUnmanaged(u8),
+            arguments: std.ArrayListUnmanaged(u8),
+        }).init(self.allocator);
+        defer {
+            var it = tool_calls_map.valueIterator();
+            while (it.next()) |call| {
+                call.id.deinit(self.allocator);
+                call.name.deinit(self.allocator);
+                call.arguments.deinit(self.allocator);
+            }
+            tool_calls_map.deinit();
+        }
 
         var buffer = std.ArrayListUnmanaged(u8){};
         defer buffer.deinit(self.allocator);
 
-        while (true) {
+        while_read: while (true) {
             var read_buf: [4096]u8 = undefined;
-            const bytes_read = reader.readSliceShort(&read_buf) catch |err| {
+            const bytes_read = child.stdout.?.read(&read_buf) catch |err| {
                 if (err == error.EndOfStream) break;
                 return err;
             };
             if (bytes_read == 0) break;
+
             try buffer.appendSlice(self.allocator, read_buf[0..bytes_read]);
 
             while (true) {
                 const newline_pos = std.mem.indexOfScalar(u8, buffer.items, '\n') orelse break;
                 const line = buffer.items[0..newline_pos];
-                const trimmed = std.mem.trim(u8, line, " \r\n");
-                if (trimmed.len > 0 and std.mem.startsWith(u8, trimmed, "data: ")) {
-                    const data = trimmed[6..];
-                    if (std.mem.eql(u8, data, "[DONE]")) {
-                        try buffer.replaceRange(self.allocator, 0, newline_pos + 1, &.{});
-                        break;
-                    }
+                const trimmed = std.mem.trimLeft(u8, line, " \r\n");
 
-                    const ChunkResponse = struct {
-                        choices: []struct {
-                            delta: struct {
-                                content: ?[]const u8 = null,
-                            },
-                        },
-                    };
+                if (trimmed.len > 0) {
+                    if (std.mem.startsWith(u8, trimmed, "data: ")) {
+                        const data = std.mem.trim(u8, trimmed[6..], " \r\n");
+                        if (std.mem.eql(u8, data, "[DONE]")) {
+                            break :while_read;
+                        } else {
+                            const ChunkResponse = struct {
+                                choices: []struct {
+                                    delta: struct {
+                                        content: ?[]const u8 = null,
+                                        tool_calls: ?[]struct {
+                                            index: usize,
+                                            id: ?[]const u8 = null,
+                                            type: ?[]const u8 = null,
+                                            function: ?struct {
+                                                name: ?[]const u8 = null,
+                                                arguments: ?[]const u8 = null,
+                                            } = null,
+                                        } = null,
+                                    },
+                                },
+                            };
 
-                    const parsed = std.json.parseFromSlice(ChunkResponse, self.allocator, data, .{ .ignore_unknown_fields = true }) catch |err| {
-                        std.debug.print("Failed to parse chunk: {any} Data: {s}\n", .{ err, data });
-                        try buffer.replaceRange(self.allocator, 0, newline_pos + 1, &.{});
-                        continue;
-                    };
-                    defer parsed.deinit();
-
-                    if (parsed.value.choices.len > 0) {
-                        if (parsed.value.choices[0].delta.content) |content| {
-                            try full_content.appendSlice(self.allocator, content);
-                            callback(content);
+                            if (std.json.parseFromSlice(ChunkResponse, self.allocator, data, .{ .ignore_unknown_fields = true })) |parsed| {
+                                defer parsed.deinit();
+                                if (parsed.value.choices.len > 0) {
+                                    const delta = parsed.value.choices[0].delta;
+                                    if (delta.content) |content| {
+                                        try full_content.appendSlice(self.allocator, content);
+                                        callback(content);
+                                    }
+                                    if (delta.tool_calls) |calls| {
+                                        for (calls) |call| {
+                                            var entry = try tool_calls_map.getOrPut(call.index);
+                                            if (!entry.found_existing) {
+                                                entry.value_ptr.* = .{
+                                                    .id = std.ArrayListUnmanaged(u8){},
+                                                    .name = std.ArrayListUnmanaged(u8){},
+                                                    .arguments = std.ArrayListUnmanaged(u8){},
+                                                };
+                                            }
+                                            if (call.id) |id| try entry.value_ptr.id.appendSlice(self.allocator, id);
+                                            if (call.function) |f| {
+                                                if (f.name) |n| try entry.value_ptr.name.appendSlice(self.allocator, n);
+                                                if (f.arguments) |args| try entry.value_ptr.arguments.appendSlice(self.allocator, args);
+                                            }
+                                        }
+                                    }
+                                }
+                            } else |_| {}
                         }
                     }
                 }
@@ -199,9 +293,26 @@ pub const OpenRouterProvider = struct {
             }
         }
 
+        _ = try child.wait();
+
+        var final_tool_calls: ?[]base.ToolCall = null;
+        if (tool_calls_map.count() > 0) {
+            final_tool_calls = try self.allocator.alloc(base.ToolCall, tool_calls_map.count());
+            var i: usize = 0;
+            var it = tool_calls_map.iterator();
+            while (it.next()) |entry| {
+                final_tool_calls.?[i] = .{
+                    .id = try entry.value_ptr.id.toOwnedSlice(self.allocator),
+                    .function_name = try entry.value_ptr.name.toOwnedSlice(self.allocator),
+                    .arguments = try entry.value_ptr.arguments.toOwnedSlice(self.allocator),
+                };
+                i += 1;
+            }
+        }
+
         return base.LLMResponse{
-            .content = try full_content.toOwnedSlice(self.allocator),
-            .tool_calls = null,
+            .content = if (full_content.items.len > 0) try full_content.toOwnedSlice(self.allocator) else null,
+            .tool_calls = final_tool_calls,
             .allocator = self.allocator,
         };
     }
@@ -213,21 +324,8 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, request, .{});
         defer self.allocator.free(body);
 
-        const auth_header_val = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
-        defer self.allocator.free(auth_header_val);
-
-        const headers = &[_]std.http.Header{
-            .{ .name = "Authorization", .value = auth_header_val },
-            .{ .name = "Content-Type", .value = "application/json" },
-        };
-
-        var response = try self.client.post(url, headers, body);
-        defer response.deinit();
-
-        if (response.status != .ok) {
-            std.debug.print("Embeddings API Error: {d} {s}\n", .{ @intFromEnum(response.status), response.body });
-            return error.ApiRequestFailed;
-        }
+        const response_body = try self.execCurl(url, body);
+        defer self.allocator.free(response_body);
 
         const EmbeddingsData = struct {
             embedding: []f32,
@@ -236,7 +334,7 @@ pub const OpenRouterProvider = struct {
             data: []EmbeddingsData,
         };
 
-        const parsed = try std.json.parseFromSlice(EmbeddingsResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(EmbeddingsResponse, self.allocator, response_body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         var result = try self.allocator.alloc([]const f32, parsed.value.data.len);

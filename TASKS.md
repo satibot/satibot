@@ -69,3 +69,17 @@
   - [x] Implemented tests for `config.zig`, `session.zig`, `context.zig`, `tools.zig`, `agent.zig`, and `anthropic.zig`.
   - [x] Fixed memory safety issues (segfaults) in tests by ensuring correct string allocation.
   - [x] Verified all tests pass with `zig build test`.
+
+## Phase 7: Telegram Bot
+
+- [x] Implement Telegram long-polling listener
+- [x] Add `telegram` command to CLI
+- [x] Add retry logic and error reporting in Telegram chat
+- [x] Support validation flag (`telegram openrouter`)
+
+## Phase 8: RAG & Knowledge
+
+- [x] Implement VectorDB (Basic)
+- [x] Implement GraphDB (Basic)
+- [x] Add auto-indexing of conversations
+- [x] Support RAG lookup tools

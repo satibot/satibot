@@ -6,6 +6,7 @@ pub const agent = struct {
     pub const session = @import("agent/session.zig");
     pub const vector_db = @import("agent/vector_db.zig");
     pub const graph_db = @import("agent/graph_db.zig");
+    pub const telegram_bot = @import("agent/telegram_bot.zig");
 };
 pub const http = @import("http.zig");
 pub const providers = struct {
@@ -22,6 +23,7 @@ test {
     _ = agent.session;
     _ = agent.vector_db;
     _ = agent.graph_db;
+    _ = agent.telegram_bot;
     _ = http;
     _ = providers.base;
     _ = providers.openrouter;

@@ -6,7 +6,7 @@
 
 Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `satibot` is a Ziglang-based agent framework for:
 
-- Chat tools intergation: Telegram, Discord, WhatsApp, etc.
+- Chat tools intergation: [Telegram (Guide)](docs/TELEGRAM_GUIDE.md), Discord, WhatsApp, etc.
 - LLM providers (OpenRouter, Anthropic, etc.)
 - Tool execution: shell commands, HTTP requests, etc.
 - Conversation history
@@ -28,6 +28,9 @@ zig build run -- agent -m "Your message"
 
 # Run with a specific session ID to persist history
 zig build run -- agent -m "Follow-up message" -s my-session
+
+# Run as a Telegram Bot (long polling)
+zig build run -- telegram
 
 # RAG is enabled by default to remember conversations. 
 # To disable it for a specific run:

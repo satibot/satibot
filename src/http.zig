@@ -1,14 +1,33 @@
 const std = @import("std");
 
-/// A simple wrapper around std.http.Client
+// Connection and timeout settings for HTTP client
+pub const ConnectionSettings = struct {
+    connect_timeout_ms: u64 = 30000, // 30 seconds to establish connection
+    request_timeout_ms: u64 = 120000, // 2 minutes for full request
+    read_timeout_ms: u64 = 60000, // 1 minute between reads (for streaming)
+    keep_alive: bool = false,
+};
+
+// 65536 = 64 * 1024
+const BUFFER_SIZE = 65536;
+
+/// A simple wrapper around std.http.Client with timeout configuration
 pub const Client = struct {
     allocator: std.mem.Allocator,
     client: std.http.Client,
+    settings: ConnectionSettings,
 
     pub fn init(allocator: std.mem.Allocator) Client {
+        return initWithSettings(allocator, .{});
+    }
+
+    pub fn initWithSettings(allocator: std.mem.Allocator, settings: ConnectionSettings) Client {
         return .{
             .allocator = allocator,
-            .client = std.http.Client{ .allocator = allocator },
+            .client = std.http.Client{
+                .allocator = allocator,
+            },
+            .settings = settings,
         };
     }
 
@@ -29,8 +48,12 @@ pub const Client = struct {
     pub fn post(self: *Client, url: []const u8, headers: []const std.http.Header, body: []const u8) !Response {
         const uri = try std.Uri.parse(url);
 
+        std.debug.print("[HTTP] POST to {s} (body: {d} bytes)...\n", .{ url, body.len });
+
         var req = try self.client.request(.POST, uri, .{
             .extra_headers = headers,
+            .keep_alive = self.settings.keep_alive,
+            .version = .@"HTTP/1.1",
         });
         defer req.deinit();
 
@@ -39,15 +62,19 @@ pub const Client = struct {
         var body_buf: [4096]u8 = undefined;
         var body_writer = try req.sendBody(&body_buf);
         try body_writer.writer.writeAll(body);
-        // Equivalent to end() or similar if available, actually end() is often used in BodyWriter
-        // Wait, let's check BodyWriter.end() or finish()
-        // Looking at 0.15.2 source, BodyWriter has `end()` and `finish()`.
         try body_writer.end();
 
-        var redirect_buf: [4096]u8 = undefined;
-        var response = try req.receiveHead(&redirect_buf);
+        std.debug.print("[HTTP] Waiting for response headers...\n", .{});
 
-        var response_body_buf: [4096]u8 = undefined;
+        var redirect_buf: [4096]u8 = undefined;
+        var response = req.receiveHead(&redirect_buf) catch |err| {
+            std.debug.print("[HTTP] POST receiveHead error: {any} for {s}\n", .{ err, url });
+            return err;
+        };
+
+        std.debug.print("[HTTP] Response status: {d} {s}\n", .{ @intFromEnum(response.head.status), @tagName(response.head.status) });
+
+        var response_body_buf: [BUFFER_SIZE]u8 = undefined;
         var response_reader = response.reader(&response_body_buf);
         const response_body = try response_reader.allocRemaining(self.allocator, .limited(10 * 1024 * 1024)); // 10MB limit
 
@@ -63,6 +90,7 @@ pub const Client = struct {
 
         var req = try self.client.request(.GET, uri, .{
             .extra_headers = headers,
+            .version = .@"HTTP/1.1",
         });
         defer req.deinit();
 
@@ -71,7 +99,7 @@ pub const Client = struct {
         var redirect_buf: [4096]u8 = undefined;
         var response = try req.receiveHead(&redirect_buf);
 
-        var response_body_buf: [4096]u8 = undefined;
+        var response_body_buf: [BUFFER_SIZE]u8 = undefined;
         var response_reader = response.reader(&response_body_buf);
         const response_body = try response_reader.allocRemaining(self.allocator, .limited(10 * 1024 * 1024)); // 10MB limit
 
@@ -84,7 +112,14 @@ pub const Client = struct {
 
     pub fn postStream(self: *Client, url: []const u8, headers: []const std.http.Header, body: []const u8) !std.http.Client.Request {
         const uri = try std.Uri.parse(url);
-        var req = try self.client.request(.POST, uri, .{ .extra_headers = headers });
+
+        std.debug.print("[HTTP] POST stream to {s} (body: {d} bytes)...\n", .{ url, body.len });
+
+        var req = try self.client.request(.POST, uri, .{
+            .extra_headers = headers,
+            .keep_alive = self.settings.keep_alive,
+            .version = .@"HTTP/1.1",
+        });
         errdefer req.deinit();
 
         req.transfer_encoding = .{ .content_length = body.len };
@@ -93,6 +128,8 @@ pub const Client = struct {
         var body_writer = try req.sendBody(&body_buf);
         try body_writer.writer.writeAll(body);
         try body_writer.end();
+
+        std.debug.print("[HTTP] Stream request sent, awaiting response headers...\n", .{});
 
         return req;
     }

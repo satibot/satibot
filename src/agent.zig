@@ -167,7 +167,20 @@ pub const Agent = struct {
         var provider = providers.openrouter.OpenRouterProvider.init(allocator, api_key);
         defer provider.deinit();
         const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
-        return try provider.embeddings(.{ .input = input, .model = emb_model });
+
+        var retry_count: usize = 0;
+        const max_retries = 3;
+        while (retry_count < max_retries) : (retry_count += 1) {
+            return provider.embeddings(.{ .input = input, .model = emb_model }) catch |err| {
+                if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
+                    std.debug.print("\n(Embedding Network error: {any}. Retrying... {d}/{d})\n", .{ err, retry_count + 1, max_retries });
+                    std.Thread.sleep(std.time.ns_per_s * 1);
+                    continue;
+                }
+                return err;
+            };
+        }
+        return error.NetworkRetryFailed;
     }
 
     pub fn run(self: *Agent, message: []const u8) !void {
@@ -191,24 +204,50 @@ pub const Agent = struct {
             std.debug.print("\n--- Iteration {d} ---\n", .{iterations + 1});
 
             var response: base.LLMResponse = undefined;
-            if (use_anthropic) {
-                const api_key = if (self.config.providers.anthropic) |p| p.apiKey else std.posix.getenv("ANTHROPIC_API_KEY") orelse {
-                    std.debug.print("Error: ANTHROPIC_API_KEY or config.providers.anthropic.apiKey not set\n", .{});
-                    return error.NoApiKey;
-                };
-                var provider = providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
-                defer provider.deinit();
-                std.debug.print("AI (Anthropic): ", .{});
-                response = try provider.chatStream(self.ctx.get_messages(), model, print_chunk);
+            var retry_count: usize = 0;
+            const max_retries = 3;
+
+            while (retry_count < max_retries) : (retry_count += 1) {
+                // Calculate exponential backoff: 2s, 4s, 8s
+                const backoff_seconds = std.math.shl(u64, 1, retry_count + 1);
+
+                if (use_anthropic) {
+                    const api_key = if (self.config.providers.anthropic) |p| p.apiKey else std.posix.getenv("ANTHROPIC_API_KEY") orelse {
+                        std.debug.print("Error: ANTHROPIC_API_KEY or config.providers.anthropic.apiKey not set\n", .{});
+                        return error.NoApiKey;
+                    };
+                    var provider = providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
+                    defer provider.deinit();
+                    std.debug.print("AI (Anthropic): ", .{});
+                    response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {
+                        if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
+                            std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
+                            std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                            continue;
+                        }
+                        return err;
+                    };
+                } else {
+                    const api_key = if (self.config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+                        std.debug.print("Error: OPENROUTER_API_KEY or config.providers.openrouter.apiKey not set\n", .{});
+                        return error.NoApiKey;
+                    };
+                    var provider = providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
+                    defer provider.deinit();
+                    std.debug.print("AI (OpenRouter): ", .{});
+                    response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {
+                        if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
+                            std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
+                            std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                            continue;
+                        }
+                        return err;
+                    };
+                }
+                break;
             } else {
-                const api_key = if (self.config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
-                    std.debug.print("Error: OPENROUTER_API_KEY or config.providers.openrouter.apiKey not set\n", .{});
-                    return error.NoApiKey;
-                };
-                var provider = providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
-                defer provider.deinit();
-                std.debug.print("AI (OpenRouter): ", .{});
-                response = try provider.chatStream(self.ctx.get_messages(), model, print_chunk);
+                std.debug.print("\n❌ Failed after {d} retries. Last error was network-related.\n", .{max_retries});
+                return error.NetworkRetryFailed;
             }
             std.debug.print("\n", .{});
             defer response.deinit();

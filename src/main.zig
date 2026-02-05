@@ -21,6 +21,8 @@ pub fn main() !void {
         std.debug.print("Onboarding not implemented yet.\n", .{});
     } else if (std.mem.eql(u8, command, "test-llm")) {
         try runTestLlm(allocator);
+    } else if (std.mem.eql(u8, command, "telegram")) {
+        try runTelegramBot(allocator, args);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         try usage();
@@ -30,7 +32,8 @@ pub fn main() !void {
 fn usage() !void {
     std.debug.print("Usage: satibot <command> [args...]\n", .{});
     std.debug.print("Commands:\n", .{});
-    std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] Run the agent (RAG enabled by default)\n", .{});
+    std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] [openrouter] Run the agent\n", .{});
+    std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot (validates key if specified)\n", .{});
     std.debug.print("  onboard              Initialize configuration\n", .{});
 }
 
@@ -42,6 +45,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     var message: []const u8 = "";
     var session_id: []const u8 = "default";
     var save_to_rag = true;
+    var check_openrouter = false;
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
         if (std.mem.eql(u8, args[i], "-m") and i + 1 < args.len) {
@@ -54,12 +58,18 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             save_to_rag = false;
         } else if (std.mem.eql(u8, args[i], "--rag")) {
             save_to_rag = true;
+        } else if (std.mem.eql(u8, args[i], "openrouter")) {
+            check_openrouter = true;
         }
     }
 
     if (message.len == 0) {
         std.debug.print("Error: Message required (-m \"message\")\n", .{});
         return;
+    }
+
+    if (check_openrouter) {
+        try validateConfig(config);
     }
 
     var agent = satibot.agent.Agent.init(allocator, config, session_id);
@@ -94,4 +104,45 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     defer response.deinit();
 
     std.debug.print("Response: {s}\n", .{response.content orelse "(no content)"});
+}
+
+fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    var check_openrouter = false;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "openrouter")) {
+            check_openrouter = true;
+            break;
+        }
+    }
+
+    if (check_openrouter) {
+        try validateConfig(config);
+    }
+
+    std.debug.print("Active Model: {s}\n", .{config.agents.defaults.model});
+    std.debug.print("Telegram bot started. Press Ctrl+C to stop.\n", .{});
+
+    try satibot.agent.telegram_bot.run(allocator, config);
+}
+
+fn validateConfig(config: satibot.config.Config) !void {
+    const model = config.agents.defaults.model;
+    if (std.mem.indexOf(u8, model, "claude") != null) {
+        if (config.providers.anthropic == null and std.posix.getenv("ANTHROPIC_API_KEY") == null) {
+            std.debug.print("\n❌ Error: Anthropic API key not found.\n", .{});
+            std.debug.print("Please set ANTHROPIC_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
+            std.process.exit(1);
+        }
+    } else {
+        // Assume OpenRouter for other models
+        if (config.providers.openrouter == null and std.posix.getenv("OPENROUTER_API_KEY") == null) {
+            std.debug.print("\n❌ Error: OpenRouter API key not found.\n", .{});
+            std.debug.print("Please set OPENROUTER_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
+            std.process.exit(1);
+        }
+    }
 }
