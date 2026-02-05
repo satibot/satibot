@@ -1,17 +1,17 @@
-# RAG, VectorDB, and GraphDB in minbot
+# RAG, VectorDB, and GraphDB in satibot
 
 This document provides an overview of the Retrieval-Augmented Generation (RAG) capabilities, including the built-in VectorDB and GraphDB support.
 
 ## Overview
 
-`minbot` features a local-first knowledge management system that allows the agent to persist, retrieve, and relate information across sessions.
+`satibot` features a local-first knowledge management system that allows the agent to persist, retrieve, and relate information across sessions.
 
 ```bash
 # Example: Teaching the agent something to remember via VectorDB
-./minbot -m "Remember that the secret code for the vault is 42."
+./satibot -m "Remember that the secret code for the vault is 42."
 
 # Later, you can ask it:
-./minbot -m "What was the secret code for the vault?"
+./satibot -m "What was the secret code for the vault?"
 # The agent will call vector_search/rag_search to find the answer.
 ```
 

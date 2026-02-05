@@ -1,6 +1,6 @@
-# Development Notes - Minbot Zig 0.15.2 Migration
+# Development Notes - satibot Zig 0.15.2 Migration
 
-This document tracks the technical changes made to the `minbot` project during its port to Zig 0.15.2 and the rationale behind them.
+This document tracks the technical changes made to the `satibot` project during its port to Zig 0.15.2 and the rationale behind them.
 
 ## Summary of Changes
 

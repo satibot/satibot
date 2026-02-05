@@ -268,16 +268,16 @@ pub const Agent = struct {
 
     pub fn index_conversation(self: *Agent) !void {
         const messages = self.ctx.get_messages();
-        var full_text = std.ArrayList(u8).init(self.allocator);
-        defer full_text.deinit();
+        var full_text = std.ArrayListUnmanaged(u8){};
+        defer full_text.deinit(self.allocator);
 
         for (messages) |msg| {
             if (msg.content) |content| {
                 if (content.len > 0) {
-                    try full_text.appendSlice(msg.role);
-                    try full_text.appendSlice(": ");
-                    try full_text.appendSlice(content);
-                    try full_text.appendSlice("\n\n");
+                    try full_text.appendSlice(self.allocator, msg.role);
+                    try full_text.appendSlice(self.allocator, ": ");
+                    try full_text.appendSlice(self.allocator, content);
+                    try full_text.appendSlice(self.allocator, "\n\n");
                 }
             }
         }
@@ -290,7 +290,7 @@ pub const Agent = struct {
             .get_embeddings = get_embeddings,
         };
 
-        const args = try std.json.stringifyAlloc(self.allocator, .{ .text = full_text.items }, .{});
+        const args = try std.json.Stringify.valueAlloc(self.allocator, .{ .text = full_text.items }, .{});
         defer self.allocator.free(args);
 
         const result = try tools.vector_upsert(tool_ctx, args);

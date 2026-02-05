@@ -12,7 +12,7 @@ zig build run -- agent -m "Your message"
 zig build
 
 # Run
-./zig-out/bin/minbot agent -m "Hello"
+./zig-out/bin/satibot agent -m "Hello"
 
 zig build test
 ```

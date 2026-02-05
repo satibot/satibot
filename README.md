@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/icons/icon.png" alt="minbot mascot" width="180" />
+  <img src="docs/icons/icon.png" alt="satibot mascot" width="180" />
 </p>
 
-# minbot
+# satibot
 
-Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `minbot` is a Ziglang-based agent framework for:
+Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `satibot` is a Ziglang-based agent framework for:
 
 - Chat tools intergation: Telegram, Discord, WhatsApp, etc.
 - LLM providers (OpenRouter, Anthropic, etc.)
@@ -183,3 +183,43 @@ The agent's configuration is stored in `~/.bots/config.json`. You can configure 
   }
 }
 ```
+
+## Addition information
+
+### Bot name meaning
+
+TL;DR: In SatiBot, Sati means “remembering to stay aware of what is happening right now.” It comes from Pāli, where it originally meant memory, and in Buddhism evolved into the idea of mindful awareness — not forgetting the present moment.
+
+1. The original meaning (language level)
+
+In Pāli (the language of early Buddhist texts), sati literally means:
+
+> memory + recollection + not forgetting
+
+It comes from an ancient Indo-European root meaning “to remember”.
+
+So at its most basic level, sati is the mental ability to keep something in mind instead of losing track of it.
+
+1. How Buddhism deepened the meaning
+
+In Buddhist psychology, the word was expanded.
+
+> remembering the present experience
+
+In other words:
+
+- Remember you are breathing
+- Remember you are walking
+- Remember anger is happening
+- Remember thoughts are arising
+
+So "mindfulness" (the common English translation) really means:
+
+> "not forgetting what is happening now"
+
+Metaphorically, SatiBot suggests a system that:
+
+- Doesn’t forget context
+- Tracks state consistently
+- Stays aware of ongoing processes
+- Doesn’t lose events in the flow

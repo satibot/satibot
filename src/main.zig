@@ -1,5 +1,5 @@
 const std = @import("std");
-const minbot = @import("minbot");
+const satibot = @import("satibot");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -28,14 +28,14 @@ pub fn main() !void {
 }
 
 fn usage() !void {
-    std.debug.print("Usage: minbot <command> [args...]\n", .{});
+    std.debug.print("Usage: satibot <command> [args...]\n", .{});
     std.debug.print("Commands:\n", .{});
     std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] Run the agent (RAG enabled by default)\n", .{});
     std.debug.print("  onboard              Initialize configuration\n", .{});
 }
 
 fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
-    const parsed_config = try minbot.config.load(allocator);
+    const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
@@ -62,7 +62,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         return;
     }
 
-    var agent = minbot.agent.Agent.init(allocator, config, session_id);
+    var agent = satibot.agent.Agent.init(allocator, config, session_id);
     defer agent.deinit();
 
     try agent.run(message);
@@ -73,7 +73,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 }
 
 fn runTestLlm(allocator: std.mem.Allocator) !void {
-    const parsed_config = try minbot.config.load(allocator);
+    const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
@@ -82,10 +82,10 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
         return;
     };
 
-    var provider = minbot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+    var provider = satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
     defer provider.deinit();
 
-    const messages = &[_]minbot.providers.base.LLMMessage{
+    const messages = &[_]satibot.providers.base.LLMMessage{
         .{ .role = "user", .content = "Say hello from Zig!" },
     };
 

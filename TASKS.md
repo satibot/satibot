@@ -1,4 +1,4 @@
-# Minbot Implementation Tasks
+# satibot Implementation Tasks
 
 ## Phase 1: Foundation
 
