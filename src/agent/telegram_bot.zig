@@ -1,7 +1,6 @@
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
-const Client = @import("../http.zig").Client;
 
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     const tg_config = config.tools.telegram orelse {
@@ -9,32 +8,21 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
         return;
     };
 
-    var client = Client.init(allocator);
-    defer client.deinit();
-
     var offset: i64 = 0;
 
+    // Use a slightly larger timeout for curl than the long-polling timeout
+    // Telegram timeout is 30s, so using 40s for curl ensures we don't cut it off too early
     while (true) {
         const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/getUpdates?offset={d}&timeout=30", .{ tg_config.botToken, offset });
         defer allocator.free(url);
 
-        var response = client.get(url, &[_]std.http.Header{}) catch |err| {
-            if (err == error.HttpConnectionClosing or err == error.ReadFailed or err == error.ConnectionResetByPeer) {
-                // Connection was closed, just wait a bit and retry
-                std.Thread.sleep(std.time.ns_per_s * 1);
-                continue;
-            }
-            std.debug.print("Error getting updates: {any}\n", .{err});
+        const response_body = curlRequest(allocator, url, "GET", null) catch |err| {
+            // Connection was closed or failed, just wait a bit and retry
+            std.debug.print("Error getting updates (curl): {any}\n", .{err});
             std.Thread.sleep(std.time.ns_per_s * 5);
             continue;
         };
-        defer response.deinit();
-
-        if (response.status != .ok) {
-            std.debug.print("Telegram API error: {d}\n", .{@intFromEnum(response.status)});
-            std.Thread.sleep(std.time.ns_per_s * 5);
-            continue;
-        }
+        defer allocator.free(response_body);
 
         const UpdateResponse = struct {
             ok: bool,
@@ -49,7 +37,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
             },
         };
 
-        const parsed = std.json.parseFromSlice(UpdateResponse, allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
+        const parsed = std.json.parseFromSlice(UpdateResponse, allocator, response_body, .{ .ignore_unknown_fields = true }) catch |err| {
             std.debug.print("Error parsing updates: {any}\n", .{err});
             continue;
         };
@@ -80,7 +68,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
                         else
                             try std.fmt.allocPrint(allocator, "⚠️ Error: {any}\n\nThis often happens with free models if the connection is unstable. Please try again.", .{err});
                         defer allocator.free(error_msg);
-                        try send_telegram_message(allocator, &client, tg_config.botToken, chat_id_str, error_msg);
+                        try send_telegram_message(allocator, tg_config.botToken, chat_id_str, error_msg);
                     };
 
                     // The agent.run calls tools, but it doesn't automatically send the FINAL response back to telegram.
@@ -89,7 +77,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
                     if (messages.len > 0) {
                         const last_msg = messages[messages.len - 1];
                         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                            try send_telegram_message(allocator, &client, tg_config.botToken, chat_id_str, last_msg.content.?);
+                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, last_msg.content.?);
                         }
                     }
 
@@ -101,7 +89,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     }
 }
 
-fn send_telegram_message(allocator: std.mem.Allocator, client: *Client, token: []const u8, chat_id: []const u8, text: []const u8) !void {
+fn send_telegram_message(allocator: std.mem.Allocator, token: []const u8, chat_id: []const u8, text: []const u8) !void {
     const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
     defer allocator.free(url);
 
@@ -111,20 +99,43 @@ fn send_telegram_message(allocator: std.mem.Allocator, client: *Client, token: [
     }, .{});
     defer allocator.free(body);
 
-    const headers = &[_]std.http.Header{
-        .{ .name = "Content-Type", .value = "application/json" },
+    const response_body = curlRequest(allocator, url, "POST", body) catch |err| {
+        std.debug.print("Error sending message to Telegram: {any}\n", .{err});
+        return;
     };
+    defer allocator.free(response_body);
 
-    var response = client.post(url, headers, body) catch |err| blk: {
-        if (err == error.HttpConnectionClosing or err == error.ReadFailed or err == error.ConnectionResetByPeer) {
-            // Retry once for connection issues
-            break :blk try client.post(url, headers, body);
-        }
+    // We could check the response body for "ok": true, but for now just logging it on error is enough
+    // std.debug.print("Telegram Send Response: {s}\n", .{response_body});
+}
+
+fn curlRequest(allocator: std.mem.Allocator, url: []const u8, method: []const u8, body: ?[]const u8) ![]u8 {
+    var argv = std.ArrayListUnmanaged([]const u8){};
+    defer argv.deinit(allocator);
+
+    try argv.appendSlice(allocator, &[_][]const u8{ "curl", "-s", "-X", method, url });
+
+    if (body) |b| {
+        try argv.appendSlice(allocator, &[_][]const u8{ "-H", "Content-Type: application/json" });
+        try argv.appendSlice(allocator, &[_][]const u8{ "-d", b });
+    }
+
+    // Add timeout to prevent hanging forever
+    try argv.appendSlice(allocator, &[_][]const u8{ "-m", "40" });
+
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv.items,
+        .max_output_bytes = 10 * 1024 * 1024,
+    }) catch |err| {
         return err;
     };
-    defer response.deinit();
+    defer allocator.free(result.stderr);
 
-    if (response.status != .ok) {
-        std.debug.print("Error sending response to Telegram: {d}\n", .{@intFromEnum(response.status)});
+    if (result.term.Exited != 0) {
+        allocator.free(result.stdout);
+        return error.CurlFailed;
     }
+
+    return result.stdout;
 }
