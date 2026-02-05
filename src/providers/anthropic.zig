@@ -44,10 +44,10 @@ pub const AnthropicProvider = struct {
     api_key: []const u8,
     api_base: []const u8 = "https://api.anthropic.com/v1",
 
-    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) AnthropicProvider {
+    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !AnthropicProvider {
         return .{
             .allocator = allocator,
-            .client = http.Client.init(allocator),
+            .client = try http.Client.init(allocator),
             .api_key = api_key,
         };
     }
@@ -98,6 +98,7 @@ pub const AnthropicProvider = struct {
         defer req.deinit();
 
         var head_buf: [4096]u8 = undefined;
+        // TODO
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
@@ -371,7 +372,7 @@ pub const AnthropicProvider = struct {
 
 test "Anthropic: parseResponse" {
     const allocator = std.testing.allocator;
-    var provider = AnthropicProvider.init(allocator, "test-key");
+    var provider = try AnthropicProvider.init(allocator, "test-key");
     defer provider.deinit();
 
     const response_json =

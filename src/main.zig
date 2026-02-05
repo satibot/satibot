@@ -1,7 +1,10 @@
 const std = @import("std");
 const satibot = @import("satibot");
+const build_options = @import("build_options");
 
 pub fn main() !void {
+    std.debug.print("--- satibot 🧞‍♂️ (build: {s}) ---\n", .{build_options.build_time_str});
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -92,7 +95,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
         return;
     };
 
-    var provider = satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+    var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
     defer provider.deinit();
 
     const messages = &[_]satibot.providers.base.LLMMessage{

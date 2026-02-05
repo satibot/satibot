@@ -88,7 +88,7 @@ pub fn web_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return try ctx.allocator.dupe(u8, "Error: Search API key not configured.");
     };
 
-    var client = @import("../http.zig").Client.init(ctx.allocator);
+    var client = try @import("../http.zig").Client.init(ctx.allocator);
     defer client.deinit();
 
     var encoded_query = std.io.Writer.Allocating.init(ctx.allocator);
@@ -154,7 +154,7 @@ pub fn web_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 pub fn list_marketplace_skills(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     _ = arguments;
     // We use the GitHub API to list skills in futantan/agent-skills.md/skills
-    var client = @import("../http.zig").Client.init(ctx.allocator);
+    var client = try @import("../http.zig").Client.init(ctx.allocator);
     defer client.deinit();
 
     const url = "https://api.github.com/repos/futantan/agent-skills.md/contents/skills";
@@ -269,7 +269,7 @@ pub fn telegram_send_message(ctx: ToolContext, arguments: []const u8) ![]const u
         return try ctx.allocator.dupe(u8, "Error: chat_id not provided and no default configured.");
     };
 
-    var client = @import("../http.zig").Client.init(ctx.allocator);
+    var client = try @import("../http.zig").Client.init(ctx.allocator);
     defer client.deinit();
 
     const url = try std.fmt.allocPrint(ctx.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{config.botToken});
@@ -308,7 +308,7 @@ pub fn discord_send_message(ctx: ToolContext, arguments: []const u8) ![]const u8
     }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var client = @import("../http.zig").Client.init(ctx.allocator);
+    var client = try @import("../http.zig").Client.init(ctx.allocator);
     defer client.deinit();
 
     const body = try std.json.Stringify.valueAlloc(ctx.allocator, .{
@@ -482,7 +482,7 @@ pub fn whatsapp_send_message(ctx: ToolContext, arguments: []const u8) ![]const u
         return try ctx.allocator.dupe(u8, "Error: 'to' phone number not provided and no default configured.");
     };
 
-    var client = @import("../http.zig").Client.init(ctx.allocator);
+    var client = try @import("../http.zig").Client.init(ctx.allocator);
     defer client.deinit();
 
     const url = try std.fmt.allocPrint(ctx.allocator, "https://graph.facebook.com/v17.0/{s}/messages", .{config.phoneNumberId});

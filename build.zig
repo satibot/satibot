@@ -21,6 +21,15 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
+    const build_options = b.addOptions();
+    const build_time_timestamp = std.time.timestamp();
+    build_options.addOption(i64, "build_time", build_time_timestamp);
+
+    // Get human-readable build time (UTC)
+    const date_output = b.run(&.{ "date", "-u", "+%Y-%m-%d %H:%M:%S" });
+    const build_time_str = b.fmt("{s} UTC", .{std.mem.trim(u8, date_output, "\n\r ")});
+    build_options.addOption([]const u8, "build_time_str", build_time_str);
+
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Zig modules are the preferred way of making Zig code available to consumers.
@@ -39,6 +48,14 @@ pub fn build(b: *std.Build) void {
         // Later on we'll use this module as the root module of a test executable
         // which requires us to specify a target.
         .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "build_options", .module = build_options.createModule() },
+            .{ .name = "tls", .module = b.dependency("tls", .{
+                .target = target,
+                .optimize = optimize,
+            }).module("tls") },
+        },
     });
 
     // Here we define an executable. An executable needs to have a root module
@@ -74,6 +91,7 @@ pub fn build(b: *std.Build) void {
             // root module.
             .imports = &.{
                 .{ .name = "satibot", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });

@@ -1,6 +1,7 @@
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
+const http = @import("../http.zig");
 
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     const tg_config = config.tools.telegram orelse {
@@ -9,20 +10,22 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     };
 
     var offset: i64 = 0;
+    var client = try http.Client.initWithSettings(allocator, .{
+        .request_timeout_ms = 60000, // 60 seconds
+        .keep_alive = true,
+    });
+    defer client.deinit();
 
-    // Use a slightly larger timeout for curl than the long-polling timeout
-    // Telegram timeout is 30s, so using 40s for curl ensures we don't cut it off too early
     while (true) {
         const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/getUpdates?offset={d}&timeout=30", .{ tg_config.botToken, offset });
         defer allocator.free(url);
 
-        const response_body = curlRequest(allocator, url, "GET", null) catch |err| {
-            // Connection was closed or failed, just wait a bit and retry
-            std.debug.print("Error getting updates (curl): {any}\n", .{err});
+        const response = client.get(url, &.{}) catch |err| {
+            std.debug.print("Error getting updates: {any}\n", .{err});
             std.Thread.sleep(std.time.ns_per_s * 5);
             continue;
         };
-        defer allocator.free(response_body);
+        defer @constCast(&response).deinit();
 
         const UpdateResponse = struct {
             ok: bool,
@@ -37,7 +40,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
             },
         };
 
-        const parsed = std.json.parseFromSlice(UpdateResponse, allocator, response_body, .{ .ignore_unknown_fields = true }) catch |err| {
+        const parsed = std.json.parseFromSlice(UpdateResponse, allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
             std.debug.print("Error parsing updates: {any}\n", .{err});
             continue;
         };
@@ -57,53 +60,39 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
                     const session_id = try std.fmt.allocPrint(allocator, "tg_{d}", .{msg.chat.id});
                     defer allocator.free(session_id);
 
-                    // Handle /new command to start fresh session
+                    // Handle /new command
                     var actual_text = text;
                     if (std.mem.startsWith(u8, text, "/new")) {
-                        // Delete the session file to start fresh
                         const home = std.posix.getenv("HOME") orelse "/tmp";
-                        const session_path = try std.fmt.allocPrint(allocator, "{s}/.bots/sessions/{s}.json", .{ home, session_id });
+                        const session_path = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(allocator, "{s}.json", .{session_id}) });
                         defer allocator.free(session_path);
-                        std.fs.deleteFileAbsolute(session_path) catch {}; // Ignore if file doesn't exist
+                        std.fs.deleteFileAbsolute(session_path) catch {};
 
-                        // If user sent "/new" alone, send confirmation and skip LLM
-                        if (text.len == 4) {
-                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
+                        if (text.len <= 4) {
+                            try send_telegram_message(&client, tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
                             continue;
                         }
-                        // If "/new <message>", use the message after /new
                         actual_text = std.mem.trimLeft(u8, text[4..], " ");
-                        if (actual_text.len == 0) {
-                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
-                            continue;
-                        }
                     }
 
                     var agent = Agent.init(allocator, config, session_id);
                     defer agent.deinit();
 
-                    // We wrap the agent run to capture errors
                     agent.run(actual_text) catch |err| {
                         std.debug.print("Error running agent: {any}\n", .{err});
-                        const error_msg = if (err == error.NetworkRetryFailed)
-                            try std.fmt.allocPrint(allocator, "⚠️ Connection failed after multiple retries.\n\nThe OpenRouter model '{s}' is currently overloaded or unstable. Please try again in a moment or switch to a different model in config.json.", .{config.agents.defaults.model})
-                        else
-                            try std.fmt.allocPrint(allocator, "⚠️ Error: {any}\n\nThis often happens with free models if the connection is unstable. Please try again.", .{err});
+                        const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
                         defer allocator.free(error_msg);
-                        try send_telegram_message(allocator, tg_config.botToken, chat_id_str, error_msg);
+                        try send_telegram_message(&client, tg_config.botToken, chat_id_str, error_msg);
                     };
 
-                    // The agent.run calls tools, but it doesn't automatically send the FINAL response back to telegram.
-                    // We need to send the last assistant message back.
                     const messages = agent.ctx.get_messages();
                     if (messages.len > 0) {
                         const last_msg = messages[messages.len - 1];
                         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                            try send_telegram_message(allocator, tg_config.botToken, chat_id_str, last_msg.content.?);
+                            try send_telegram_message(&client, tg_config.botToken, chat_id_str, last_msg.content.?);
                         }
                     }
 
-                    // Always try to index even if we fail to send message
                     agent.index_conversation() catch {};
                 }
             }
@@ -111,53 +100,23 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     }
 }
 
-fn send_telegram_message(allocator: std.mem.Allocator, token: []const u8, chat_id: []const u8, text: []const u8) !void {
-    const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
-    defer allocator.free(url);
+fn send_telegram_message(client: *http.Client, token: []const u8, chat_id: []const u8, text: []const u8) !void {
+    const url = try std.fmt.allocPrint(client.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
+    defer client.allocator.free(url);
 
-    const body = try std.json.Stringify.valueAlloc(allocator, .{
+    const body = try std.json.Stringify.valueAlloc(client.allocator, .{
         .chat_id = chat_id,
         .text = text,
     }, .{});
-    defer allocator.free(body);
+    defer client.allocator.free(body);
 
-    const response_body = curlRequest(allocator, url, "POST", body) catch |err| {
+    const headers = &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+    };
+
+    const response = client.post(url, headers, body) catch |err| {
         std.debug.print("Error sending message to Telegram: {any}\n", .{err});
         return;
     };
-    defer allocator.free(response_body);
-
-    // We could check the response body for "ok": true, but for now just logging it on error is enough
-    // std.debug.print("Telegram Send Response: {s}\n", .{response_body});
-}
-
-fn curlRequest(allocator: std.mem.Allocator, url: []const u8, method: []const u8, body: ?[]const u8) ![]u8 {
-    var argv = std.ArrayListUnmanaged([]const u8){};
-    defer argv.deinit(allocator);
-
-    try argv.appendSlice(allocator, &[_][]const u8{ "curl", "-s", "-X", method, url });
-
-    if (body) |b| {
-        try argv.appendSlice(allocator, &[_][]const u8{ "-H", "Content-Type: application/json" });
-        try argv.appendSlice(allocator, &[_][]const u8{ "-d", b });
-    }
-
-    // Add timeout to prevent hanging forever
-    try argv.appendSlice(allocator, &[_][]const u8{ "-m", "40" });
-
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = argv.items,
-        .max_output_bytes = 10 * 1024 * 1024,
-    }) catch |err| {
-        return err;
-    };
-    defer allocator.free(result.stderr);
-
-    if (result.term.Exited != 0) {
-        allocator.free(result.stdout);
-        return error.CurlFailed;
-    }
-
-    return result.stdout;
+    defer @constCast(&response).deinit();
 }

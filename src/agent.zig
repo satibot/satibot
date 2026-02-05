@@ -164,7 +164,7 @@ pub const Agent = struct {
         const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
             return error.NoApiKey;
         };
-        var provider = providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+        var provider = try providers.openrouter.OpenRouterProvider.init(allocator, api_key);
         defer provider.deinit();
         const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
 
@@ -216,7 +216,7 @@ pub const Agent = struct {
                         std.debug.print("Error: ANTHROPIC_API_KEY or config.providers.anthropic.apiKey not set\n", .{});
                         return error.NoApiKey;
                     };
-                    var provider = providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
+                    var provider = try providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (Anthropic): ", .{});
                     response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {
@@ -232,7 +232,7 @@ pub const Agent = struct {
                         std.debug.print("Error: OPENROUTER_API_KEY or config.providers.openrouter.apiKey not set\n", .{});
                         return error.NoApiKey;
                     };
-                    var provider = providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
+                    var provider = try providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (OpenRouter): ", .{});
                     response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {

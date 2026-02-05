@@ -1,15 +1,3 @@
-// Migrated to curl for Stability: OpenRouter provider now uses curl
-// as an external process for all HTTP requests.
-// True Incremental Streaming:
-// Previously, chatStream waited for the entire response to complete before processing it.
-// I refactored the streaming implementation to spawn curl in a child process
-// and read from its stdout pipe incrementally.
-// This enables real-time response output as chunks arrive from the API.
-// Enhanced Tool Call Support:
-// Implemented a robust streaming parser for OpenRouter that correctly handles
-// tool call deltas (accumulating partial function names and arguments across
-// multiple chunks).
-
 const std = @import("std");
 const http = @import("../http.zig");
 const base = @import("base.zig");
@@ -48,10 +36,10 @@ pub const OpenRouterProvider = struct {
     api_key: []const u8,
     api_base: []const u8 = "https://openrouter.ai/api/v1",
 
-    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) OpenRouterProvider {
+    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !OpenRouterProvider {
         return .{
             .allocator = allocator,
-            .client = http.Client.init(allocator),
+            .client = try http.Client.init(allocator),
             .api_key = api_key,
         };
     }
@@ -60,46 +48,27 @@ pub const OpenRouterProvider = struct {
         self.client.deinit();
     }
 
-    fn execCurl(self: *OpenRouterProvider, url: []const u8, body: []const u8) ![]u8 {
-        const auth_header = try std.fmt.allocPrint(self.allocator, "Authorization: Bearer {s}", .{self.api_key});
+    fn execPost(self: *OpenRouterProvider, url: []const u8, body: []const u8) ![]u8 {
+        const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
         defer self.allocator.free(auth_header);
 
-        const result = std.process.Child.run(.{
-            .allocator = self.allocator,
-            .argv = &[_][]const u8{
-                "curl",
-                "-s",
-                "-X",
-                "POST",
-                url,
-                "-H",
-                "Content-Type: application/json",
-                "-H",
-                auth_header,
-                "-H",
-                "User-Agent: curl/8.7.1",
-                "-H",
-                "HTTP-Referer: https://github.com/satibot/satibot",
-                "-H",
-                "X-Title: SatiBot",
-                "-d",
-                body,
-            },
-            // 10MB limit
-            .max_output_bytes = 10 * 1024 * 1024,
-        }) catch |err| {
-            std.debug.print("[OpenRouter] curl execution failed: {any}\n", .{err});
-            return error.ReadFailed;
+        const headers = &[_]std.http.Header{
+            .{ .name = "Authorization", .value = auth_header },
+            .{ .name = "Content-Type", .value = "application/json" },
+            .{ .name = "User-Agent", .value = "satibot/1.0" },
+            .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" },
+            .{ .name = "X-Title", .value = "SatiBot" },
         };
-        defer self.allocator.free(result.stdout);
-        defer self.allocator.free(result.stderr);
 
-        if (result.term.Exited != 0) {
-            std.debug.print("[OpenRouter] curl failed with exit code {any}: {s}\n", .{ result.term, result.stderr });
+        const response = try self.client.post(url, headers, body);
+        defer self.allocator.free(response.body);
+
+        if (response.status != .ok) {
+            std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), response.body });
             return error.ApiRequestFailed;
         }
 
-        return try self.allocator.dupe(u8, result.stdout);
+        return try self.allocator.dupe(u8, response.body);
     }
 
     pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
@@ -114,7 +83,7 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
 
-        const response_body = try self.execCurl(url, body);
+        const response_body = try self.execPost(url, body);
         defer self.allocator.free(response_body);
 
         const parsed = try std.json.parseFromSlice(CompletionResponse, self.allocator, response_body, .{ .ignore_unknown_fields = true });
@@ -170,37 +139,32 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
         defer self.allocator.free(body);
 
-        const auth_header = try std.fmt.allocPrint(self.allocator, "Authorization: Bearer {s}", .{self.api_key});
+        const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
         defer self.allocator.free(auth_header);
 
-        var child = std.process.Child.init(&[_][]const u8{
-            "curl",
-            "-s",
-            "-N", // Wait for data, don't buffer
-            "-X",
-            "POST",
-            url,
-            "-H",
-            "Content-Type: application/json",
-            "-H",
-            auth_header,
-            "-H",
-            "User-Agent: curl/8.7.1",
-            "-H",
-            "HTTP-Referer: https://github.com/satibot/satibot",
-            "-H",
-            "X-Title: SatiBot",
-            "-d",
-            body,
-        }, self.allocator);
+        const headers = &[_]std.http.Header{
+            .{ .name = "Authorization", .value = auth_header },
+            .{ .name = "Content-Type", .value = "application/json" },
+            .{ .name = "User-Agent", .value = "satibot/1.0" },
+            .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" },
+            .{ .name = "X-Title", .value = "SatiBot" },
+        };
 
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Pipe;
+        var req = try self.client.postStream(url, headers, body);
+        defer req.deinit();
 
-        try child.spawn();
+        var head_buf: [4096]u8 = undefined;
+        var response = try req.receiveHead(&head_buf);
+
+        if (response.head.status != .ok) {
+            return error.ApiRequestFailed;
+        }
 
         var full_content = std.ArrayListUnmanaged(u8){};
         errdefer full_content.deinit(self.allocator);
+
+        var response_body_buf: [8192]u8 = undefined;
+        var reader = response.reader(&response_body_buf);
 
         // Tool calls are delivered in chunks
         var tool_calls_map = std.AutoHashMap(usize, struct {
@@ -223,7 +187,7 @@ pub const OpenRouterProvider = struct {
 
         while_read: while (true) {
             var read_buf: [4096]u8 = undefined;
-            const bytes_read = child.stdout.?.read(&read_buf) catch |err| {
+            const bytes_read = reader.readSliceShort(&read_buf) catch |err| {
                 if (err == error.EndOfStream) break;
                 return err;
             };
@@ -293,7 +257,7 @@ pub const OpenRouterProvider = struct {
             }
         }
 
-        _ = try child.wait();
+        // No child to wait for
 
         var final_tool_calls: ?[]base.ToolCall = null;
         if (tool_calls_map.count() > 0) {
@@ -324,7 +288,7 @@ pub const OpenRouterProvider = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, request, .{});
         defer self.allocator.free(body);
 
-        const response_body = try self.execCurl(url, body);
+        const response_body = try self.execPost(url, body);
         defer self.allocator.free(response_body);
 
         const EmbeddingsData = struct {
@@ -358,7 +322,7 @@ pub const OpenRouterProvider = struct {
 
 test "OpenRouter: parse response" {
     const allocator = std.testing.allocator;
-    var provider = OpenRouterProvider.init(allocator, "test-key");
+    var provider = try OpenRouterProvider.init(allocator, "test-key");
     defer provider.deinit();
 
     // Since chat() is public and calls self.client.post, it's hard to test without mocking.
