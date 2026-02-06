@@ -28,6 +28,26 @@ pub fn main() !void {
         try runTelegramBot(allocator, args);
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         try runWhatsAppBot(allocator, args);
+    } else if (std.mem.eql(u8, command, "in")) {
+        // Handle "satibot in <platform>" command format
+        // This auto-creates config for the specified platform before running
+        if (args.len < 3) {
+            std.debug.print("Usage: satibot in <platform>\n", .{});
+            std.debug.print("Platforms:\n", .{});
+            std.debug.print("  whatsapp   Auto-create WhatsApp config and run\n", .{});
+            std.debug.print("  telegram   Auto-create Telegram config and run\n", .{});
+            return;
+        }
+        const platform = args[2];
+        if (std.mem.eql(u8, platform, "whatsapp")) {
+            try autoCreateWhatsAppConfig(allocator);
+            try runWhatsAppBot(allocator, args);
+        } else if (std.mem.eql(u8, platform, "telegram")) {
+            try autoCreateTelegramConfig(allocator);
+            try runTelegramBot(allocator, args);
+        } else {
+            std.debug.print("Unknown platform: {s}\n", .{platform});
+        }
     } else if (std.mem.eql(u8, command, "gateway")) {
         try runGateway(allocator);
     } else if (std.mem.eql(u8, command, "vector-db")) {
@@ -48,6 +68,7 @@ fn usage() !void {
     std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] [openrouter] Run the agent\n", .{});
     std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot\n", .{});
     std.debug.print("  whatsapp [openrouter] Run satibot as a WhatsApp bot\n", .{});
+    std.debug.print("  in <platform>        Auto-create config and run (whatsapp|telegram)\n", .{});
     std.debug.print("  gateway              Run Telegram bot, Cron, and Heartbeat collectively\n", .{});
     std.debug.print("  vector-db <cmd>    Test vector DB operations (list, search, add)\n", .{});
     std.debug.print("  status               Show system status\n", .{});
@@ -173,7 +194,14 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 }
 
 fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
-    const parsed_config = try satibot.config.load(allocator);
+    // Load WhatsApp-specific config from ~/.bots/whatsapp.json
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "whatsapp.json" });
+    defer allocator.free(config_path);
+
+    const parsed_config = try satibot.config.loadFromPath(allocator, config_path);
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
@@ -497,5 +525,129 @@ fn validateConfig(config: satibot.config.Config) !void {
             std.debug.print("Please set OPENROUTER_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
             std.process.exit(1);
         }
+    }
+}
+
+/// Auto-create WhatsApp configuration file
+fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+
+    std.fs.makeDirAbsolute(bots_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
+
+    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "whatsapp.json" });
+    defer allocator.free(config_path);
+
+    // Check if config already exists
+    var config_exists = true;
+    std.fs.accessAbsolute(config_path, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            config_exists = false;
+        } else {
+            return err;
+        }
+    };
+
+    if (!config_exists) {
+        const file = try std.fs.createFileAbsolute(config_path, .{});
+        defer file.close();
+        const default_json =
+            \\{
+            \\  "agents": {
+            \\    "defaults": {
+            \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+            \\    }
+            \\  },
+            \\  "providers": {
+            \\    "openrouter": {
+            \\      "apiKey": "sk-or-v1-..."
+            \\    }
+            \\  },
+            \\  "tools": {
+            \\    "web": {
+            \\      "search": {
+            \\        "apiKey": "BSA..."
+            \\      }
+            \\    },
+            \\    "whatsapp": {
+            \\      "accessToken": "YOUR_ACCESS_TOKEN_HERE",
+            \\      "phoneNumberId": "YOUR_PHONE_NUMBER_ID_HERE",
+            \\      "recipientPhoneNumber": "YOUR_PHONE_NUMBER_HERE"
+            \\    }
+            \\  }
+            \\}
+        ;
+        try file.writeAll(default_json);
+        std.debug.print("✅ Created WhatsApp config at {s}\n", .{config_path});
+        std.debug.print("📋 Please edit the file and add your Meta API credentials:\n", .{});
+        std.debug.print("   1. accessToken - Your Meta WhatsApp API token\n", .{});
+        std.debug.print("   2. phoneNumberId - Your WhatsApp phone number ID\n", .{});
+        std.debug.print("   3. recipientPhoneNumber - Your test phone number\n", .{});
+    } else {
+        std.debug.print("⚠️ WhatsApp config already exists at {s}\n", .{config_path});
+    }
+}
+
+/// Auto-create Telegram configuration file
+fn autoCreateTelegramConfig(allocator: std.mem.Allocator) !void {
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+
+    std.fs.makeDirAbsolute(bots_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
+
+    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "config.json" });
+    defer allocator.free(config_path);
+
+    // Check if config already exists
+    var config_exists = true;
+    std.fs.accessAbsolute(config_path, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            config_exists = false;
+        } else {
+            return err;
+        }
+    };
+
+    if (!config_exists) {
+        const file = try std.fs.createFileAbsolute(config_path, .{});
+        defer file.close();
+        const default_json =
+            \\{
+            \\  "agents": {
+            \\    "defaults": {
+            \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+            \\    }
+            \\  },
+            \\  "providers": {
+            \\    "openrouter": {
+            \\      "apiKey": "sk-or-v1-..."
+            \\    }
+            \\  },
+            \\  "tools": {
+            \\    "web": {
+            \\      "search": {
+            \\        "apiKey": "BSA..."
+            \\      }
+            \\    },
+            \\    "telegram": {
+            \\      "botToken": "YOUR_BOT_TOKEN_HERE",
+            \\      "chatId": "YOUR_CHAT_ID_HERE"
+            \\    }
+            \\  }
+            \\}
+        ;
+        try file.writeAll(default_json);
+        std.debug.print("✅ Created Telegram config at {s}\n", .{config_path});
+        std.debug.print("📋 Please edit the file and add your Telegram credentials:\n", .{});
+        std.debug.print("   1. botToken - Get this from @BotFather\n", .{});
+        std.debug.print("   2. chatId - Get this from @userinfobot\n", .{});
+    } else {
+        std.debug.print("⚠️ Config already exists at {s}\n", .{config_path});
     }
 }

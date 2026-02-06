@@ -297,7 +297,7 @@ pub const WebhookServer = struct {
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     // Check if WhatsApp is configured
     if (config.tools.whatsapp == null) {
-        std.debug.print("Error: WhatsApp not configured. Please add whatsapp config to ~/.bots/config.json\n", .{});
+        std.debug.print("Error: WhatsApp not configured. Please add whatsapp config to ~/.bots/whatsapp.json\n", .{});
         return error.WhatsAppNotConfigured;
     }
 
