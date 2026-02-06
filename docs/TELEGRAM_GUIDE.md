@@ -4,7 +4,7 @@ This guide will walk you through the process of setting up **satibot** as a Tele
 
 ## Prerequisites
 
-- [satibot](https://github.com/loclv/satibot) (installed and compiled)
+- [satibot](https://github.com/satibot/satibot) (installed and compiled)
 - A Telegram account
 - An OpenRouter account
 

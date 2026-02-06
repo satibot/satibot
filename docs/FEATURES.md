@@ -1,5 +1,28 @@
 # SatiBot Features
 
+## Overview
+
+Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `satibot` is a Zig Language based agent framework for:
+
+- Chat tools integration: [Telegram (Guide)](docs/TELEGRAM_GUIDE.md), Discord, WhatsApp, etc.
+- LLM providers (OpenRouter, Anthropic, etc.)
+- Tool execution: shell commands, HTTP requests, etc.
+- **Gateway**: Single command to run Telegram, Cron, and Heartbeat collectively.
+- **Cron System**: Schedule recurring tasks (e.g., daily summaries, hourly status checks).
+- **Heartbeat**: Proactive agent wake-up to check for pending tasks in `HEARTBEAT.md`.
+- Conversation history
+- Session persistence: Full session persistence in `~/.bots/sessions/`.
+- Easy to add SKILL from any source, the agent can browse, search, and install its own skills.
+  - Browse skills: <https://agent-skills.md/>
+  - Install: `./scripts/install-skill.sh <github-url-or-path>`
+- Context management: use memory, file, etc.
+- **RAG & Knowledge base**: Local base with built-in support for:
+  - **VectorDB**: Semantic search and long-term memory.
+  - **GraphDB**: Relationship mapping and complex knowledge retrieval.
+  - **RAG**: Retrieval-Augmented Generation for fact-based responses.
+- **Subagent**: Background task execution with `subagent_spawn` tool.
+- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured).
+
 ## 🚪 Gateway Service
 
 The **Gateway** is the central nervous system of SatiBot. Instead of running separate processes for different tasks, the Gateway runs them all concurrently in a single, efficient Zig process.

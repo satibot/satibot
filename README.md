@@ -2,40 +2,164 @@
   <img src="docs/icons/icon.png" alt="satibot mascot" width="180" />
 </p>
 
-# satibot
+# 🧘 satibot: The Mindful AI Agent Framework
 
-Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), `satibot` is a Ziglang-based agent framework for:
+**Built in Zig for performance, designed for awareness.**
 
-- Chat tools intergation: [Telegram (Guide)](docs/TELEGRAM_GUIDE.md), Discord, WhatsApp, etc.
-- LLM providers (OpenRouter, Anthropic, etc.)
-- Tool execution: shell commands, HTTP requests, etc.
-- **Gateway**: Single command to run Telegram, Cron, and Heartbeat collectively.
-- **Cron System**: Schedule recurring tasks (e.g., daily summaries, hourly status checks).
-- **Heartbeat**: Proactive agent wake-up to check for pending tasks in `HEARTBEAT.md`.
-- Conversation history
-- Session persistence: Full session persistence in `~/.bots/sessions/`.
-- Easy to add SKILL from any source, the agent can browse, search, and install its own skills.
-  - Browse skills: <https://agent-skills.md/>
-  - Install: `./scripts/install-skill.sh <github-url-or-path>`
-- Context management: use memory, file, etc.
-- **RAG & Knowledge base**: Local base with built-in support for:
-  - **VectorDB**: Semantic search and long-term memory.
-  - **GraphDB**: Relationship mapping and complex knowledge retrieval.
-  - **RAG**: Retrieval-Augmented Generation for fact-based responses.
-- **Subagent**: Background task execution with `subagent_spawn` tool.
-- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured).
+`satibot` is a lightweight, memory-aware AI agent framework that never forgets. Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), it combines the power of ReAct loops with persistent memory to create agents that remember, learn, and assist.
+
+⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
+🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
+🔧 **Extensible**: Easy skill installation and tool system
+💬 **Multi-Platform**: Telegram, Discord, WhatsApp, and more
+
+View more in [Features](docs/FEATURES.md).
+
+---
+
+## ✨ Key Features
+
+🪶 **Lightweight & Fast**: Minimal footprint with Zig's performance guarantees
+🔬 **Research-Ready**: Clean, readable codebase perfect for experimentation
+⚡️ **Gateway System**: Single command runs all services together
+🧠 **Smart Memory**: RAG + VectorDB + GraphDB for intelligent context management
+🔧 **Skill Ecosystem**: Browse and install skills from <https://agent-skills.md/>
+🎙️ **Voice Ready**: Automatic voice transcription with Groq
+⏰ **Proactive**: Heartbeat system wakes agent for pending tasks
+📅 **Scheduled**: Built-in cron for recurring tasks
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install
+
+```bash
+git clone https://github.com/satibot/satibot.git
+cd satibot
+```
+
+### 2. Configure
+
+Create `~/.bots/config.json`:
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "apiKey": "sk-or-v1-xxx"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-3-5-sonnet"
+    }
+  }
+}
+```
+
+### 3. Run
+
+```bash
+# Chat directly
+zig build run -- agent -m "Hello, satibot!"
+
+# Start the gateway (Telegram + Cron + Heartbeat)
+zig build run -- gateway
+
+# Run as Telegram bot
+zig build run -- telegram
+```
+
+That's it! You have a mindful AI assistant running in seconds.
+
+---
+
+## 💬 Chat Integrations
+
+### Telegram
+
+1. Create bot via [@BotFather](https://t.me/BotFather) → `/newbot`
+2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
+3. Add to config and run `zig build run -- gateway`
+
+### Discord, WhatsApp & More
+
+Full setup guides in our [Documentation](#-documentation).
+
+---
+
+## 🛠️ Advanced Features
+
+### 🧠 Memory System
+
+- **VectorDB**: Semantic search across conversations
+- **GraphDB**: Relationship mapping for complex knowledge
+- **RAG**: Retrieval-Augmented Generation for accurate responses
+
+### 🔧 Skills & Tools
+
+```bash
+# Browse available skills
+curl https://agent-skills.md/
+
+# Install a new skill
+./scripts/install-skill.sh <github-url-or-path>
+
+# Use built-in tools
+zig build run -- agent -m "Run: ls -la"
+```
+
+### ⏰ Automation
+
+```bash
+# Heartbeat: Proactive task checking
+echo "Check emails" > HEARTBEAT.md
+
+# Cron: Schedule recurring tasks
+zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
+```
+
+---
 
 ## 📚 Documentation
 
 | Guide | Description |
 |-------|-------------|
-| [**Features**](docs/FEATURES.md) | Detailed walkthrough of Gateway, Voice, Cron, and more. |
-| [**Configuration**](docs/CONFIGURATION.md) | Guide to `config.json`, keys, and customization. |
-| [**Architecture**](docs/ARCHITECTURE.md) | Technical deep-dive into the Agent Loop and codebase. |
-| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Hosting and setting up your bot. |
-| [**RAG Guide**](docs/RAG.md) | How the memory system works. |
+| [**Features**](docs/FEATURES.md) | Deep dive into Gateway, Voice, Cron systems |
+| [**Configuration**](docs/CONFIGURATION.md) | Complete config guide for providers & tools |
+| [**Architecture**](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & internals |
+| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
+| [**RAG Guide**](docs/RAG.md) | Understanding the memory system |
 
-## Usage
+---
+
+## 🏗️ Project Structure
+
+```text
+src/
+├── main.zig              # CLI entry point
+├── agent.zig             # Core agent logic
+├── config.zig            # Configuration management
+├── http.zig              # HTTP client
+├── providers/            # LLM provider implementations
+│   ├── base.zig
+│   └── openrouter.zig
+└── agent/                # Agent subsystems
+    ├── context.zig       # Conversation history
+    ├── session.zig       # Session persistence
+    ├── tools.zig         # Tool system
+    ├── vector_db.zig     # Vector database
+    └── graph_db.zig      # Graph database
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions!
+
+### Quick Development Setup
 
 ```bash
 # Run the agent with a message
@@ -55,69 +179,42 @@ zig build run -- gateway
 zig build run -- agent -m "Don't remember this" --no-rag
 ```
 
-## Structure
+---
 
-- `src/main.zig`: CLI entry point
-- `src/agent.zig`: Agent logic
-- `src/config.zig`: Configuration
-- `src/http.zig`: HTTP client
-- `src/providers/base.zig`: Provider interface
-- `src/providers/openrouter.zig`: OpenRouter provider
-- `src/root.zig`: Library exports
-- `src/agent/context.zig`: Conversation history management
-- `src/agent/session.zig`: Session persistence
-- `src/agent/tools.zig`: Tool system and registry
-- `src/agent/vector_db.zig`: Local vector database for semantic search
-- `src/agent/graph_db.zig`: Local graph database for relationship mapping
+## 📖 The Meaning of Sati
 
-## Architecture
+**Sati** (Pāli) means "mindful awareness" — the art of not forgetting the present moment - "remembering to stay aware of what is happening right now.".
 
-SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.
-
-For a deep dive into the code structure, Agent Loop, and Gateway system, see the [Architecture Guide](docs/ARCHITECTURE.md).
-
-## Configuration
-
-The agent's configuration is stored in `~/.bots/config.json`.
-
-See the [Configuration Guide](docs/CONFIGURATION.md) for full details on setting up Providers (OpenRouter, Groq), Tools, and Agents.
-
-## Addition information
-
-### Bot name meaning
-
-TL;DR: In SatiBot, Sati means “remembering to stay aware of what is happening right now.” It comes from Pāli, where it originally meant memory, and in Buddhism evolved into the idea of mindful awareness — not forgetting the present moment.
-
-1. The original meaning (language level)
-
-In Pāli (the language of early Buddhist texts), sati literally means:
-
-> memory + recollection + not forgetting
-
-It comes from an ancient Indo-European root meaning “to remember”.
-
-So at its most basic level, sati is the mental ability to keep something in mind instead of losing track of it.
-
-1. How Buddhism deepened the meaning
-
-In Buddhist psychology, the word was expanded.
-
-> remembering the present experience
-
-In other words:
+In Buddhist psychology, sati evolved from simple memory to profound awareness:
 
 - Remember you are breathing
-- Remember you are walking
-- Remember anger is happening
 - Remember thoughts are arising
+- Remember what is happening now
 
-So "mindfulness" (the common English translation) really means:
+**SatiBot embodies this principle:**
 
-> "not forgetting what is happening now"
+- 🧠 Never forgets context or conversations
+- 📍 Tracks state consistently across sessions
+- 👁️ Stays aware of ongoing processes
+- 🌊 Never loses events in the flow
 
-Metaphorically, SatiBot suggests a system that:
+---
 
-- Doesn’t forget context
-- Tracks state consistently
-- Stays aware of ongoing processes
-- Doesn’t lose events in the flow
+## 📊 Stats
+
+![GitHub stars](https://img.shields.io/github/stars/satibot/satibot?style=social)
+![GitHub forks](https://img.shields.io/github/forks/satibot/satibot?style=social)
+![GitHub issues](https://img.shields.io/github/issues/satibot/satibot)
+![GitHub license](https://img.shields.io/github/license/satibot/satibot)
+
+---
+
+## 📄 License
+
+Licensed under the MIT License.
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ by the SatiBot community</sub>
+</div>

@@ -73,4 +73,69 @@ zig build run -- agent -m "Hello world"
 # Or run the binary directly after building
 # (Binary location: ./zig-out/bin/satibot)
 ./zig-out/bin/satibot agent -m "Hello world"
+
+# Build with debug info
+zig build-exe src/main.zig --name satibot -femit-bin=debug/satibot
 ```
+
+Test:
+
+```bash
+# Run the agent with a message
+zig build run -- agent -m "Your message"
+# Run with a specific session ID to persist history
+zig build run -- agent -m "Follow-up message" -s my-session
+# Run as a Telegram Bot (long polling)
+zig build run -- telegram
+# Run the GATEWAY (Telegram + Cron + Heartbeat)
+zig build run -- gateway
+# RAG is enabled by default to remember conversations. 
+# To disable it for a specific run:
+zig build run -- agent -m "Don't remember this" --no-rag
+```
+
+## Structure
+
+- `src/main.zig`: CLI entry point
+- `src/agent.zig`: Agent logic
+- `src/config.zig`: Configuration
+- `src/http.zig`: HTTP client
+- `src/providers/base.zig`: Provider interface
+- `src/providers/openrouter.zig`: OpenRouter provider
+- `src/root.zig`: Library exports
+- `src/agent/context.zig`: Conversation history management
+- `src/agent/session.zig`: Session persistence
+- `src/agent/tools.zig`: Tool system and registry
+- `src/agent/vector_db.zig`: Local vector database for semantic search
+- `src/agent/graph_db.zig`: Local graph database for relationship mapping
+
+## Architecture
+
+SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.
+
+For a deep dive into the code structure, Agent Loop, and Gateway system, see the [Architecture Guide](docs/ARCHITECTURE.md).
+
+## Configuration
+
+The agent's configuration is stored in `~/.bots/config.json`.
+See the [Configuration Guide](docs/CONFIGURATION.md) for full details on setting up Providers (OpenRouter, Groq), Tools, and Agents.
+
+## Addition information
+
+### Bot name meaning
+
+TL;DR: In SatiBot, Sati means "remembering to stay aware of what is happening right now.". It comes from Pāli, where it originally meant memory, and in Buddhism evolved into the idea of mindful awareness — not forgetting the present moment.
+
+The original meaning (language level)
+In Pāli (the language of early Buddhist texts), sati literally means:
+
+> memory + recollection + not forgetting
+
+It comes from an ancient Indo-European root meaning “to remember”.
+So at its most basic level, sati is the mental ability to keep something in mind instead of losing track of it.
+
+How Buddhism deepened the meaning:
+
+In Buddhist psychology, the word was expanded.
+
+> remembering the present experience
