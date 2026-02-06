@@ -69,6 +69,9 @@ zig build run -- gateway
 
 # Run as Telegram bot
 zig build run -- telegram
+
+# Run as WhatsApp bot
+zig build run -- whatsapp
 ```
 
 That's it! You have a mindful AI assistant running in seconds.
@@ -81,11 +84,14 @@ That's it! You have a mindful AI assistant running in seconds.
 
 1. Create bot via [@BotFather](https://t.me/BotFather) → `/newbot`
 2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
-3. Add to config and run `zig build run -- gateway`
+3. Add to config and run `zig build run -- telegram`
+4. **Or use `/setibot` command in Telegram to auto-generate config!**
 
 ### Discord, WhatsApp & More
 
 Full setup guides in our [Documentation](#-documentation).
+
+**New**: WhatsApp support with Meta Cloud API is now available!
 
 ---
 
@@ -129,7 +135,8 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 | [**Features**](docs/FEATURES.md) | Deep dive into Gateway, Voice, Cron systems |
 | [**Configuration**](docs/CONFIGURATION.md) | Complete config guide for providers & tools |
 | [**Architecture**](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & internals |
-| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
+| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup with `/setibot` |
+| [**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md) | WhatsApp Business API setup with `/setibot` |
 | [**RAG Guide**](docs/RAG.md) | Understanding the memory system |
 | [**Release Guide**](docs/RELEASE_GUIDE.md) | Cross-platform builds and GitHub releases |
 
@@ -178,6 +185,9 @@ zig build run -- gateway
 # RAG is enabled by default to remember conversations. 
 # To disable it for a specific run:
 zig build run -- agent -m "Don't remember this" --no-rag
+
+# Run as WhatsApp bot (requires Meta Cloud API setup)
+zig build run -- whatsapp
 ```
 
 ---

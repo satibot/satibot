@@ -108,3 +108,36 @@ You should see:
 - **Error: NoApiKey**: Make sure your `config.json` is in the correct location (`~/.bots/config.json`) and the `apiKey` field is filled.
 - **Bot not responding**: Double-check your `botToken`. Ensure you haven't started multiple instances of the bot with the same token.
 - **OpenRouter Credits**: Some "free" models still require you to have at least a $0.00 balance or a verified account. Check OpenRouter's limits.
+
+---
+
+## Quick Setup via Telegram (Auto-Config)
+
+If you already have satibot running (even without a proper config), you can use the `/setibot` command in Telegram to quickly generate a default configuration file:
+
+### Using `/setibot` Command
+
+1. Start chatting with your bot in Telegram
+2. Send the command: `/setibot`
+3. The bot will create a default config file at `~/.bots/config.json` with:
+   - Default model: `anthropic/claude-3-5-sonnet-20241022`
+   - Template API keys (you need to fill these in)
+   - Your current chat ID (shown for easy copy-paste)
+4. Edit the config file and add your real API keys:
+
+   ```bash
+   code ~/.bots/config.json
+   ```
+
+5. Restart satibot with your new config
+
+**Note**: If the config file already exists, the bot will warn you and show your current chat ID instead.
+
+### Available Commands
+
+Once connected, these commands are available in Telegram:
+
+- `/help` - Show available commands
+- `/setibot` - Generate default config file
+- `/new` - Clear conversation session memory
+- Any other message - Chat with the AI assistant
