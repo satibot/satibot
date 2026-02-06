@@ -131,6 +131,7 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 | [**Architecture**](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & internals |
 | [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
 | [**RAG Guide**](docs/RAG.md) | Understanding the memory system |
+| [**Release Guide**](docs/RELEASE_GUIDE.md) | Cross-platform builds and GitHub releases |
 
 ---
 

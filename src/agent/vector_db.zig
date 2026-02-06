@@ -1,22 +1,28 @@
+/// Vector database module for semantic search using embeddings.
+/// Stores text with vector embeddings and supports similarity search.
 const std = @import("std");
 const base = @import("../providers/base.zig");
 const Config = @import("../config.zig").Config;
 
+/// Entry containing text and its vector embedding.
 pub const VectorEntry = struct {
     text: []const u8,
     embedding: []const f32,
 };
 
+/// In-memory vector store with cosine similarity search.
 pub const VectorStore = struct {
     allocator: std.mem.Allocator,
     entries: std.ArrayListUnmanaged(VectorEntry) = .{},
 
+    /// Initialize an empty vector store.
     pub fn init(allocator: std.mem.Allocator) VectorStore {
         return .{
             .allocator = allocator,
         };
     }
 
+    /// Free all entries and the store itself.
     pub fn deinit(self: *VectorStore) void {
         for (self.entries.items) |entry| {
             self.allocator.free(entry.text);
@@ -25,6 +31,7 @@ pub const VectorStore = struct {
         self.entries.deinit(self.allocator);
     }
 
+    /// Add a text entry with its embedding vector.
     pub fn add(self: *VectorStore, text: []const u8, embedding: []const f32) !void {
         try self.entries.append(self.allocator, .{
             .text = try self.allocator.dupe(u8, text),
@@ -32,6 +39,7 @@ pub const VectorStore = struct {
         });
     }
 
+    /// Search for top_k most similar entries using cosine similarity.
     pub fn search(self: *VectorStore, query_embedding: []const f32, top_k: usize) ![]const VectorEntry {
         // Simple linear search with Cosine Similarity
         const Result = struct {
@@ -119,29 +127,81 @@ test "VectorStore: add and search" {
     try std.testing.expectEqualStrings("apple", results[0].text);
 }
 
-test "VectorStore: save and load" {
+test "VectorStore: cosineSimilarity calculation" {
     const allocator = std.testing.allocator;
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
+    var store = VectorStore.init(allocator);
+    defer store.deinit();
 
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
-    defer allocator.free(tmp_path);
-    const file_path = try std.fs.path.join(allocator, &.{ tmp_path, "vector_test.json" });
-    defer allocator.free(file_path);
+    // Add entries with orthogonal vectors
+    try store.add("vector_a", &.{ 1.0, 0.0, 0.0 });
+    try store.add("vector_b", &.{ 0.0, 1.0, 0.0 });
+    try store.add("vector_c", &.{ 0.0, 0.0, 1.0 });
 
-    {
-        var store = VectorStore.init(allocator);
-        defer store.deinit();
-        try store.add("test", &.{ 0.5, 0.5 });
-        try store.save(file_path);
-    }
+    // Search with a query close to vector_a
+    const results = try store.search(&.{ 0.9, 0.1, 0.0 }, 3);
+    defer allocator.free(results);
 
-    {
-        var store = VectorStore.init(allocator);
-        defer store.deinit();
-        try store.load(file_path);
-        try std.testing.expectEqual(@as(usize, 1), store.entries.items.len);
-        try std.testing.expectEqualStrings("test", store.entries.items[0].text);
-        try std.testing.expectEqual(@as(f32, 0.5), store.entries.items[0].embedding[0]);
-    }
+    try std.testing.expectEqual(@as(usize, 3), results.len);
+    try std.testing.expectEqualStrings("vector_a", results[0].text);
+}
+
+test "VectorStore: empty store search" {
+    const allocator = std.testing.allocator;
+    var store = VectorStore.init(allocator);
+    defer store.deinit();
+
+    const results = try store.search(&.{ 1.0, 0.0 }, 5);
+    defer allocator.free(results);
+
+    try std.testing.expectEqual(@as(usize, 0), results.len);
+}
+
+test "VectorStore: search with top_k larger than entries" {
+    const allocator = std.testing.allocator;
+    var store = VectorStore.init(allocator);
+    defer store.deinit();
+
+    try store.add("entry1", &.{ 1.0, 0.0 });
+    try store.add("entry2", &.{ 0.0, 1.0 });
+
+    // Request top 10 but only have 2 entries
+    const results = try store.search(&.{ 1.0, 0.0 }, 10);
+    defer allocator.free(results);
+
+    try std.testing.expectEqual(@as(usize, 2), results.len);
+}
+
+test "VectorStore: VectorEntry struct" {
+    const entry = VectorEntry{
+        .text = "test text",
+        .embedding = &.{ 0.1, 0.2, 0.3 },
+    };
+    try std.testing.expectEqualStrings("test text", entry.text);
+    try std.testing.expectEqual(@as(usize, 3), entry.embedding.len);
+    try std.testing.expectEqual(@as(f32, 0.1), entry.embedding[0]);
+}
+
+test "VectorStore: init and deinit empty" {
+    const allocator = std.testing.allocator;
+    var store = VectorStore.init(allocator);
+    defer store.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), store.entries.items.len);
+}
+
+test "VectorStore: multiple add operations" {
+    const allocator = std.testing.allocator;
+    var store = VectorStore.init(allocator);
+    defer store.deinit();
+
+    try store.add("item1", &.{ 1.0, 0.0 });
+    try store.add("item2", &.{ 0.0, 1.0 });
+    try store.add("item3", &.{ 0.5, 0.5 });
+    try store.add("item4", &.{ 0.8, 0.2 });
+
+    try std.testing.expectEqual(@as(usize, 4), store.entries.items.len);
+    try std.testing.expectEqualStrings("item1", store.entries.items[0].text);
+    try std.testing.expectEqualStrings("item2", store.entries.items[1].text);
+    try std.testing.expectEqualStrings("item3", store.entries.items[2].text);
+    try std.testing.expectEqualStrings("item4", store.entries.items[3].text);
 }

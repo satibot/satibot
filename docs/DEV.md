@@ -27,6 +27,8 @@ zig build test
 
 This project uses a `Makefile` to simplify common development commands.
 
+**Note**: The `.env` file loading is currently disabled in the Makefile. Environment variables should be set via shell exports or configuration files.
+
 To install system dependencies (Debian/Ubuntu):
 
 ```bash
@@ -60,7 +62,20 @@ make lint
 
 # Clean build artifacts
 make clean
+
+# Build for all platforms (cross-compilation)
+make build-all
+
+# Build for specific platforms
+make build-macos    # macOS Intel + Apple Silicon
+make build-linux    # Linux x86_64 + ARM64
+make build-windows  # Windows x86_64
+
+# Create checksums for releases
+make checksums
 ```
+
+See [RELEASE_GUIDE.md](RELEASE_GUIDE.md) for detailed release instructions.
 
 ### Running the Application
 

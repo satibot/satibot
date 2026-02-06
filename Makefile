@@ -1,12 +1,12 @@
 # Generic Makefile for Zig projects
 
 # Load environment variables from .env file
-ifneq (,$(wildcard ./.env))
-    include .env
-    export $(shell sed 's/=.*//' .env)
-else
-    $(warning .env file not found. Environment variables not loaded.)
-endif
+# ifneq (,$(wildcard ./.env))
+#     include .env
+#     export $(shell sed 's/=.*//' .env)
+# else
+#     $(warning .env file not found. Environment variables not loaded.)
+# endif
 
 ################################################################################
 # Configuration and Variables
