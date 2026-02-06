@@ -305,9 +305,9 @@ pub const Handshake = struct {
     pub fn handshake(h: *Self, opt: Options) !struct { Cipher, ?usize } {
         var resumption_ticket: ?ResumptionTicket =
             if (opt.session_resumption) |r|
-            r.popTicket()
-        else
-            null;
+                r.popTicket()
+            else
+                null;
 
         defer h.updateDiagnostic(opt, resumption_ticket != null);
         try h.initKeys(opt);

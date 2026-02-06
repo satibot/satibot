@@ -21,3 +21,6 @@ temp/
 *.sqlite
 *.wal
 *.duckdb
+
+logs/
+coverage-out/

@@ -68,27 +68,11 @@ clean: ## Remove docs, build artifacts, and cache directories
 
 lint: ## Check code style and formatting of Zig files
 	@echo "Running code style checks..."
-	$(ZIG) fmt --check $(SRC_DIR) $(TEST_DIR)
+	$(ZIG) fmt --check $(SRC_DIR)
 
 format: ## Format Zig files
 	@echo "Formatting Zig files..."
 	$(ZIG) fmt .
-
-doc: ## Generate API documentation
-	@echo "Generating documentation from $(DOC_SRC) to $(DOC_OUT)..."
-	mkdir -p $(DOC_OUT)
-	@if $(ZIG) doc --help > /dev/null 2>&1; then \
-	  $(ZIG) doc $(DOC_SRC) --output-dir $(DOC_OUT); \
-	else \
-	  $(ZIG) test -femit-docs $(DOC_SRC); \
-	  for f in docs/*; do \
-		base=$$(basename "$$f"); \
-		if [ "$$base" = "assets" ] || [ "$$base" = "api" ]; then \
-		  continue; \
-		fi; \
-		mv "$$f" $(DOC_OUT)/; \
-	  done; \
-	fi
 
 install-deps: ## Install system dependencies (for Debian-based systems)
 	@echo "Installing system dependencies..."

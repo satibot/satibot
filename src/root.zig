@@ -7,12 +7,16 @@ pub const agent = struct {
     pub const vector_db = @import("agent/vector_db.zig");
     pub const graph_db = @import("agent/graph_db.zig");
     pub const telegram_bot = @import("agent/telegram_bot.zig");
+    pub const cron = @import("agent/cron.zig");
+    pub const heartbeat = @import("agent/heartbeat.zig");
+    pub const gateway = @import("agent/gateway.zig");
 };
 pub const http = @import("http.zig");
 pub const providers = struct {
     pub const base = @import("providers/base.zig");
     pub const openrouter = @import("providers/openrouter.zig");
     pub const anthropic = @import("providers/anthropic.zig");
+    pub const groq = @import("providers/groq.zig");
 };
 
 test {
@@ -24,6 +28,9 @@ test {
     _ = agent.vector_db;
     _ = agent.graph_db;
     _ = agent.telegram_bot;
+    _ = agent.cron;
+    _ = agent.heartbeat;
+    _ = agent.gateway;
     _ = http;
     _ = providers.base;
     _ = providers.openrouter;

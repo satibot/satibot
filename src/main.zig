@@ -21,11 +21,17 @@ pub fn main() !void {
     if (std.mem.eql(u8, command, "agent")) {
         try runAgent(allocator, args);
     } else if (std.mem.eql(u8, command, "onboard")) {
-        std.debug.print("Onboarding not implemented yet.\n", .{});
+        try runOnboard(allocator);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         try runTestLlm(allocator);
     } else if (std.mem.eql(u8, command, "telegram")) {
         try runTelegramBot(allocator, args);
+    } else if (std.mem.eql(u8, command, "gateway")) {
+        try runGateway(allocator);
+    } else if (std.mem.eql(u8, command, "status")) {
+        try runStatus(allocator);
+    } else if (std.mem.eql(u8, command, "upgrade")) {
+        try runUpgrade(allocator);
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         try usage();
@@ -37,7 +43,10 @@ fn usage() !void {
     std.debug.print("Commands:\n", .{});
     std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] [openrouter] Run the agent\n", .{});
     std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot (validates key if specified)\n", .{});
+    std.debug.print("  gateway              Run Telegram bot, Cron, and Heartbeat collectively\n", .{});
+    std.debug.print("  status               Show system status\n", .{});
     std.debug.print("  onboard              Initialize configuration\n", .{});
+    std.debug.print("  upgrade              Self-upgrade (git pull & rebuild)\n", .{});
 }
 
 fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
@@ -67,7 +76,32 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     if (message.len == 0) {
-        std.debug.print("Error: Message required (-m \"message\")\n", .{});
+        std.debug.print("Entering interactive mode. Type 'exit' or 'quit' to end.\n", .{});
+        var agent = satibot.agent.Agent.init(allocator, config, session_id);
+        defer agent.deinit();
+
+        const stdin = std.fs.File.stdin();
+        var buf: [4096]u8 = undefined;
+
+        while (true) {
+            std.debug.print("\n> ", .{});
+            const n = try stdin.read(&buf);
+            if (n == 0) break;
+
+            const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
+            if (trimmed.len == 0) continue;
+            if (std.mem.eql(u8, trimmed, "exit") or std.mem.eql(u8, trimmed, "quit")) break;
+
+            agent.run(trimmed) catch |err| {
+                std.debug.print("Error: {any}\n", .{err});
+            };
+
+            if (save_to_rag) {
+                agent.index_conversation() catch |err| {
+                    std.debug.print("Index Error: {any}\n", .{err});
+                };
+            }
+        }
         return;
     }
 
@@ -130,6 +164,163 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Telegram bot started. Press Ctrl+C to stop.\n", .{});
 
     try satibot.agent.telegram_bot.run(allocator, config);
+}
+
+fn runGateway(allocator: std.mem.Allocator) !void {
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    var g = try satibot.agent.gateway.Gateway.init(allocator, config);
+    defer g.deinit();
+
+    try g.run();
+}
+
+fn runOnboard(allocator: std.mem.Allocator) !void {
+    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+
+    std.fs.makeDirAbsolute(bots_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
+
+    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "config.json" });
+    defer allocator.free(config_path);
+
+    std.fs.accessAbsolute(config_path, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            const file = try std.fs.createFileAbsolute(config_path, .{});
+            defer file.close();
+            const default_json =
+                \\{
+                \\  "agents": {
+                \\    "defaults": {
+                \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+                \\    }
+                \\  },
+                \\  "providers": {
+                \\    "openrouter": {
+                \\      "apiKey": "sk-or-v1-..."
+                \\    }
+                \\  },
+                \\  "tools": {
+                \\    "web": {
+                \\      "search": {
+                \\        "apiKey": "BSA..."
+                \\      }
+                \\    }
+                \\  }
+                \\}
+            ;
+            try file.writeAll(default_json);
+            std.debug.print("✅ Created default config at {s}\n", .{config_path});
+        }
+    };
+
+    const sessions_dir = try std.fs.path.join(allocator, &.{ bots_dir, "sessions" });
+    defer allocator.free(sessions_dir);
+    std.fs.makeDirAbsolute(sessions_dir) catch |err| {
+        if (err != error.PathAlreadyExists) return err;
+    };
+
+    const heartbeat_path = try std.fs.path.join(allocator, &.{ bots_dir, "HEARTBEAT.md" });
+    defer allocator.free(heartbeat_path);
+    std.fs.accessAbsolute(heartbeat_path, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            const file = try std.fs.createFileAbsolute(heartbeat_path, .{});
+            defer file.close();
+            try file.writeAll("# HEARTBEAT.md\n\nAdd tasks here for the agent to pick up periodically.\n");
+            std.debug.print("✅ Created {s}\n", .{heartbeat_path});
+        }
+    };
+
+    std.debug.print("🧞‍♂️ satibot onboarding complete!\n", .{});
+}
+
+fn runUpgrade(allocator: std.mem.Allocator) !void {
+    std.debug.print("Checking for updates...\n", .{});
+
+    // 1. git pull
+    const git_argv = &[_][]const u8{ "git", "pull" };
+    var git_proc = std.process.Child.init(git_argv, allocator);
+    git_proc.stdout_behavior = .Inherit;
+    git_proc.stderr_behavior = .Inherit;
+
+    const term = try git_proc.spawnAndWait();
+
+    switch (term) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("Error: git pull failed with code {d}\n", .{code});
+                return error.GitPullFailed;
+            }
+        },
+        else => {
+            std.debug.print("Error: git pull terminated abnormally\n", .{});
+            return error.GitPullFailed;
+        },
+    }
+
+    std.debug.print("Building new version...\n", .{});
+
+    // 2. zig build -Doptimize=ReleaseSafe
+    const build_argv = &[_][]const u8{ "zig", "build", "-Doptimize=ReleaseSafe" };
+    var build_proc = std.process.Child.init(build_argv, allocator);
+    build_proc.stdout_behavior = .Inherit;
+    build_proc.stderr_behavior = .Inherit;
+
+    const build_term = try build_proc.spawnAndWait();
+    switch (build_term) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("Error: build failed with code {d}\n", .{code});
+                return error.BuildFailed;
+            }
+        },
+        else => {
+            std.debug.print("Error: build terminated abnormally\n", .{});
+            return error.BuildFailed;
+        },
+    }
+
+    std.debug.print("✅ Upgrade complete! Restart satibot to use the new version.\n", .{});
+}
+
+fn runStatus(allocator: std.mem.Allocator) !void {
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    std.debug.print("\n--- satibot Status 🧞‍♂️ ---\n", .{});
+    std.debug.print("Default Model: {s}\n", .{config.agents.defaults.model});
+
+    std.debug.print("\nProviders:\n", .{});
+    std.debug.print("  OpenRouter: {s}\n", .{if (config.providers.openrouter != null) "✅ Configured" else "❌ Not set"});
+    std.debug.print("  Anthropic:  {s}\n", .{if (config.providers.anthropic != null) "✅ Configured" else "❌ Not set"});
+    std.debug.print("  OpenAI:     {s}\n", .{if (config.providers.openai != null) "✅ Configured" else "❌ Not set"});
+    std.debug.print("  Groq:       {s}\n", .{if (config.providers.groq != null) "✅ Configured" else "❌ Not set"});
+
+    std.debug.print("\nChannels:\n", .{});
+    std.debug.print("  Telegram:   {s}\n", .{if (config.tools.telegram != null) "✅ Enabled" else "❌ Disabled"});
+    std.debug.print("  Discord:    {s}\n", .{if (config.tools.discord != null) "✅ Enabled" else "❌ Disabled"});
+    std.debug.print("  WhatsApp:   {s}\n", .{if (config.tools.whatsapp != null) "✅ Enabled" else "❌ Disabled"});
+
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+    std.debug.print("\nData Directory: {s}\n", .{bots_dir});
+
+    // Check Cron jobs
+    const cron_path = try std.fs.path.join(allocator, &.{ bots_dir, "cron_jobs.json" });
+    defer allocator.free(cron_path);
+    var store = satibot.agent.cron.CronStore.init(allocator);
+    defer store.deinit();
+    store.load(cron_path) catch {};
+    std.debug.print("Cron Jobs:      {d} active\n", .{store.jobs.items.len});
+
+    std.debug.print("------------------------\n", .{});
 }
 
 fn validateConfig(config: satibot.config.Config) !void {

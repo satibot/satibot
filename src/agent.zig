@@ -151,6 +151,36 @@ pub const Agent = struct {
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
             .execute = tools.rag_search,
         }) catch {};
+        self.registry.register(.{
+            .name = "cron_add",
+            .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
+            .execute = tools.cron_add,
+        }) catch {};
+        self.registry.register(.{
+            .name = "cron_list",
+            .description = "List all scheduled cron jobs",
+            .parameters = "{}",
+            .execute = tools.cron_list,
+        }) catch {};
+        self.registry.register(.{
+            .name = "cron_remove",
+            .description = "Remove a scheduled cron job by ID",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
+            .execute = tools.cron_remove,
+        }) catch {};
+        self.registry.register(.{
+            .name = "subagent_spawn",
+            .description = "Spawn a background subagent to handle a specific task.",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
+            .execute = tools.subagent_spawn,
+        }) catch {};
+        self.registry.register(.{
+            .name = "run_command",
+            .description = "Execute a shell command. Use with caution.",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
+            .execute = tools.run_command,
+        }) catch {};
 
         return self;
     }
@@ -183,6 +213,26 @@ pub const Agent = struct {
         return error.NetworkRetryFailed;
     }
 
+    fn spawn_subagent(ctx: tools.ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 {
+        std.debug.print("\n🚀 Spawning subagent: {s}\n", .{label});
+        const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, std.time.milliTimestamp() });
+        defer ctx.allocator.free(sub_session_id);
+
+        var subagent = Agent.init(ctx.allocator, ctx.config, sub_session_id);
+        defer subagent.deinit();
+
+        try subagent.run(task);
+
+        const messages = subagent.ctx.get_messages();
+        if (messages.len > 0) {
+            const last_msg = messages[messages.len - 1];
+            if (last_msg.content) |content| {
+                return try ctx.allocator.dupe(u8, content);
+            }
+        }
+        return try ctx.allocator.dupe(u8, "Subagent completed with no summary.");
+    }
+
     pub fn run(self: *Agent, message: []const u8) !void {
         try self.ctx.add_message(.{ .role = "user", .content = message });
 
@@ -198,6 +248,7 @@ pub const Agent = struct {
             .allocator = self.allocator,
             .config = self.config,
             .get_embeddings = get_embeddings,
+            .spawn_subagent = spawn_subagent,
         };
 
         while (iterations < max_iterations) : (iterations += 1) {

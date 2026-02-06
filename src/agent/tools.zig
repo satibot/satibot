@@ -7,6 +7,7 @@ pub const ToolContext = struct {
     allocator: std.mem.Allocator,
     config: Config,
     get_embeddings: ?*const fn (allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse = null,
+    spawn_subagent: ?*const fn (ctx: ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 = null,
 };
 
 pub const Tool = struct {
@@ -516,6 +517,145 @@ pub fn whatsapp_send_message(ctx: ToolContext, arguments: []const u8) ![]const u
     return try ctx.allocator.dupe(u8, "Message sent to WhatsApp successfully");
 }
 
+const cron = @import("cron.zig");
+
+pub fn cron_add(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct {
+        name: []const u8,
+        message: []const u8,
+        every_seconds: ?u64 = null,
+        at_timestamp_ms: ?i64 = null,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
+    defer ctx.allocator.free(bots_dir);
+    const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
+    defer ctx.allocator.free(cron_path);
+
+    var store = cron.CronStore.init(ctx.allocator);
+    defer store.deinit();
+    try store.load(cron_path);
+
+    var schedule: cron.CronSchedule = undefined;
+    if (parsed.value.every_seconds) |s| {
+        schedule = .{ .kind = .every, .every_ms = @as(i64, @intCast(s)) * 1000 };
+    } else if (parsed.value.at_timestamp_ms) |at| {
+        schedule = .{ .kind = .at, .at_ms = at };
+    } else {
+        return try ctx.allocator.dupe(u8, "Error: Must specify either every_seconds or at_timestamp_ms");
+    }
+
+    const id = try store.add_job(parsed.value.name, schedule, parsed.value.message);
+    try store.save(cron_path);
+
+    return try std.fmt.allocPrint(ctx.allocator, "Cron job added successfully with ID: {s}", .{id});
+}
+
+pub fn cron_list(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    _ = arguments;
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
+    defer ctx.allocator.free(bots_dir);
+    const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
+    defer ctx.allocator.free(cron_path);
+
+    var store = cron.CronStore.init(ctx.allocator);
+    defer store.deinit();
+    try store.load(cron_path);
+
+    if (store.jobs.items.len == 0) return try ctx.allocator.dupe(u8, "No cron jobs scheduled.");
+
+    var result = std.ArrayListUnmanaged(u8){};
+    errdefer result.deinit(ctx.allocator);
+    const writer = result.writer(ctx.allocator);
+
+    try writer.print("Scheduled Cron Jobs ({d}):\n", .{store.jobs.items.len});
+    for (store.jobs.items) |job| {
+        const sched_str = if (job.schedule.kind == .every)
+            try std.fmt.allocPrint(ctx.allocator, "every {d}s", .{@divTrunc(job.schedule.every_ms.?, 1000)})
+        else
+            try std.fmt.allocPrint(ctx.allocator, "at {d}", .{job.schedule.at_ms.?});
+        defer ctx.allocator.free(sched_str);
+
+        try writer.print("- ID: {s}, Name: {s}, Schedule: {s}, Message: {s}, Enabled: {any}\n", .{ job.id, job.name, sched_str, job.payload.message, job.enabled });
+    }
+
+    return result.toOwnedSlice(ctx.allocator);
+}
+
+pub fn cron_remove(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { id: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
+    defer ctx.allocator.free(bots_dir);
+    const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
+    defer ctx.allocator.free(cron_path);
+
+    var store = cron.CronStore.init(ctx.allocator);
+    defer store.deinit();
+    try store.load(cron_path);
+
+    var found = false;
+    for (store.jobs.items, 0..) |job, i| {
+        if (std.mem.eql(u8, job.id, parsed.value.id)) {
+            var j = store.jobs.orderedRemove(i);
+            j.deinit(ctx.allocator);
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) return try ctx.allocator.dupe(u8, "Error: Cron job ID not found.");
+
+    try store.save(cron_path);
+    return try ctx.allocator.dupe(u8, "Cron job removed successfully");
+}
+
+pub fn subagent_spawn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { task: []const u8, label: ?[]const u8 = null }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    if (ctx.spawn_subagent) |spawn| {
+        return try spawn(ctx, parsed.value.task, parsed.value.label orelse "subagent");
+    } else {
+        return try ctx.allocator.dupe(u8, "Error: Subagent spawning not supported in this environment.");
+    }
+}
+
+pub fn run_command(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { command: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Security check: Prevent dangerous commands (basic)
+    // In a real agent, this should be more robust or sandboxed.
+    const cmd = parsed.value.command;
+    if (std.mem.indexOf(u8, cmd, "rm -rf /") != null) {
+        return try ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
+    }
+
+    const result = try std.process.Child.run(.{
+        .allocator = ctx.allocator,
+        .argv = &[_][]const u8{ "sh", "-c", cmd },
+        .max_output_bytes = 100 * 1024, // 100KB limit
+    });
+    defer {
+        ctx.allocator.free(result.stdout);
+        ctx.allocator.free(result.stderr);
+    }
+
+    if (result.stdout.len > 0) {
+        return try ctx.allocator.dupe(u8, result.stdout);
+    } else if (result.stderr.len > 0) {
+        return try std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
+    } else {
+        return try ctx.allocator.dupe(u8, "(No output)");
+    }
+}
+
 test "ToolRegistry: register and get" {
     const allocator = std.testing.allocator;
     var registry = ToolRegistry.init(allocator);
@@ -532,6 +672,43 @@ test "ToolRegistry: register and get" {
                 return "ok";
             }
         }.exec,
+    });
+
+    try registry.register(.{
+        .name = "whatsapp_send_message",
+        .description = "Send a message to WhatsApp",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+        .execute = whatsapp_send_message,
+    });
+    try registry.register(.{
+        .name = "cron_add",
+        .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
+        .execute = cron_add,
+    });
+    try registry.register(.{
+        .name = "cron_list",
+        .description = "List all scheduled cron jobs",
+        .parameters = "{}",
+        .execute = cron_list,
+    });
+    try registry.register(.{
+        .name = "cron_remove",
+        .description = "Remove a scheduled cron job by ID",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
+        .execute = cron_remove,
+    });
+    try registry.register(.{
+        .name = "subagent_spawn",
+        .description = "Spawn a background subagent to handle a specific task.",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
+        .execute = subagent_spawn,
+    });
+    try registry.register(.{
+        .name = "run_command",
+        .description = "Execute a shell command. Use with caution.",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
+        .execute = run_command,
     });
 
     const tool = registry.get("test");

@@ -9,6 +9,9 @@ Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](http
 - Chat tools intergation: [Telegram (Guide)](docs/TELEGRAM_GUIDE.md), Discord, WhatsApp, etc.
 - LLM providers (OpenRouter, Anthropic, etc.)
 - Tool execution: shell commands, HTTP requests, etc.
+- **Gateway**: Single command to run Telegram, Cron, and Heartbeat collectively.
+- **Cron System**: Schedule recurring tasks (e.g., daily summaries, hourly status checks).
+- **Heartbeat**: Proactive agent wake-up to check for pending tasks in `HEARTBEAT.md`.
 - Conversation history
 - Session persistence: Full session persistence in `~/.bots/sessions/`.
 - Easy to add SKILL from any source, the agent can browse, search, and install its own skills.
@@ -19,6 +22,18 @@ Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](http
   - **VectorDB**: Semantic search and long-term memory.
   - **GraphDB**: Relationship mapping and complex knowledge retrieval.
   - **RAG**: Retrieval-Augmented Generation for fact-based responses.
+- **Subagent**: Background task execution with `subagent_spawn` tool.
+- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured).
+
+## 📚 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [**Features**](docs/FEATURES.md) | Detailed walkthrough of Gateway, Voice, Cron, and more. |
+| [**Configuration**](docs/CONFIGURATION.md) | Guide to `config.json`, keys, and customization. |
+| [**Architecture**](docs/ARCHITECTURE.md) | Technical deep-dive into the Agent Loop and codebase. |
+| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Hosting and setting up your bot. |
+| [**RAG Guide**](docs/RAG.md) | How the memory system works. |
 
 ## Usage
 
@@ -31,6 +46,9 @@ zig build run -- agent -m "Follow-up message" -s my-session
 
 # Run as a Telegram Bot (long polling)
 zig build run -- telegram
+
+# Run the GATEWAY (Telegram + Cron + Heartbeat)
+zig build run -- gateway
 
 # RAG is enabled by default to remember conversations. 
 # To disable it for a specific run:
@@ -54,138 +72,15 @@ zig build run -- agent -m "Don't remember this" --no-rag
 
 ## Architecture
 
-### Component Hierarchy (Text)
+SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.
 
-```text
-src/main.zig (runAgent)
-├── src/config.zig (Config.load)
-├── src/agent.zig (Agent.init)
-│   ├── src/agent/session.zig (load)
-│   └── src/agent/tools.zig (ToolRegistry.init)
-└── src/agent.zig (Agent.run)
-    ├── src/providers/openrouter.zig (chatStream)
-    │   └── src/http.zig (Client.postStream)
-    ├── src/agent/context.zig (Context.add_message)
-    ├── src/agent/tools.zig (Tool.execute)
-    └── src/agent/session.zig (save)
-```
-
-#### ReAct Loop
-
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                         Agent.run()                             │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  Add user message to context │
-              └──────────────┬───────────────┘
-                             │
-         ┌───────────────────┴───────────────────┐
-         │           AGENT LOOP                  │
-         │       (max 10 iterations)             │
-         │                                       │
-         │    ┌─────────────────────────────┐    │
-         │    │   LLM chatStream() call     │◄───┼──────────┐
-         │    │   (Selects Provider)        │    │          │
-         │    └─────────────┬───────────────┘    │          │
-         │                  │                    │          │
-         │                  ▼                    │          │
-         │    ┌─────────────────────────────┐    │          │
-         │    │  Add assistant response     │    │          │
-         │    │  to context                 │    │          │
-         │    └─────────────┬───────────────┘    │          │
-         │                  │                    │          │
-         │                  ▼                    │          │
-         │         ┌────────────────┐            │          │
-         │         │  Tool calls?   │            │          │
-         │         └───────┬────────┘            │          │
-         │                 │                     │          │
-         │        ┌────────┴────────┐            │          │
-         │        │                 │            │          │
-         │       YES               NO            │          │
-         │        │                 │            │          │
-         │        ▼                 │            │          │
-         │  ┌───────────────┐       │            │          │
-         │  │ Execute tools │       │            │          │
-         │  └───────┬───────┘       │            │          │
-         │          │               │            │          │
-         │          ▼               │            │          │
-         │  ┌───────────────┐       │            │          │
-         │  │ Add tool      │       │            │          │
-         │  │ results/errors│───────┼────────────┼──────────┘
-         │  │ to context    │       │            │ (continue loop)
-         │  └───────────────┘       │            │
-         │                          │            │
-         └──────────────────────────┼────────────┘
-                                    │
-                                    ▼ (break loop)
-              ┌──────────────────────────────┐
-              │     Save session to disk     │
-              └──────────────────────────────┘
-```
-
-### System Flow (Mermaid)
-
-```mermaid
-graph TD
-    Main[src/main.zig: main] --> Config[src/config.zig: load]
-    Main --> AgentInit[src/agent.zig: Agent.init]
-    AgentInit --> SessionLoad[src/agent/session.zig: load]
-    AgentInit --> Registry[src/agent/tools.zig: ToolRegistry.init]
-    Main --> AgentRun[src/agent.zig: Agent.run]
-    
-    subgraph Agent Loop
-        AgentRun --> Chat[src/providers/openrouter.zig: chatStream]
-        Chat --> HTTP[src/http.zig: Client.postStream]
-        AgentRun --> Context[src/agent/context.zig: Context.add_message]
-        AgentRun --> ToolExec[src/agent/tools.zig: Tool.execute]
-    end
-
-    AgentRun --> SessionSave[src/agent/session.zig: save]
-```
+For a deep dive into the code structure, Agent Loop, and Gateway system, see the [Architecture Guide](docs/ARCHITECTURE.md).
 
 ## Configuration
 
-The agent's configuration is stored in `~/.bots/config.json`. You can configure your providers and chat tools there:
+The agent's configuration is stored in `~/.bots/config.json`.
 
-```json
-{
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-3-7-sonnet"
-    }
-  },
-  "providers": {
-    "openrouter": {
-      "apiKey": "YOUR_OPENROUTER_KEY"
-    },
-    "anthropic": {
-      "apiKey": "YOUR_ANTHROPIC_KEY"
-    }
-  },
-  "tools": {
-    "web": {
-      "search": {
-        "apiKey": "YOUR_BRAVE_SEARCH_KEY"
-      }
-    },
-    "telegram": {
-      "botToken": "YOUR_BOT_TOKEN",
-      "chatId": "YOUR_DEFAULT_CHAT_ID"
-    },
-    "discord": {
-      "webhookUrl": "YOUR_WEBHOOK_URL"
-    },
-    "whatsapp": {
-      "accessToken": "YOUR_META_ACCESS_TOKEN",
-      "phoneNumberId": "YOUR_PHONE_NUMBER_ID",
-      "recipientPhoneNumber": "YOUR_DEFAULT_RECIPIENT"
-    }
-  }
-}
-```
+See the [Configuration Guide](docs/CONFIGURATION.md) for full details on setting up Providers (OpenRouter, Groq), Tools, and Agents.
 
 ## Addition information
 

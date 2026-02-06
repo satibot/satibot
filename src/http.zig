@@ -347,7 +347,7 @@ pub const Request = struct {
         }
 
         fn typeErasedReadFn(context: *const anyopaque, buffer: []u8) anyerror!usize {
-            const ptr: *Reader = @constCast(@ptrCast(@alignCast(context)));
+            const ptr: *Reader = @ptrCast(@alignCast(@constCast(context)));
             return ptr.read(buffer);
         }
     };
