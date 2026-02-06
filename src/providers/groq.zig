@@ -202,3 +202,57 @@ pub const GroqProvider = struct {
         };
     }
 };
+
+test "GroqProvider: chat with mock server" {
+    const allocator = std.testing.allocator;
+    if (try std.process.hasEnvVar(allocator, "CI")) return error.SkipZigTest;
+
+    const address = try std.net.Address.parseIp4("127.0.0.1", 0);
+    var server = try address.listen(.{ .reuse_address = true });
+    defer server.deinit();
+
+    const port = server.listen_address.getPort();
+    const base_url = try std.fmt.allocPrint(allocator, "http://127.0.0.1:{d}", .{port});
+    defer allocator.free(base_url);
+
+    const ServerThread = struct {
+        fn run(s: *std.net.Server) !void {
+            const conn = try s.accept();
+            defer conn.stream.close();
+
+            var buf: [4096]u8 = undefined;
+            _ = try conn.stream.read(&buf);
+
+            const response_body =
+                \\{
+                \\  "id": "chatcmpl-123",
+                \\  "choices": [{
+                \\    "message": {
+                \\      "role": "assistant",
+                \\      "content": "Hello via Groq!"
+                \\    }
+                \\  }]
+                \\}
+            ;
+            const response_header = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " ++ std.fmt.comptimePrint("{d}", .{response_body.len}) ++ "\r\n\r\n";
+            try conn.stream.writeAll(response_header);
+            try conn.stream.writeAll(response_body);
+        }
+    };
+
+    const thread = try std.Thread.spawn(.{}, ServerThread.run, .{&server});
+    defer thread.join();
+
+    var provider = try GroqProvider.init(allocator, "fake-key");
+    defer provider.deinit();
+    provider.api_base = base_url;
+
+    const messages = &[_]base.LLMMessage{
+        .{ .role = "user", .content = "Hi" },
+    };
+
+    var resp = try provider.chat(messages, "llama3");
+    defer resp.deinit();
+
+    try std.testing.expectEqualStrings("Hello via Groq!", resp.content.?);
+}
