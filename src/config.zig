@@ -81,7 +81,7 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
     };
     defer file.close();
 
-    const content = try file.readToEndAlloc(allocator, 1024 * 1024);
+    const content = try file.readToEndAlloc(allocator, 1048576); // 1024 * 1024
     defer allocator.free(content);
 
     return std.json.parseFromSlice(Config, allocator, content, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });

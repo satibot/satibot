@@ -51,7 +51,7 @@ fn load_internal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMess
     };
     defer file.close();
 
-    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    const content = try file.readToEndAlloc(allocator, 10485760); // 10 * 1024 * 1024
     defer allocator.free(content);
 
     const parsed = try std.json.parseFromSlice(Session, allocator, content, .{ .ignore_unknown_fields = true });

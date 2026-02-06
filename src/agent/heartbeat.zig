@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const HeartbeatService = struct {
     allocator: std.mem.Allocator,
-    interval_s: u64 = 30 * 60, // 30 minutes
+    interval_s: u64 = 1800, // 30 * 60
     last_tick_ms: i64 = 0,
     workspace_path: []const u8,
 
@@ -32,7 +32,7 @@ pub const HeartbeatService = struct {
         };
         defer file.close();
 
-        const content = try file.readToEndAlloc(self.allocator, 1024 * 1024);
+        const content = try file.readToEndAlloc(self.allocator, 1048576); // 1024 * 1024
         defer self.allocator.free(content);
 
         if (self.is_empty(content)) return null;

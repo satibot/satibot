@@ -110,7 +110,7 @@ pub const Graph = struct {
         const file = std.fs.cwd().openFile(path, .{}) catch return;
         defer file.close();
 
-        const content = try file.readToEndAlloc(self.allocator, 100 * 1024 * 1024);
+        const content = try file.readToEndAlloc(self.allocator, 104857600); // 100 * 1024 * 1024
         defer self.allocator.free(content);
 
         const ImportData = struct {

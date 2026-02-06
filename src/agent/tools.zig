@@ -67,7 +67,7 @@ pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const file = try std.fs.cwd().openFile(parsed.value.path, .{});
     defer file.close();
 
-    return file.readToEndAlloc(ctx.allocator, 10 * 1024 * 1024); // 10MB limit
+    return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
 }
 
 pub fn write_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
@@ -241,9 +241,9 @@ pub fn install_skill(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     try child.spawn();
 
-    const stdout = try child.stdout.?.readToEndAlloc(ctx.allocator, 1024 * 1024);
+    const stdout = try child.stdout.?.readToEndAlloc(ctx.allocator, 1048576); // 1024 * 1024
     defer ctx.allocator.free(stdout);
-    const stderr = try child.stderr.?.readToEndAlloc(ctx.allocator, 1024 * 1024);
+    const stderr = try child.stderr.?.readToEndAlloc(ctx.allocator, 1048576); // 1024 * 1024
     defer ctx.allocator.free(stderr);
 
     const term = try child.wait();
@@ -640,7 +640,7 @@ pub fn run_command(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const result = try std.process.Child.run(.{
         .allocator = ctx.allocator,
         .argv = &[_][]const u8{ "sh", "-c", cmd },
-        .max_output_bytes = 100 * 1024, // 100KB limit
+        .max_output_bytes = 102400, // 100 * 1024
     });
     defer {
         ctx.allocator.free(result.stdout);
