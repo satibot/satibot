@@ -1,0 +1,13 @@
+{
+    "[markdown]": {
+        "editor.wordWrap": "on",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+    },
+    "makefile.configureOnOpen": false,
+    "cSpell.words": [
+        "deinit",
+        "openrouter",
+        "satibot"
+    ]
+}
