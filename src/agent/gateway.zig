@@ -42,7 +42,7 @@ pub const Gateway = struct {
     }
 
     pub fn run(self: *Gateway) !void {
-        std.debug.print("🧞‍♂️ satibot Gateway started\n", .{});
+        std.debug.print("🐸 satibot Gateway started\n", .{});
         if (self.tg_bot != null) std.debug.print("✅ Telegram bot enabled\n", .{});
         std.debug.print("✅ Cron service enabled ({d} jobs)\n", .{self.cron.jobs.items.len});
         std.debug.print("✅ Heartbeat service enabled (every 30m)\n", .{});

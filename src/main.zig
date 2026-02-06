@@ -3,7 +3,7 @@ const satibot = @import("satibot");
 const build_options = @import("build_options");
 
 pub fn main() !void {
-    std.debug.print("--- satibot 🧞‍♂️ (build: {s}) ---\n", .{build_options.build_time_str});
+    std.debug.print("--- satibot 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -236,7 +236,7 @@ fn runOnboard(allocator: std.mem.Allocator) !void {
         }
     };
 
-    std.debug.print("🧞‍♂️ satibot onboarding complete!\n", .{});
+    std.debug.print("🐸 satibot onboarding complete!\n", .{});
 }
 
 fn runUpgrade(allocator: std.mem.Allocator) !void {
@@ -293,7 +293,7 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
-    std.debug.print("\n--- satibot Status 🧞‍♂️ ---\n", .{});
+    std.debug.print("\n--- satibot Status 🐸 ---\n", .{});
     std.debug.print("Default Model: {s}\n", .{config.agents.defaults.model});
 
     std.debug.print("\nProviders:\n", .{});
