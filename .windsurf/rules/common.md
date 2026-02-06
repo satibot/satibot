@@ -22,3 +22,7 @@ Before run:
 - Install the l-log CLI if not already installed: `bun add -g llm-lean-log-cli`.
 - If need, run CLI help command: `l-log -h` for more information.
 - log path: `./logs/chat.csv`.
+
+## Multiple number
+
+For example, instead of `1024 * 1024`, use the result value `1048576` and add a comment to explain the calculation like `// 1024 * 1024`.
