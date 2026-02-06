@@ -20,8 +20,8 @@ Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [nanobot](https
   - **VectorDB**: Semantic search and long-term memory.
   - **GraphDB**: Relationship mapping and complex knowledge retrieval.
   - **RAG**: Retrieval-Augmented Generation for fact-based responses.
-- **Subagent**: Background task execution with `subagent_spawn` tool.
-- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured).
+- **Subagent**: Background task execution with `subagent_spawn` tool. // TODO
+- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured). // TODO
 
 ## 🚪 Gateway Service
 

@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., v1.0.0)"
+        required: true
+        default: "v1.0.0"
+
+env:
+  ZIG_VERSION: 0.13.0
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-macos
+            os: macos-latest
+            artifact_name: satibot-x86_64-macos
+          - target: aarch64-macos
+            os: macos-latest
+            artifact_name: satibot-arm64-macos
+          - target: x86_64-linux
+            os: ubuntu-latest
+            artifact_name: satibot-x86_64-linux
+          - target: aarch64-linux
+            os: ubuntu-latest
+            artifact_name: satibot-arm64-linux
+          - target: x86_64-windows
+            os: ubuntu-latest
+            artifact_name: satibot-x86_64-windows.exe
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Build
+        run: |
+          zig build -Doptimize=ReleaseSmall -Dtarget=${{ matrix.target }} -p release-${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            mv release-${{ matrix.target }}/bin/satibot.exe artifacts/${{ matrix.artifact_name }}
+          else
+            mv release-${{ matrix.target }}/bin/satibot artifacts/${{ matrix.artifact_name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/${{ matrix.artifact_name }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -executable -o -name '*.exe' | while read file; do
+            cp "$file" release-assets/
+          done
+          cd release-assets
+          sha256sum * > SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
