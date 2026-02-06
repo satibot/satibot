@@ -1,11 +1,16 @@
+/// Heartbeat service for periodic background task checking.
+/// Monitors a HEARTBEAT.md file in the workspace for tasks that need attention.
 const std = @import("std");
 
+/// Service that periodically checks for and executes background tasks.
+/// Runs every 30 minutes (1800 seconds) by default.
 pub const HeartbeatService = struct {
     allocator: std.mem.Allocator,
     interval_s: u64 = 1800, // 30 * 60
     last_tick_ms: i64 = 0,
     workspace_path: []const u8,
 
+    /// Initialize heartbeat service with workspace path.
     pub fn init(allocator: std.mem.Allocator, workspace_path: []const u8) HeartbeatService {
         return .{
             .allocator = allocator,
@@ -13,6 +18,7 @@ pub const HeartbeatService = struct {
         };
     }
 
+    /// Check if enough time has passed since last tick to trigger heartbeat.
     pub fn should_tick(self: *HeartbeatService) bool {
         const now = std.time.milliTimestamp();
         if (self.last_tick_ms == 0) {
@@ -22,6 +28,8 @@ pub const HeartbeatService = struct {
         return (now - self.last_tick_ms) >= (@as(i64, @intCast(self.interval_s)) * 1000);
     }
 
+    /// Get the prompt for heartbeat processing.
+    /// Reads HEARTBEAT.md from workspace if it exists and has content.
     pub fn get_prompt(self: *HeartbeatService) !?[]const u8 {
         const path = try std.fs.path.join(self.allocator, &.{ self.workspace_path, "HEARTBEAT.md" });
         defer self.allocator.free(path);

@@ -256,3 +256,32 @@ pub const GroqProvider = struct {
 
 //     try std.testing.expectEqualStrings("Hello via Groq!", resp.content.?);
 // }
+
+test "Groq: init and deinit" {
+    const allocator = std.testing.allocator;
+    var provider = try GroqProvider.init(allocator, "groq-api-key-123");
+    defer provider.deinit();
+
+    try std.testing.expectEqual(allocator, provider.allocator);
+    try std.testing.expectEqualStrings("groq-api-key-123", provider.api_key);
+    try std.testing.expectEqualStrings("https://api.groq.com/openai/v1", provider.api_base);
+}
+
+test "Groq: default API base URL" {
+    const allocator = std.testing.allocator;
+    var provider = try GroqProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("https://api.groq.com/openai/v1", provider.api_base);
+}
+
+test "Groq: struct fields" {
+    const allocator = std.testing.allocator;
+    var provider = try GroqProvider.init(allocator, "key123");
+    defer provider.deinit();
+
+    // Verify all fields are properly initialized
+    try std.testing.expectEqual(allocator, provider.allocator);
+    try std.testing.expectEqualStrings("key123", provider.api_key);
+    try std.testing.expectEqualStrings("https://api.groq.com/openai/v1", provider.api_base);
+}

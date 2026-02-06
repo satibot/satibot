@@ -2,7 +2,9 @@ const std = @import("std");
 const http = @import("../http.zig");
 const base = @import("base.zig");
 
-// Response structures for Anthropic Messages API
+/// Anthropic Claude API provider implementation.
+/// Supports both regular and streaming chat completions with tool calling.
+/// Response structure from Anthropic Messages API.
 const MessageResponse = struct {
     id: []const u8,
     type: []const u8,
@@ -11,6 +13,7 @@ const MessageResponse = struct {
     stop_reason: ?[]const u8 = null,
 };
 
+/// Content block in Anthropic response (text or tool_use).
 const ContentBlock = struct {
     type: []const u8,
     text: ?[]const u8 = null,
@@ -20,17 +23,19 @@ const ContentBlock = struct {
     input: ?std.json.Value = null,
 };
 
-// Request message structure for Anthropic
+/// Request message structure for Anthropic API.
 const AnthropicMessage = struct {
     role: []const u8,
     content: AnthropicContent,
 };
 
+/// Content can be simple text or array of content blocks (for tool results).
 const AnthropicContent = union(enum) {
     text: []const u8,
     blocks: []const AnthropicContentBlock,
 };
 
+/// Content block for tool results in Anthropic format.
 const AnthropicContentBlock = struct {
     type: []const u8,
     text: ?[]const u8 = null,
@@ -38,12 +43,15 @@ const AnthropicContentBlock = struct {
     content: ?[]const u8 = null,
 };
 
+/// Provider for Anthropic's Claude API.
+/// Handles chat completions and streaming responses.
 pub const AnthropicProvider = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
     api_key: []const u8,
     api_base: []const u8 = "https://api.anthropic.com/v1",
 
+    /// Initialize provider with API key.
     pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !AnthropicProvider {
         return .{
             .allocator = allocator,
@@ -395,4 +403,193 @@ test "Anthropic: parseResponse" {
     try std.testing.expectEqual(@as(usize, 1), response.tool_calls.?.len);
     try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
     try std.testing.expectEqualStrings("test_tool", response.tool_calls.?[0].function_name);
+}
+
+test "Anthropic: parseResponse with text only" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const response_json =
+        \\{
+        \\  "id": "msg_456",
+        \\  "type": "message",
+        \\  "role": "assistant",
+        \\  "content": [
+        \\    { "type": "text", "text": "Just a simple text response." }
+        \\  ]
+        \\}
+    ;
+
+    var response = try provider.parseResponse(response_json);
+    defer response.deinit();
+
+    try std.testing.expectEqualStrings("Just a simple text response.", response.content.?);
+    try std.testing.expect(response.tool_calls == null);
+}
+
+test "Anthropic: parseResponse with multiple tool calls" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const response_json =
+        \\{
+        \\  "id": "msg_789",
+        \\  "type": "message",
+        \\  "role": "assistant",
+        \\  "content": [
+        \\    { "type": "text", "text": "I'll use multiple tools." },
+        \\    { "type": "tool_use", "id": "tool_1", "name": "tool_a", "input": {"x": 1} },
+        \\    { "type": "tool_use", "id": "tool_2", "name": "tool_b", "input": {"y": 2} }
+        \\  ]
+        \\}
+    ;
+
+    var response = try provider.parseResponse(response_json);
+    defer response.deinit();
+
+    try std.testing.expectEqualStrings("I'll use multiple tools.", response.content.?);
+    try std.testing.expect(response.tool_calls != null);
+    try std.testing.expectEqual(@as(usize, 2), response.tool_calls.?.len);
+    try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
+    try std.testing.expectEqualStrings("tool_a", response.tool_calls.?[0].function_name);
+    try std.testing.expectEqualStrings("tool_2", response.tool_calls.?[1].id);
+    try std.testing.expectEqualStrings("tool_b", response.tool_calls.?[1].function_name);
+}
+
+test "Anthropic: parseResponse with empty content" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const response_json =
+        \\{
+        \\  "id": "msg_empty",
+        \\  "type": "message",
+        \\  "role": "assistant",
+        \\  "content": []
+        \\}
+    ;
+
+    var response = try provider.parseResponse(response_json);
+    defer response.deinit();
+
+    try std.testing.expect(response.content == null);
+    try std.testing.expect(response.tool_calls == null);
+}
+
+test "Anthropic: buildRequestBody with simple message" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const messages = &[_]base.LLMMessage{
+        .{ .role = "user", .content = "Hello!" },
+    };
+
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", false);
+    defer allocator.free(body);
+
+    // Verify body contains expected JSON structure
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"claude-3-opus-4-5-20251101\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"max_tokens\": 4096") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"user\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "Hello!") != null);
+}
+
+test "Anthropic: buildRequestBody with system message" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const messages = &[_]base.LLMMessage{
+        .{ .role = "system", .content = "You are a helpful assistant." },
+        .{ .role = "user", .content = "Hi!" },
+    };
+
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", false);
+    defer allocator.free(body);
+
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"system\": \"You are a helpful assistant.\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"user\"") != null);
+    // System message should not appear in the messages array
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"system\"") == null);
+}
+
+test "Anthropic: buildRequestBody with streaming enabled" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "test-key");
+    defer provider.deinit();
+
+    const messages = &[_]base.LLMMessage{
+        .{ .role = "user", .content = "Hello!" },
+    };
+
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", true);
+    defer allocator.free(body);
+
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"stream\": true") != null);
+}
+
+test "Anthropic: struct definitions" {
+    // Test ContentBlock
+    const block = ContentBlock{
+        .type = "text",
+        .text = "Hello",
+    };
+    try std.testing.expectEqualStrings("text", block.type);
+    try std.testing.expectEqualStrings("Hello", block.text.?);
+
+    // Test MessageResponse
+    const content_blocks = &[_]ContentBlock{
+        .{ .type = "text", .text = "Response text" },
+    };
+    const response = MessageResponse{
+        .id = "msg_123",
+        .type = "message",
+        .role = "assistant",
+        .content = content_blocks,
+        .stop_reason = "end_turn",
+    };
+    try std.testing.expectEqualStrings("msg_123", response.id);
+    try std.testing.expectEqualStrings("message", response.type);
+    try std.testing.expectEqualStrings("assistant", response.role);
+    try std.testing.expectEqualStrings("end_turn", response.stop_reason.?);
+}
+
+test "Anthropic: AnthropicMessage union" {
+    // Test text variant
+    const text_msg = AnthropicMessage{
+        .role = "user",
+        .content = .{ .text = "Hello" },
+    };
+    try std.testing.expectEqualStrings("user", text_msg.role);
+    switch (text_msg.content) {
+        .text => |t| try std.testing.expectEqualStrings("Hello", t),
+        .blocks => try std.testing.expect(false), // Should not be blocks
+    }
+
+    // Test blocks variant
+    const blocks = &[_]AnthropicContentBlock{
+        .{ .type = "tool_result", .tool_use_id = "call_1", .content = "Result" },
+    };
+    const block_msg = AnthropicMessage{
+        .role = "user",
+        .content = .{ .blocks = blocks },
+    };
+    switch (block_msg.content) {
+        .text => try std.testing.expect(false), // Should not be text
+        .blocks => |b| try std.testing.expectEqual(@as(usize, 1), b.len),
+    }
+}
+
+test "Anthropic: init and deinit" {
+    const allocator = std.testing.allocator;
+    var provider = try AnthropicProvider.init(allocator, "my-api-key");
+    defer provider.deinit();
+
+    try std.testing.expectEqual(allocator, provider.allocator);
+    try std.testing.expectEqualStrings("my-api-key", provider.api_key);
+    try std.testing.expectEqualStrings("https://api.anthropic.com/v1", provider.api_base);
 }

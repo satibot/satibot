@@ -1,3 +1,5 @@
+/// Gateway module that orchestrates all bot services.
+/// Runs the main event loop managing Telegram bot, cron jobs, and heartbeat checks.
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const TelegramBot = @import("telegram_bot.zig").TelegramBot;
@@ -5,6 +7,8 @@ const CronStore = @import("cron.zig").CronStore;
 const HeartbeatService = @import("heartbeat.zig").HeartbeatService;
 const Agent = @import("../agent.zig").Agent;
 
+/// Main gateway struct containing all bot services.
+/// Coordinates between Telegram, cron jobs, and heartbeat monitoring.
 pub const Gateway = struct {
     allocator: std.mem.Allocator,
     config: Config,
@@ -12,6 +16,8 @@ pub const Gateway = struct {
     cron: CronStore,
     heartbeat: HeartbeatService,
 
+    /// Initialize the gateway with all required services.
+    /// Loads cron jobs from disk and initializes Telegram if configured.
     pub fn init(allocator: std.mem.Allocator, config: Config) !Gateway {
         const home = std.posix.getenv("HOME") orelse "/tmp";
         const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });

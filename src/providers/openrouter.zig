@@ -2,40 +2,50 @@ const std = @import("std");
 const http = @import("../http.zig");
 const base = @import("base.zig");
 
-// Response structures for OpenRouter/OpenAI API
+/// OpenRouter API provider implementation.
+/// OpenRouter provides a unified interface to multiple LLM models.
+/// Compatible with OpenAI's API format.
+/// Response structure from OpenRouter/OpenAI compatible API.
 const CompletionResponse = struct {
     id: []const u8,
     model: []const u8,
     choices: []const Choice,
 };
 
+/// Choice containing the generated message.
 const Choice = struct {
     message: Message,
 };
 
+/// Message in the response with optional content and tool calls.
 const Message = struct {
     content: ?[]const u8 = null,
     role: []const u8,
     tool_calls: ?[]const ToolCallResponse = null,
 };
 
+/// Tool call response from the API.
 const ToolCallResponse = struct {
     id: []const u8,
     type: []const u8,
     function: FunctionCallResponse,
 };
 
+/// Function call details within a tool call.
 const FunctionCallResponse = struct {
     name: []const u8,
     arguments: []const u8,
 };
 
+/// Provider for OpenRouter API.
+/// Supports chat completions, streaming, and embeddings.
 pub const OpenRouterProvider = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
     api_key: []const u8,
     api_base: []const u8 = "https://openrouter.ai/api/v1",
 
+    /// Initialize provider with API key.
     pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !OpenRouterProvider {
         return .{
             .allocator = allocator,
@@ -44,6 +54,7 @@ pub const OpenRouterProvider = struct {
         };
     }
 
+    /// Clean up provider resources.
     pub fn deinit(self: *OpenRouterProvider) void {
         self.client.deinit();
     }
@@ -329,4 +340,175 @@ test "OpenRouter: parse response" {
     // However, we can test the embedding structures or add a helper for parsing if we refactor.
     // For now, let's just test that it initializes correctly.
     try std.testing.expectEqualStrings("test-key", provider.api_key);
+}
+
+test "OpenRouter: struct definitions" {
+    // Test FunctionCallResponse
+    const func = FunctionCallResponse{
+        .name = "test_function",
+        .arguments = "{\"key\": \"value\"}",
+    };
+    try std.testing.expectEqualStrings("test_function", func.name);
+    try std.testing.expectEqualStrings("{\"key\": \"value\"}", func.arguments);
+
+    // Test ToolCallResponse
+    const tool_call = ToolCallResponse{
+        .id = "call_123",
+        .type = "function",
+        .function = func,
+    };
+    try std.testing.expectEqualStrings("call_123", tool_call.id);
+    try std.testing.expectEqualStrings("function", tool_call.type);
+    try std.testing.expectEqualStrings("test_function", tool_call.function.name);
+
+    // Test Message
+    const message = Message{
+        .content = "Hello world",
+        .role = "assistant",
+        .tool_calls = null,
+    };
+    try std.testing.expectEqualStrings("Hello world", message.content.?);
+    try std.testing.expectEqualStrings("assistant", message.role);
+    try std.testing.expect(message.tool_calls == null);
+
+    // Test Choice
+    const choice = Choice{
+        .message = message,
+    };
+    try std.testing.expectEqualStrings("Hello world", choice.message.content.?);
+
+    // Test CompletionResponse
+    const choices = &[_]Choice{choice};
+    const completion = CompletionResponse{
+        .id = "resp_123",
+        .model = "gpt-4",
+        .choices = choices,
+    };
+    try std.testing.expectEqualStrings("resp_123", completion.id);
+    try std.testing.expectEqualStrings("gpt-4", completion.model);
+    try std.testing.expectEqual(@as(usize, 1), completion.choices.len);
+}
+
+test "OpenRouter: init and deinit" {
+    const allocator = std.testing.allocator;
+    var provider = try OpenRouterProvider.init(allocator, "my-api-key-123");
+    defer provider.deinit();
+
+    try std.testing.expectEqual(allocator, provider.allocator);
+    try std.testing.expectEqualStrings("my-api-key-123", provider.api_key);
+    try std.testing.expectEqualStrings("https://openrouter.ai/api/v1", provider.api_base);
+}
+
+test "OpenRouter: Message with tool calls" {
+    const tool_calls = &[_]ToolCallResponse{
+        .{
+            .id = "call_1",
+            .type = "function",
+            .function = .{
+                .name = "get_weather",
+                .arguments = "{\"location\": \"NYC\"}",
+            },
+        },
+    };
+
+    const message = Message{
+        .content = "I'll check the weather",
+        .role = "assistant",
+        .tool_calls = tool_calls,
+    };
+
+    try std.testing.expectEqualStrings("I'll check the weather", message.content.?);
+    try std.testing.expectEqualStrings("assistant", message.role);
+    try std.testing.expect(message.tool_calls != null);
+    try std.testing.expectEqual(@as(usize, 1), message.tool_calls.?.len);
+    try std.testing.expectEqualStrings("call_1", message.tool_calls.?[0].id);
+    try std.testing.expectEqualStrings("get_weather", message.tool_calls.?[0].function.name);
+}
+
+test "OpenRouter: Multiple tool calls in message" {
+    const tool_calls = &[_]ToolCallResponse{
+        .{
+            .id = "call_1",
+            .type = "function",
+            .function = .{
+                .name = "search_web",
+                .arguments = "{\"query\": \"zig lang\"}",
+            },
+        },
+        .{
+            .id = "call_2",
+            .type = "function",
+            .function = .{
+                .name = "read_file",
+                .arguments = "{\"path\": \"main.zig\"}",
+            },
+        },
+    };
+
+    const message = Message{
+        .content = "I'll search and read",
+        .role = "assistant",
+        .tool_calls = tool_calls,
+    };
+
+    try std.testing.expectEqual(@as(usize, 2), message.tool_calls.?.len);
+    try std.testing.expectEqualStrings("call_1", message.tool_calls.?[0].id);
+    try std.testing.expectEqualStrings("search_web", message.tool_calls.?[0].function.name);
+    try std.testing.expectEqualStrings("call_2", message.tool_calls.?[1].id);
+    try std.testing.expectEqualStrings("read_file", message.tool_calls.?[1].function.name);
+}
+
+test "OpenRouter: CompletionResponse with multiple choices" {
+    const messages = [_]Message{
+        .{
+            .content = "First response",
+            .role = "assistant",
+            .tool_calls = null,
+        },
+        .{
+            .content = "Second response",
+            .role = "assistant",
+            .tool_calls = null,
+        },
+    };
+
+    const choices = &[_]Choice{
+        .{ .message = messages[0] },
+        .{ .message = messages[1] },
+    };
+
+    const completion = CompletionResponse{
+        .id = "resp_multi",
+        .model = "claude-3",
+        .choices = choices,
+    };
+
+    try std.testing.expectEqualStrings("resp_multi", completion.id);
+    try std.testing.expectEqualStrings("claude-3", completion.model);
+    try std.testing.expectEqual(@as(usize, 2), completion.choices.len);
+    try std.testing.expectEqualStrings("First response", completion.choices[0].message.content.?);
+    try std.testing.expectEqualStrings("Second response", completion.choices[1].message.content.?);
+}
+
+test "OpenRouter: Message with null content" {
+    const tool_calls = &[_]ToolCallResponse{
+        .{
+            .id = "call_1",
+            .type = "function",
+            .function = .{
+                .name = "compute",
+                .arguments = "{\"x\": 1}",
+            },
+        },
+    };
+
+    const message = Message{
+        .content = null,
+        .role = "assistant",
+        .tool_calls = tool_calls,
+    };
+
+    try std.testing.expect(message.content == null);
+    try std.testing.expectEqualStrings("assistant", message.role);
+    try std.testing.expect(message.tool_calls != null);
 }

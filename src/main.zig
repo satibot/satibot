@@ -28,6 +28,8 @@ pub fn main() !void {
         try runTelegramBot(allocator, args);
     } else if (std.mem.eql(u8, command, "gateway")) {
         try runGateway(allocator);
+    } else if (std.mem.eql(u8, command, "vector-db")) {
+        try runVectorDb(allocator, args);
     } else if (std.mem.eql(u8, command, "status")) {
         try runStatus(allocator);
     } else if (std.mem.eql(u8, command, "upgrade")) {
@@ -44,6 +46,7 @@ fn usage() !void {
     std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] [openrouter] Run the agent\n", .{});
     std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot (validates key if specified)\n", .{});
     std.debug.print("  gateway              Run Telegram bot, Cron, and Heartbeat collectively\n", .{});
+    std.debug.print("  vector-db <cmd>    Test vector DB operations (list, search, add)\n", .{});
     std.debug.print("  status               Show system status\n", .{});
     std.debug.print("  onboard              Initialize configuration\n", .{});
     std.debug.print("  upgrade              Self-upgrade (git pull & rebuild)\n", .{});
@@ -286,6 +289,136 @@ fn runUpgrade(allocator: std.mem.Allocator) !void {
     }
 
     std.debug.print("✅ Upgrade complete! Restart satibot to use the new version.\n", .{});
+}
+
+fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    if (args.len < 3) {
+        std.debug.print("Usage: satibot vector-db <command> [args...]\n", .{});
+        std.debug.print("Commands:\n", .{});
+        std.debug.print("  list              List all entries in vector DB\n", .{});
+        std.debug.print("  search <query>    Search vector DB with query\n", .{});
+        std.debug.print("  add <text>        Add text to vector DB\n", .{});
+        std.debug.print("  stats             Show vector DB statistics\n", .{});
+        return;
+    }
+
+    const subcmd = args[2];
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    // Get DB path
+    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
+    defer allocator.free(bots_dir);
+    const db_path = try std.fs.path.join(allocator, &.{ bots_dir, "vector_db.json" });
+    defer allocator.free(db_path);
+
+    var store = satibot.agent.vector_db.VectorStore.init(allocator);
+    defer store.deinit();
+    store.load(db_path) catch |err| {
+        if (err != error.FileNotFound) {
+            std.debug.print("Error loading vector DB: {any}\n", .{err});
+            return err;
+        }
+    };
+
+    if (std.mem.eql(u8, subcmd, "list")) {
+        std.debug.print("Vector DB Entries ({d} total):\n", .{store.entries.items.len});
+        for (store.entries.items, 0..) |entry, i| {
+            std.debug.print("{d}. {s}\n", .{ i + 1, entry.text });
+            std.debug.print("   Embedding dims: {d}\n", .{entry.embedding.len});
+        }
+    } else if (std.mem.eql(u8, subcmd, "stats")) {
+        std.debug.print("Vector DB Statistics:\n", .{});
+        std.debug.print("  Total entries: {d}\n", .{store.entries.items.len});
+        if (store.entries.items.len > 0) {
+            std.debug.print("  Embedding dimension: {d}\n", .{store.entries.items[0].embedding.len});
+        }
+        std.debug.print("  DB path: {s}\n", .{db_path});
+    } else if (std.mem.eql(u8, subcmd, "search")) {
+        if (args.len < 4) {
+            std.debug.print("Usage: satibot vector-db search <query> [top_k]\n", .{});
+            return;
+        }
+        const query = args[3];
+        var top_k: usize = 3;
+        if (args.len >= 5) {
+            top_k = try std.fmt.parseInt(usize, args[4], 10);
+        }
+
+        // Get embeddings for query
+        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+            std.debug.print("Error: OpenRouter API key not configured\n", .{});
+            return error.NoApiKey;
+        };
+
+        var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+        defer provider.deinit();
+
+        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
+        var resp = try provider.embeddings(.{ .input = &.{query}, .model = emb_model });
+        defer resp.deinit();
+
+        if (resp.embeddings.len == 0) {
+            std.debug.print("Error: No embeddings generated\n", .{});
+            return;
+        }
+
+        const results = try store.search(resp.embeddings[0], top_k);
+        defer allocator.free(results);
+
+        std.debug.print("Search Results for '{s}' ({d} items):\n", .{ query, results.len });
+        for (results, 0..) |res, i| {
+            std.debug.print("{d}. {s}\n", .{ i + 1, res.text });
+        }
+    } else if (std.mem.eql(u8, subcmd, "add")) {
+        if (args.len < 4) {
+            std.debug.print("Usage: satibot vector-db add <text>\n", .{});
+            return;
+        }
+        // Combine all remaining args as text
+        var text_len: usize = 0;
+        for (args[3..]) |arg| {
+            text_len += arg.len + 1; // +1 for space
+        }
+        var text_buf = try allocator.alloc(u8, text_len);
+        defer allocator.free(text_buf);
+        var pos: usize = 0;
+        for (args[3..], 0..) |arg, i| {
+            if (i > 0) {
+                text_buf[pos] = ' ';
+                pos += 1;
+            }
+            @memcpy(text_buf[pos .. pos + arg.len], arg);
+            pos += arg.len;
+        }
+        const text = text_buf[0..pos];
+
+        // Get embeddings
+        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+            std.debug.print("Error: OpenRouter API key not configured\n", .{});
+            return error.NoApiKey;
+        };
+
+        var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+        defer provider.deinit();
+
+        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
+        var resp = try provider.embeddings(.{ .input = &.{text}, .model = emb_model });
+        defer resp.deinit();
+
+        if (resp.embeddings.len == 0) {
+            std.debug.print("Error: No embeddings generated\n", .{});
+            return;
+        }
+
+        try store.add(text, resp.embeddings[0]);
+        try store.save(db_path);
+        std.debug.print("Added to vector DB: {s}\n", .{text});
+    } else {
+        std.debug.print("Unknown vector-db command: {s}\n", .{subcmd});
+    }
 }
 
 fn runStatus(allocator: std.mem.Allocator) !void {

@@ -1,21 +1,27 @@
+/// Graph database module for storing node-edge relationships.
+/// Simple in-memory graph with nodes (entities) and edges (relationships).
 const std = @import("std");
 
+/// Node representing an entity in the graph with ID and label.
 pub const Node = struct {
     id: []const u8,
     label: []const u8,
 };
 
+/// Edge representing a directed relationship between two nodes.
 pub const Edge = struct {
-    from: []const u8,
-    to: []const u8,
-    relation: []const u8,
+    from: []const u8, // Source node ID
+    to: []const u8, // Target node ID
+    relation: []const u8, // Type of relationship
 };
 
+/// In-memory graph database storing nodes and edges.
 pub const Graph = struct {
     allocator: std.mem.Allocator,
     nodes: std.StringHashMap(Node),
     edges: std.ArrayListUnmanaged(Edge) = .{},
 
+    /// Initialize an empty graph.
     pub fn init(allocator: std.mem.Allocator) Graph {
         return .{
             .allocator = allocator,
@@ -23,6 +29,7 @@ pub const Graph = struct {
         };
     }
 
+    /// Free all nodes, edges, and the graph itself.
     pub fn deinit(self: *Graph) void {
         var iter = self.nodes.iterator();
         while (iter.next()) |entry| {
@@ -40,6 +47,7 @@ pub const Graph = struct {
         self.edges.deinit(self.allocator);
     }
 
+    /// Add a node with the given ID and label.
     pub fn add_node(self: *Graph, id: []const u8, label: []const u8) !void {
         if (self.nodes.contains(id)) return;
         try self.nodes.put(try self.allocator.dupe(u8, id), .{
@@ -48,6 +56,7 @@ pub const Graph = struct {
         });
     }
 
+    /// Add a directed edge between two nodes with the given relation.
     pub fn add_edge(self: *Graph, from: []const u8, to: []const u8, relation: []const u8) !void {
         try self.edges.append(self.allocator, .{
             .from = try self.allocator.dupe(u8, from),
@@ -56,6 +65,7 @@ pub const Graph = struct {
         });
     }
 
+    /// Query the graph for relations starting from the given node.
     pub fn query(self: *Graph, start_node: []const u8) ![]const u8 {
         var out = std.io.Writer.Allocating.init(self.allocator);
         errdefer out.deinit();
@@ -222,4 +232,57 @@ test "Graph: complex relations" {
     defer allocator.free(res_b);
     try std.testing.expect(std.mem.indexOf(u8, res_b, "rel1") != null);
     try std.testing.expect(std.mem.indexOf(u8, res_b, "rel2") != null);
+}
+
+test "Graph: add duplicate node" {
+    const allocator = std.testing.allocator;
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try g.add_node("A", "TypeA");
+    try g.add_node("A", "TypeA"); // Should not error, just skip
+
+    try std.testing.expectEqual(@as(usize, 1), g.nodes.count());
+}
+
+test "Graph: query non-existent node" {
+    const allocator = std.testing.allocator;
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try g.add_node("A", "TypeA");
+    try g.add_edge("A", "B", "rel1");
+
+    const res = try g.query("Z");
+    defer allocator.free(res);
+    try std.testing.expect(std.mem.indexOf(u8, res, "No relations found") != null);
+}
+
+test "Graph: Node struct" {
+    const node = Node{
+        .id = "node1",
+        .label = "Person",
+    };
+    try std.testing.expectEqualStrings("node1", node.id);
+    try std.testing.expectEqualStrings("Person", node.label);
+}
+
+test "Graph: Edge struct" {
+    const edge = Edge{
+        .from = "A",
+        .to = "B",
+        .relation = "knows",
+    };
+    try std.testing.expectEqualStrings("A", edge.from);
+    try std.testing.expectEqualStrings("B", edge.to);
+    try std.testing.expectEqualStrings("knows", edge.relation);
+}
+
+test "Graph: init and deinit empty" {
+    const allocator = std.testing.allocator;
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), g.nodes.count());
+    try std.testing.expectEqual(@as(usize, 0), g.edges.items.len);
 }

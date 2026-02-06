@@ -1,15 +1,23 @@
+/// Tools module provides all available agent capabilities.
+/// Each tool is a function that can be called by the LLM with JSON arguments.
+/// Tools include file operations, messaging, web search, database operations, and more.
 const std = @import("std");
 
 const Config = @import("../config.zig").Config;
 const base = @import("../providers/base.zig");
 
+/// Context passed to tool functions containing allocator, config, and helper functions.
 pub const ToolContext = struct {
     allocator: std.mem.Allocator,
     config: Config,
+    /// Optional function to get text embeddings for vector operations.
     get_embeddings: ?*const fn (allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse = null,
+    /// Optional function to spawn subagent for parallel task execution.
     spawn_subagent: ?*const fn (ctx: ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 = null,
 };
 
+/// Tool definition containing metadata and execution function.
+/// Tools are registered in ToolRegistry and can be called by name.
 pub const Tool = struct {
     name: []const u8,
     description: []const u8,
@@ -17,10 +25,13 @@ pub const Tool = struct {
     execute: *const fn (ctx: ToolContext, arguments: []const u8) anyerror![]const u8,
 };
 
+/// Registry for managing available tools.
+/// Stores tools in a hash map keyed by tool name.
 pub const ToolRegistry = struct {
     tools: std.StringHashMap(Tool),
     allocator: std.mem.Allocator,
 
+    /// Initialize empty tool registry.
     pub fn init(allocator: std.mem.Allocator) ToolRegistry {
         return .{
             .tools = std.StringHashMap(Tool).init(allocator),
@@ -28,20 +39,24 @@ pub const ToolRegistry = struct {
         };
     }
 
+    /// Clean up registry resources.
     pub fn deinit(self: *ToolRegistry) void {
         self.tools.deinit();
     }
 
+    /// Register a new tool in the registry.
     pub fn register(self: *ToolRegistry, tool: Tool) !void {
         try self.tools.put(tool.name, tool);
     }
 
+    /// Get a tool by name. Returns null if not found.
     pub fn get(self: *ToolRegistry, name: []const u8) ?Tool {
         return self.tools.get(name);
     }
 };
 
-// Example tool: list_files
+/// List files in the current working directory.
+/// Returns a newline-separated list of filenames.
 pub fn list_files(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     _ = arguments;
     var dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
@@ -59,6 +74,8 @@ pub fn list_files(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return result.toOwnedSlice(ctx.allocator);
 }
 
+/// Read contents of a file specified by path in JSON arguments.
+/// Max file size: 10MB (10485760 = 10 * 1024 * 1024)
 pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     // Basic arguments parsing (expecting just the filename as a string for now, or JSON)
     const parsed = try std.json.parseFromSlice(struct { path: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
@@ -70,6 +87,8 @@ pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
 }
 
+/// Write content to a file specified by path in JSON arguments.
+/// Creates new file or overwrites existing.
 pub fn write_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(struct { path: []const u8, content: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
@@ -81,6 +100,8 @@ pub fn write_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return try ctx.allocator.dupe(u8, "File written successfully");
 }
 
+/// Search the web using Brave Search API.
+/// Requires API key to be configured in settings.
 pub fn web_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(struct { query: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
@@ -812,4 +833,276 @@ test "Tools: vector_upsert and vector_search" {
         defer allocator.free(r);
         try std.testing.expect(std.mem.indexOf(u8, r, "Vector Search Results") != null);
     } else |_| {}
+}
+
+test "Tools: ToolRegistry basic operations" {
+    const allocator = std.testing.allocator;
+    var registry = ToolRegistry.init(allocator);
+    defer registry.deinit();
+
+    const test_tool = Tool{
+        .name = "test_tool",
+        .description = "A test tool",
+        .parameters = "{}",
+        .execute = struct {
+            fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                _ = ctx;
+                _ = args;
+                return @constCast("test result");
+            }
+        }.exec,
+    };
+
+    try registry.register(test_tool);
+
+    const retrieved = registry.get("test_tool");
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings("test_tool", retrieved.?.name);
+    try std.testing.expectEqualStrings("A test tool", retrieved.?.description);
+    try std.testing.expectEqualStrings("{}", retrieved.?.parameters);
+}
+
+test "Tools: ToolRegistry multiple tools" {
+    const allocator = std.testing.allocator;
+    var registry = ToolRegistry.init(allocator);
+    defer registry.deinit();
+
+    const tools = [_]Tool{
+        .{
+            .name = "tool_a",
+            .description = "Tool A",
+            .parameters = "{}",
+            .execute = struct {
+                fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                    _ = ctx;
+                    _ = args;
+                    return @constCast("A");
+                }
+            }.exec,
+        },
+        .{
+            .name = "tool_b",
+            .description = "Tool B",
+            .parameters = "{}",
+            .execute = struct {
+                fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                    _ = ctx;
+                    _ = args;
+                    return @constCast("B");
+                }
+            }.exec,
+        },
+        .{
+            .name = "tool_c",
+            .description = "Tool C",
+            .parameters = "{}",
+            .execute = struct {
+                fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                    _ = ctx;
+                    _ = args;
+                    return @constCast("C");
+                }
+            }.exec,
+        },
+    };
+
+    for (tools) |tool| {
+        try registry.register(tool);
+    }
+
+    try std.testing.expect(registry.get("tool_a") != null);
+    try std.testing.expect(registry.get("tool_b") != null);
+    try std.testing.expect(registry.get("tool_c") != null);
+    try std.testing.expect(registry.get("tool_d") == null);
+}
+
+test "Tools: ToolRegistry overwrite tool" {
+    const allocator = std.testing.allocator;
+    var registry = ToolRegistry.init(allocator);
+    defer registry.deinit();
+
+    const tool1 = Tool{
+        .name = "my_tool",
+        .description = "Original description",
+        .parameters = "{}",
+        .execute = struct {
+            fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                _ = ctx;
+                _ = args;
+                return @constCast("v1");
+            }
+        }.exec,
+    };
+
+    const tool2 = Tool{
+        .name = "my_tool",
+        .description = "Updated description",
+        .parameters = "{\"type\": \"object\"}",
+        .execute = struct {
+            fn exec(ctx: ToolContext, args: []const u8) ![]const u8 {
+                _ = ctx;
+                _ = args;
+                return @constCast("v2");
+            }
+        }.exec,
+    };
+
+    try registry.register(tool1);
+    try registry.register(tool2); // Should overwrite
+
+    const retrieved = registry.get("my_tool");
+    try std.testing.expect(retrieved != null);
+    try std.testing.expectEqualStrings("Updated description", retrieved.?.description);
+    try std.testing.expectEqualStrings("{\"type\": \"object\"}", retrieved.?.parameters);
+}
+
+test "Tools: list_files in current directory" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = list_files(ctx, "{}") catch |err| {
+        // If we can't read the directory, that's ok for this test
+        if (err == error.AccessDenied) return;
+        return err;
+    };
+    defer allocator.free(result);
+
+    // Should return some content (file names in current dir)
+    try std.testing.expect(result.len > 0);
+}
+
+test "Tools: read_file non-existent" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = read_file(ctx, "{\"path\": \"/non/existent/file.txt\"}");
+    try std.testing.expectError(error.FileNotFound, result);
+}
+
+test "Tools: write_file with invalid JSON" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = write_file(ctx, "invalid json");
+    // Accept any JSON parse error
+    const is_json_error = result == error.UnexpectedToken or
+        result == error.InvalidCharacter or
+        result == error.SyntaxError;
+    try std.testing.expect(is_json_error);
+}
+
+test "Tools: web_search without API key" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{ .web = .{ .search = .{ .apiKey = null } } },
+        },
+    };
+
+    const result = try web_search(ctx, "{\"query\": \"test\"}");
+    defer allocator.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "Error: Search API key not configured.") != null);
+}
+
+test "Tools: telegram_send_message without token" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+                .telegram = null,
+            },
+        },
+    };
+
+    const result = try telegram_send_message(ctx, "{\"text\": \"hello\"}");
+    defer allocator.free(result);
+    // Accept either "not configured" or "token not configured" message
+    const has_error = std.mem.indexOf(u8, result, "not configured") != null or
+        std.mem.indexOf(u8, result, "Error") != null;
+    try std.testing.expect(has_error);
+}
+
+test "Tools: discord_send_message without webhook" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+                .discord = null,
+            },
+        },
+    };
+
+    const result = try discord_send_message(ctx, "{\"content\": \"hello\"}");
+    defer allocator.free(result);
+    // Accept either error or configuration message
+    const has_error = std.mem.indexOf(u8, result, "not configured") != null or
+        std.mem.indexOf(u8, result, "webhook") != null or
+        std.mem.indexOf(u8, result, "Error") != null;
+    try std.testing.expect(has_error);
+}
+
+test "Tools: whatsapp_send_message without config" {
+    const allocator = std.testing.allocator;
+
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+                .whatsapp = null,
+            },
+        },
+    };
+
+    const result = try whatsapp_send_message(ctx, "{\"text\": \"hello\"}");
+    defer allocator.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "WhatsApp not configured") != null);
+}
+
+test "Tools: JSON argument parsing" {
+    const allocator = std.testing.allocator;
+
+    // Test valid JSON parsing
+    const valid_json = "{\"path\": \"test.txt\", \"content\": \"hello world\"}";
+    const parsed = try std.json.parseFromSlice(struct { path: []const u8, content: []const u8 }, allocator, valid_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings("test.txt", parsed.value.path);
+    try std.testing.expectEqualStrings("hello world", parsed.value.content);
+
+    // Test parsing with extra fields (should be ignored)
+    const extra_fields = "{\"path\": \"test.txt\", \"content\": \"hello\", \"extra\": \"ignored\"}";
+    const parsed2 = try std.json.parseFromSlice(struct { path: []const u8, content: []const u8 }, allocator, extra_fields, .{ .ignore_unknown_fields = true });
+    defer parsed2.deinit();
+
+    try std.testing.expectEqualStrings("test.txt", parsed2.value.path);
+    try std.testing.expectEqualStrings("hello", parsed2.value.content);
 }

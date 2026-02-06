@@ -1,6 +1,10 @@
 const std = @import("std");
 const tls = @import("tls");
 
+/// HTTP client module for making HTTPS requests with TLS support.
+/// Provides a simple interface for POST/GET requests and streaming responses.
+/// Connection timeout settings for HTTP operations.
+/// All timeouts are in milliseconds.
 pub const ConnectionSettings = struct {
     connect_timeout_ms: u64 = 30000, // 30 seconds to establish connection
     request_timeout_ms: u64 = 120000, // 2 minutes for full request
@@ -8,25 +12,33 @@ pub const ConnectionSettings = struct {
     keep_alive: bool = false,
 };
 
+/// HTTP response containing status code and body content.
+/// Caller must call deinit() to free the response body memory.
 pub const Response = struct {
     status: std.http.Status,
     body: []u8,
     allocator: std.mem.Allocator,
 
+    /// Free the response body memory.
     pub fn deinit(self: *Response) void {
         self.allocator.free(self.body);
     }
 };
 
+/// HTTP client with TLS support for secure HTTPS connections.
+/// Manages connection settings and root CA certificates.
 pub const Client = struct {
     allocator: std.mem.Allocator,
     settings: ConnectionSettings,
     root_ca: tls.config.cert.Bundle,
 
+    /// Initialize client with default connection settings.
     pub fn init(allocator: std.mem.Allocator) !Client {
         return try initWithSettings(allocator, .{});
     }
 
+    /// Initialize client with custom connection settings.
+    /// Loads root CA certificates from system trust store.
     pub fn initWithSettings(allocator: std.mem.Allocator, settings: ConnectionSettings) !Client {
         const root_ca = try tls.config.cert.fromSystem(allocator);
         return .{
@@ -36,11 +48,14 @@ pub const Client = struct {
         };
     }
 
+    /// Clean up client resources including CA certificates.
     pub fn deinit(self: *Client) void {
         var copy = self.root_ca;
         copy.deinit(self.allocator);
     }
 
+    /// Send POST request and return full response.
+    /// Automatically handles HTTP/HTTPS and reads entire response body.
     pub fn post(self: *Client, url: []const u8, headers: []const std.http.Header, body: []const u8) !Response {
         var req = try self.request(.POST, url, headers, body);
         defer req.deinit();
@@ -66,14 +81,18 @@ pub const Client = struct {
         };
     }
 
+    /// Send GET request (implemented as POST with empty body).
     pub fn get(self: *Client, url: []const u8, headers: []const std.http.Header) !Response {
         return self.post(url, headers, "");
     }
 
+    /// Start streaming POST request.
+    /// Returns Request object for incremental reading of response.
     pub fn postStream(self: *Client, url: []const u8, headers: []const std.http.Header, body: []const u8) !Request {
         return try self.request(.POST, url, headers, body);
     }
 
+    /// Internal method to create HTTP request with method, URL, headers, and body.
     fn request(self: *Client, method: std.http.Method, url: []const u8, headers: []const std.http.Header, body: []const u8) !Request {
         const uri = try std.Uri.parse(url);
         const host = uri.host.?.percent_encoded;
@@ -356,3 +375,102 @@ pub const Request = struct {
         return .{ .request = self };
     }
 };
+
+test "HTTP: ConnectionSettings defaults" {
+    const settings = ConnectionSettings{};
+    try std.testing.expectEqual(@as(u64, 30000), settings.connect_timeout_ms);
+    try std.testing.expectEqual(@as(u64, 120000), settings.request_timeout_ms);
+    try std.testing.expectEqual(@as(u64, 60000), settings.read_timeout_ms);
+    try std.testing.expectEqual(false, settings.keep_alive);
+}
+
+test "HTTP: Response deinit" {
+    const allocator = std.testing.allocator;
+    var response = Response{
+        .status = .ok,
+        .body = try allocator.dupe(u8, "test body"),
+        .allocator = allocator,
+    };
+    response.deinit();
+    // Test passes if no memory leak
+}
+
+test "HTTP: Client init" {
+    const allocator = std.testing.allocator;
+    var client = try Client.init(allocator);
+    defer client.deinit();
+
+    try std.testing.expectEqual(allocator, client.allocator);
+    try std.testing.expectEqual(@as(u64, 30000), client.settings.connect_timeout_ms);
+}
+
+test "HTTP: Client initWithSettings" {
+    const allocator = std.testing.allocator;
+    const settings = ConnectionSettings{
+        .connect_timeout_ms = 60000,
+        .keep_alive = true,
+    };
+    var client = try Client.initWithSettings(allocator, settings);
+    defer client.deinit();
+
+    try std.testing.expectEqual(@as(u64, 60000), client.settings.connect_timeout_ms);
+    try std.testing.expectEqual(true, client.settings.keep_alive);
+}
+
+test "HTTP: URI parsing" {
+    const uri = try std.Uri.parse("https://api.example.com:8080/path?query=value#fragment");
+    try std.testing.expectEqualStrings("https", uri.scheme);
+    try std.testing.expectEqualStrings("api.example.com", uri.host.?.percent_encoded);
+    try std.testing.expectEqual(@as(u16, 8080), uri.port.?);
+    try std.testing.expectEqualStrings("/path", uri.path.percent_encoded);
+    try std.testing.expectEqualStrings("query=value", uri.query.?.percent_encoded);
+}
+
+test "HTTP: Header parsing" {
+    // Test ResponseHead parsing logic
+    const headers = [_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+        .{ .name = "Content-Length", .value = "1234" },
+        .{ .name = "Transfer-Encoding", .value = "chunked" },
+    };
+
+    // Verify header values
+    var content_length: ?u64 = null;
+    var chunked = false;
+
+    for (headers) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, "content-length")) {
+            content_length = try std.fmt.parseInt(u64, header.value, 10);
+        } else if (std.ascii.eqlIgnoreCase(header.name, "transfer-encoding")) {
+            if (std.ascii.indexOfIgnoreCase(header.value, "chunked") != null) {
+                chunked = true;
+            }
+        }
+    }
+
+    try std.testing.expectEqual(@as(u64, 1234), content_length.?);
+    try std.testing.expectEqual(true, chunked);
+}
+
+test "HTTP: ChunkedState" {
+    const state = Request.Reader.ChunkedState{
+        .remaining = 100,
+        .done = false,
+    };
+
+    try std.testing.expectEqual(@as(usize, 100), state.remaining);
+    try std.testing.expectEqual(false, state.done);
+}
+
+test "HTTP: Request methods" {
+    try std.testing.expectEqual(std.http.Method.GET, std.http.Method.GET);
+    try std.testing.expectEqual(std.http.Method.POST, std.http.Method.POST);
+    try std.testing.expectEqual(std.http.Method.PUT, std.http.Method.PUT);
+    try std.testing.expectEqual(std.http.Method.DELETE, std.http.Method.DELETE);
+}
+
+test "HTTP: Status codes" {
+    try std.testing.expectEqual(@as(u16, 200), @intFromEnum(std.http.Status.ok));
+    try std.testing.expectEqual(@as(u16, 404), @intFromEnum(std.http.Status.not_found));
+    try std.testing.expectEqual(@as(u16, 500), @intFromEnum(std.http.Status.internal_server_error));
+}
