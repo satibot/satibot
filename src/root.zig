@@ -7,6 +7,7 @@ pub const agent = struct {
     pub const vector_db = @import("agent/vector_db.zig");
     pub const graph_db = @import("agent/graph_db.zig");
     pub const telegram_bot = @import("agent/telegram_bot.zig");
+    pub const whatsapp_bot = @import("agent/whatsapp_bot.zig");
     pub const cron = @import("agent/cron.zig");
     pub const heartbeat = @import("agent/heartbeat.zig");
     pub const gateway = @import("agent/gateway.zig");
@@ -28,6 +29,7 @@ test {
     _ = agent.vector_db;
     _ = agent.graph_db;
     _ = agent.telegram_bot;
+    _ = agent.whatsapp_bot;
     _ = agent.cron;
     _ = agent.heartbeat;
     _ = agent.gateway;

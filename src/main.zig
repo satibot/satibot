@@ -26,6 +26,8 @@ pub fn main() !void {
         try runTestLlm(allocator);
     } else if (std.mem.eql(u8, command, "telegram")) {
         try runTelegramBot(allocator, args);
+    } else if (std.mem.eql(u8, command, "whatsapp")) {
+        try runWhatsAppBot(allocator, args);
     } else if (std.mem.eql(u8, command, "gateway")) {
         try runGateway(allocator);
     } else if (std.mem.eql(u8, command, "vector-db")) {
@@ -44,7 +46,8 @@ fn usage() !void {
     std.debug.print("Usage: satibot <command> [args...]\n", .{});
     std.debug.print("Commands:\n", .{});
     std.debug.print("  agent -m \"msg\" [-s id] [--no-rag] [openrouter] Run the agent\n", .{});
-    std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot (validates key if specified)\n", .{});
+    std.debug.print("  telegram [openrouter] Run satibot as a Telegram bot\n", .{});
+    std.debug.print("  whatsapp [openrouter] Run satibot as a WhatsApp bot\n", .{});
     std.debug.print("  gateway              Run Telegram bot, Cron, and Heartbeat collectively\n", .{});
     std.debug.print("  vector-db <cmd>    Test vector DB operations (list, search, add)\n", .{});
     std.debug.print("  status               Show system status\n", .{});
@@ -167,6 +170,29 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Telegram bot started. Press Ctrl+C to stop.\n", .{});
 
     try satibot.agent.telegram_bot.run(allocator, config);
+}
+
+fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    var check_openrouter = false;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "openrouter")) {
+            check_openrouter = true;
+            break;
+        }
+    }
+
+    if (check_openrouter) {
+        try validateConfig(config);
+    }
+
+    std.debug.print("Active Model: {s}\n", .{config.agents.defaults.model});
+    std.debug.print("WhatsApp bot started. Press Ctrl+C to stop.\n", .{});
+
+    try satibot.agent.whatsapp_bot.run(allocator, config);
 }
 
 fn runGateway(allocator: std.mem.Allocator) !void {

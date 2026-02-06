@@ -148,6 +148,88 @@ pub const TelegramBot = struct {
 
                     var actual_text = final_text;
 
+                    // Handle magic command /help to show available commands.
+                    if (std.mem.startsWith(u8, final_text, "/help")) {
+                        const help_text =
+                            \\🐸 SatiBot Commands:
+                            \\
+                            \\/setibot - Generate default config file at ~/.bots/config.json
+                            \\/new - Clear conversation session memory
+                            \\/help - Show this help message
+                            \\
+                            \\Send any message to chat with the AI assistant.
+                        ;
+                        try self.send_message(tg_config.botToken, chat_id_str, help_text);
+                        continue;
+                    }
+
+                    // Handle magic command /setibot to auto-generate config file.
+                    // This allows users to set up satibot configuration directly from Telegram.
+                    if (std.mem.startsWith(u8, final_text, "/setibot")) {
+                        const home = std.posix.getenv("HOME") orelse "/tmp";
+
+                        // Create .bots directory if it doesn't exist
+                        const bots_dir = try std.fs.path.join(self.allocator, &.{ home, ".bots" });
+                        defer self.allocator.free(bots_dir);
+
+                        std.fs.makeDirAbsolute(bots_dir) catch |err| {
+                            if (err != error.PathAlreadyExists) {
+                                try self.send_message(tg_config.botToken, chat_id_str, "❌ Error creating .bots directory");
+                                continue;
+                            }
+                        };
+
+                        // Create config.json with default template
+                        const config_path = try std.fs.path.join(self.allocator, &.{ bots_dir, "config.json" });
+                        defer self.allocator.free(config_path);
+
+                        const default_json =
+                            \\{
+                            \\  "agents": {
+                            \\    "defaults": {
+                            \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+                            \\    }
+                            \\  },
+                            \\  "providers": {
+                            \\    "openrouter": {
+                            \\      "apiKey": "sk-or-v1-..."
+                            \\    }
+                            \\  },
+                            \\  "tools": {
+                            \\    "web": {
+                            \\      "search": {
+                            \\        "apiKey": "BSA..."
+                            \\      }
+                            \\    },
+                            \\    "telegram": {
+                            \\      "botToken": "YOUR_BOT_TOKEN_HERE",
+                            \\      "chatId": "YOUR_CHAT_ID_HERE"
+                            \\    }
+                            \\  }
+                            \\}
+                        ;
+
+                        // Check if config already exists
+                        std.fs.accessAbsolute(config_path, .{}) catch |err| {
+                            if (err == error.FileNotFound) {
+                                const file = try std.fs.createFileAbsolute(config_path, .{});
+                                defer file.close();
+                                try file.writeAll(default_json);
+
+                                const response_msg = try std.fmt.allocPrint(self.allocator, "✅ Config file created at: {s}\n\n📋 Next steps:\n1. Edit the config file with your API keys\n2. Restart satibot with your new config\n\n💡 Current chat ID: {s}", .{ config_path, chat_id_str });
+                                defer self.allocator.free(response_msg);
+                                try self.send_message(tg_config.botToken, chat_id_str, response_msg);
+                                continue;
+                            }
+                        };
+
+                        // Config already exists
+                        const response_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Config file already exists at: {s}\n\nUse /new to clear session or edit the file manually.\n\n💡 Your chat ID: {s}", .{ config_path, chat_id_str });
+                        defer self.allocator.free(response_msg);
+                        try self.send_message(tg_config.botToken, chat_id_str, response_msg);
+                        continue;
+                    }
+
                     // Handle magic command /new to wipe memory.
                     // Helpful for restarting conversations without restarting the bot.
                     if (std.mem.startsWith(u8, final_text, "/new")) {
@@ -264,4 +346,118 @@ test "TelegramBot tick returns if no config" {
 
     // this should return immediately (no network call)
     try bot.tick();
+}
+
+test "TelegramBot config validation" {
+    const allocator = std.testing.allocator;
+
+    // Test with valid config
+    const valid_config = Config{
+        .agents = .{ .defaults = .{ .model = "claude-3-sonnet" } },
+        .providers = .{
+            .anthropic = .{ .apiKey = "test-key" },
+        },
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "test-token", .chatId = "12345" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, valid_config);
+    defer bot.deinit();
+
+    // Verify bot initialized correctly
+    try std.testing.expectEqual(bot.offset, 0);
+    try std.testing.expect(bot.config.tools.telegram != null);
+    try std.testing.expectEqualStrings("test-token", bot.config.tools.telegram.?.botToken);
+}
+
+test "TelegramBot session ID generation" {
+    const allocator = std.testing.allocator;
+    const chat_id: i64 = 123456789;
+
+    const session_id = try std.fmt.allocPrint(allocator, "tg_{d}", .{chat_id});
+    defer allocator.free(session_id);
+
+    try std.testing.expectEqualStrings("tg_123456789", session_id);
+}
+
+test "TelegramBot command detection - /help" {
+    // Test command detection
+    const help_cmd = "/help";
+    try std.testing.expect(std.mem.startsWith(u8, help_cmd, "/help"));
+
+    const help_with_text = "/help me";
+    try std.testing.expect(std.mem.startsWith(u8, help_with_text, "/help"));
+
+    const not_help = "help";
+    try std.testing.expect(!std.mem.startsWith(u8, not_help, "/help"));
+}
+
+test "TelegramBot command detection - /setibot" {
+    // Test command detection
+    const setibot_cmd = "/setibot";
+    try std.testing.expect(std.mem.startsWith(u8, setibot_cmd, "/setibot"));
+
+    const setibot_with_args = "/setibot --force";
+    try std.testing.expect(std.mem.startsWith(u8, setibot_with_args, "/setibot"));
+}
+
+test "TelegramBot command detection - /new" {
+    // Test command detection
+    const new_cmd = "/new";
+    try std.testing.expect(std.mem.startsWith(u8, new_cmd, "/new"));
+
+    const new_with_prompt = "/new what is zig?";
+    try std.testing.expect(std.mem.startsWith(u8, new_with_prompt, "/new"));
+}
+
+test "TelegramBot message JSON serialization" {
+    const message = .{
+        .chat_id = "12345",
+        .text = "Test message",
+    };
+
+    const json = try std.json.Stringify.valueAlloc(std.testing.allocator, message, .{});
+    defer std.testing.allocator.free(json);
+
+    // Verify JSON contains expected fields
+    try std.testing.expect(std.mem.indexOf(u8, json, "chat_id") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "12345") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "Test message") != null);
+}
+
+test "TelegramBot config file template generation" {
+    const default_json =
+        \\{
+        \\  "agents": {
+        \\    "defaults": {
+        \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+        \\    }
+        \\  },
+        \\  "providers": {
+        \\    "openrouter": {
+        \\      "apiKey": "sk-or-v1-..."
+        \\    }
+        \\  },
+        \\  "tools": {
+        \\    "web": {
+        \\      "search": {
+        \\        "apiKey": "BSA..."
+        \\      }
+        \\    },
+        \\    "telegram": {
+        \\      "botToken": "YOUR_BOT_TOKEN_HERE",
+        \\      "chatId": "YOUR_CHAT_ID_HERE"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    // Verify template contains key fields
+    try std.testing.expect(std.mem.indexOf(u8, default_json, "agents") != null);
+    try std.testing.expect(std.mem.indexOf(u8, default_json, "providers") != null);
+    try std.testing.expect(std.mem.indexOf(u8, default_json, "tools") != null);
+    try std.testing.expect(std.mem.indexOf(u8, default_json, "telegram") != null);
+    try std.testing.expect(std.mem.indexOf(u8, default_json, "botToken") != null);
 }

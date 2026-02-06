@@ -9,7 +9,9 @@
         "deinit",
         "Doptimize",
         "Dtarget",
+        "getenv",
         "openrouter",
-        "satibot"
+        "satibot",
+        "setibot"
     ]
 }
