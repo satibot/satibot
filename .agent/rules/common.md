@@ -27,3 +27,7 @@ Before run:
 
 Replace arithmetic expressions with pre-calculated constants in memory allocations.
 For example, instead of `1024 * 1024`, use the result value `1048576` and add a comment to explain the calculation like `// 1024 * 1024`.
+
+## When catch error
+
+When catch error, always log the error message.

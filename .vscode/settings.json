@@ -10,6 +10,7 @@
         "Doptimize",
         "Dtarget",
         "getenv",
+        "groq",
         "openrouter",
         "satibot",
         "setibot"

@@ -295,11 +295,28 @@ pub const WebhookServer = struct {
 /// Main entry point for the WhatsApp Bot service.
 /// Initializes the bot and starts the webhook server.
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
-    // Check if WhatsApp is configured
-    if (config.tools.whatsapp == null) {
-        std.debug.print("Error: WhatsApp not configured. Please add whatsapp config to ~/.bots/whatsapp.json\n", .{});
+    // Extract WhatsApp config first - required for operation
+    const wa_config = config.tools.whatsapp orelse {
+        std.debug.print("Error: WhatsApp configuration is required but not found.\n", .{});
         return error.WhatsAppNotConfigured;
-    }
+    };
+
+    // recipientPhoneNumber is required - terminate if not configured
+    const recipient = wa_config.recipientPhoneNumber orelse {
+        std.debug.print("Error: whatsapp.recipientPhoneNumber is required but not configured. Terminating.\n", .{});
+        return error.WhatsAppRecipientNotConfigured;
+    };
+
+    var bot = try WhatsAppBot.init(allocator, config);
+    defer bot.deinit();
+
+    std.debug.print("🐸 WhatsApp bot running. Press Ctrl+C to stop.\n", .{});
+
+    std.debug.print("Sending startup message to {s}...\n", .{recipient});
+    const startup_msg = "🐸 WhatsApp Bot is now online and ready! 🚀";
+    bot.send_message(wa_config, recipient, startup_msg) catch |err| {
+        std.debug.print("Failed to send startup message: {any}\n", .{err});
+    };
 
     var server = try WebhookServer.init(allocator, config, 8080);
     defer server.deinit();

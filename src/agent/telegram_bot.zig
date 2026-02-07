@@ -3,6 +3,49 @@ const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
 
+/// Global flag for shutdown signal
+var shutdown_requested = std.atomic.Value(bool).init(false);
+
+/// Set of active chat IDs that have received messages
+var active_chats: std.ArrayList(i64) = undefined;
+var active_chats_mutex: std.Thread.Mutex = .{};
+
+/// Signal handler for SIGINT (Ctrl+C) and SIGTERM
+fn signalHandler(sig: i32) callconv(.c) void {
+    _ = sig;
+    shutdown_requested.store(true, .seq_cst);
+}
+
+/// Add a chat ID to active chats if not already present
+fn trackActiveChat(allocator: std.mem.Allocator, chat_id: i64) void {
+    active_chats_mutex.lock();
+    defer active_chats_mutex.unlock();
+
+    // Check if already in list
+    for (active_chats.items) |id| {
+        if (id == chat_id) return;
+    }
+
+    active_chats.append(allocator, chat_id) catch {
+        std.debug.print("Failed to track chat {d}\n", .{chat_id});
+    };
+    std.debug.print("Tracked active chat: {d} (total: {d})\n", .{ chat_id, active_chats.items.len });
+}
+
+/// Setup signal handlers for graceful shutdown
+fn setupSignalHandlers() void {
+    const sa = std.posix.Sigaction{
+        .handler = .{ .handler = signalHandler },
+        .mask = std.mem.zeroes(std.posix.sigset_t),
+        .flags = 0,
+    };
+
+    // Handle SIGINT (Ctrl+C)
+    std.posix.sigaction(std.posix.SIG.INT, &sa, null);
+    // Handle SIGTERM
+    std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
+}
+
 /// TelegramBot manages the interaction with the Telegram Bot API.
 /// It uses long-polling to receive updates (messages, voice notes)
 /// and processes them by spawning Agent instances for each conversation.
@@ -82,6 +125,9 @@ pub const TelegramBot = struct {
             self.offset = update.update_id + 1;
 
             if (update.message) |msg| {
+                // Track this chat for shutdown notifications
+                trackActiveChat(self.allocator, msg.chat.id);
+
                 const chat_id_str = try std.fmt.allocPrint(self.allocator, "{d}", .{msg.chat.id});
                 defer self.allocator.free(chat_id_str);
 
@@ -252,20 +298,103 @@ pub const TelegramBot = struct {
                     var agent = Agent.init(self.allocator, self.config, session_id);
                     defer agent.deinit();
 
-                    // Run the agent loop (LLM inference + Tool execution).
-                    agent.run(actual_text) catch |err| {
-                        std.debug.print("Error running agent: {any}\n", .{err});
-                        const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
-                        defer self.allocator.free(error_msg);
-                        try self.send_message(tg_config.botToken, chat_id_str, error_msg);
+                    // Send initial "typing" action to show the user we're processing.
+                    self.send_chat_action(tg_config.botToken, chat_id_str, "typing") catch {};
+
+                    // Shared state to coordinate between agent thread and typing thread
+                    const AgentState = struct {
+                        mutex: std.Thread.Mutex,
+                        done: bool,
+                        error_occurred: bool,
+                    };
+                    var state = AgentState{
+                        .mutex = .{},
+                        .done = false,
+                        .error_occurred = false,
                     };
 
-                    // Send the final response back to Telegram.
-                    const messages = agent.ctx.get_messages();
-                    if (messages.len > 0) {
-                        const last_msg = messages[messages.len - 1];
-                        if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                            try self.send_message(tg_config.botToken, chat_id_str, last_msg.content.?);
+                    // Thread context for agent processing
+                    const AgentContext = struct {
+                        agent: *Agent,
+                        text: []const u8,
+                        state: *AgentState,
+                    };
+                    const agent_ctx = AgentContext{
+                        .agent = &agent,
+                        .text = actual_text,
+                        .state = &state,
+                    };
+
+                    // Spawn agent thread to run LLM processing concurrently
+                    const agent_thread = try std.Thread.spawn(.{}, struct {
+                        fn run(ctx: AgentContext) void {
+                            ctx.agent.run(ctx.text) catch |err| {
+                                std.debug.print("Error running agent: {any}\n", .{err});
+                                ctx.state.mutex.lock();
+                                defer ctx.state.mutex.unlock();
+                                ctx.state.error_occurred = true;
+                            };
+                            ctx.state.mutex.lock();
+                            defer ctx.state.mutex.unlock();
+                            ctx.state.done = true;
+                        }
+                    }.run, .{agent_ctx});
+                    defer agent_thread.join();
+
+                    // Spawn typing indicator thread that sends "typing" action every 5 seconds
+                    // while the agent is processing
+                    const TypingContext = struct {
+                        bot: *TelegramBot,
+                        token: []const u8,
+                        chat_id: []const u8,
+                        state: *AgentState,
+                    };
+                    const typing_ctx = TypingContext{
+                        .bot = self,
+                        .token = tg_config.botToken,
+                        .chat_id = chat_id_str,
+                        .state = &state,
+                    };
+
+                    const typing_thread = try std.Thread.spawn(.{}, struct {
+                        fn run(ctx: TypingContext) void {
+                            // Send typing action every 5 seconds until agent is done
+                            while (true) {
+                                std.Thread.sleep(std.time.ns_per_s * 5);
+
+                                ctx.state.mutex.lock();
+                                const is_done = ctx.state.done;
+                                ctx.state.mutex.unlock();
+
+                                if (is_done) break;
+
+                                // Send typing action (ignore errors)
+                                ctx.bot.send_chat_action(ctx.token, ctx.chat_id, "typing") catch {};
+                            }
+                        }
+                    }.run, .{typing_ctx});
+                    defer typing_thread.join();
+
+                    // Wait for agent thread to complete (typing thread will exit when done via defer)
+                    agent_thread.join();
+
+                    // Check if an error occurred during agent run
+                    state.mutex.lock();
+                    const had_error = state.error_occurred;
+                    state.mutex.unlock();
+
+                    if (had_error) {
+                        const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: Agent failed to process request\n\nPlease try again.", .{});
+                        defer self.allocator.free(error_msg);
+                        try self.send_message(tg_config.botToken, chat_id_str, error_msg);
+                    } else {
+                        // Send the final response back to Telegram.
+                        const messages = agent.ctx.get_messages();
+                        if (messages.len > 0) {
+                            const last_msg = messages[messages.len - 1];
+                            if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
+                                try self.send_message(tg_config.botToken, chat_id_str, last_msg.content.?);
+                            }
                         }
                     }
 
@@ -274,6 +403,26 @@ pub const TelegramBot = struct {
                 }
             }
         }
+    }
+
+    /// Send a chat action (typing, upload_photo, record_video, etc.) to Telegram.
+    /// This shows the user that the bot is processing their request.
+    fn send_chat_action(self: *TelegramBot, token: []const u8, chat_id: []const u8, action: []const u8) !void {
+        const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendChatAction", .{token});
+        defer self.allocator.free(url);
+
+        const body = try std.json.Stringify.valueAlloc(self.allocator, .{
+            .chat_id = chat_id,
+            .action = action,
+        }, .{});
+        defer self.allocator.free(body);
+
+        const headers = &[_]std.http.Header{
+            .{ .name = "Content-Type", .value = "application/json" },
+        };
+
+        const response = try self.client.post(url, headers, body);
+        @constCast(&response).deinit();
     }
 
     /// Helper to send a text message back to a chat using the Telegram API.
@@ -298,11 +447,71 @@ pub const TelegramBot = struct {
 
 /// Main entry point for the Telegram Bot service.
 /// Initializes the bot and enters an infinite polling loop.
+/// Sends a shutdown message to all active chats when terminated.
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
+    // Extract telegram config first - required for operation
+    const tg_config = config.tools.telegram orelse {
+        std.debug.print("Error: telegram configuration is required but not found.\n", .{});
+        return error.TelegramConfigNotFound;
+    };
+
     var bot = try TelegramBot.init(allocator, config);
     defer bot.deinit();
 
+    // Initialize active chats tracking
+    active_chats = std.ArrayList(i64).empty;
+    defer {
+        std.debug.print("Defer running: active_chats.len = {d}\n", .{active_chats.items.len});
+        // Send shutdown message to all active chats before cleanup
+        // This code run when the bot is terminated (Ctrl+C)
+        // Ctrl+C triggers SIGINT, then signalHandler sets shutdown_requested = true
+        // The main loop checks shutdown_requested and breaks, then this defer runs
+        if (active_chats.items.len > 0) {
+            std.debug.print("Sending shutdown message to {d} active chats...\n", .{active_chats.items.len});
+
+            for (active_chats.items) |chat_id| {
+                std.debug.print("Sending goodbye to chat {d}...\n", .{chat_id});
+                const chat_id_str = std.fmt.allocPrint(allocator, "{d}", .{chat_id}) catch continue;
+                defer allocator.free(chat_id_str);
+
+                // Send shutdown message
+                const shutdown_msg = "🛑 Bot is turned off. See you next time! 👋";
+                bot.send_message(tg_config.botToken, chat_id_str, shutdown_msg) catch |err| {
+                    std.debug.print("Failed to send shutdown message to chat {d}: {any}\n", .{ chat_id, err });
+                };
+                std.debug.print("Sent goodbye to chat {d}\n", .{chat_id});
+            }
+        } else {
+            std.debug.print("No active chats to send goodbye to\n", .{});
+        }
+        active_chats.deinit(allocator);
+        std.debug.print("Defer completed\n", .{});
+    }
+
+    // Setup signal handlers for graceful shutdown
+    setupSignalHandlers();
+
+    std.debug.print("🐸 Telegram bot running. Press Ctrl+C to stop.\n", .{});
+
+    // chatId is required - terminate if not configured
+    const chat_id = tg_config.chatId orelse {
+        std.debug.print("Error: telegram.chatId is required but not configured. Terminating.\n", .{});
+        return error.TelegramChatIdNotConfigured;
+    };
+
+    std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
+    const startup_msg = "🐸 Bot is now online and ready! 🚀";
+    bot.send_message(tg_config.botToken, chat_id, startup_msg) catch |err| {
+        std.debug.print("Failed to send startup message: {any}\n", .{err});
+    };
+
     while (true) {
+        // Check for shutdown signal before tick to avoid network calls during shutdown
+        if (shutdown_requested.load(.seq_cst)) {
+            std.debug.print("\n🛑 Shutdown requested. Sending goodbye messages 🌙.\n", .{});
+            break;
+        }
+
         // Robustness: If tick() fails (e.g., network error),
         // log it and retry after a delay.
         // This prevents the bot from crashing completely on transient errors.
@@ -310,6 +519,15 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
             std.debug.print("Error in Telegram bot tick: {any}\n", .{err});
             std.Thread.sleep(std.time.ns_per_s * 5);
         };
+
+        // Check shutdown again after tick before sleeping
+        if (shutdown_requested.load(.seq_cst)) {
+            std.debug.print("\n🛑 Shutdown requested. Sending goodbye messages 🌙.\n", .{});
+            break;
+        }
+
+        // Small sleep to prevent CPU spinning when shutdown is requested
+        std.Thread.sleep(std.time.ns_per_ms * 100);
     }
 }
 

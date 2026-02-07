@@ -130,6 +130,52 @@ SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening fo
 
 For a deep dive into the code structure, Agent Loop, and Gateway system, see the [Architecture Guide](docs/ARCHITECTURE.md).
 
+**Current behavior**: The function blocks until the HTTP POST completes. This is fine for the current architecture since:
+
+1. `tick()` processes messages sequentially anyway
+2. Most calls are immediate user responses where you want confirmation of success/failure
+3. The shutdown defer block uses it synchronously
+
+**When async would help**:
+
+- Sending multiple messages concurrently without blocking the main loop
+- If you refactor to use an async event loop architecture
+- For fire-and-forget scenarios where you don't care about the result
+
+**Quick check**: Is your `http.Client` already async-capable? Let me verify:
+
+Your `http.Client` uses **blocking I/O** (`std.net.tcpConnectToHost`, synchronous reads/writes), so making `send_message` async would have no benefit unless you also rewrite the HTTP layer to be async-capable.
+
+**Current situation:**
+
+- `send_message` → `client.post()` → blocking TCP/TLS I/O
+- Sequential message processing in `tick()` - you process one message at a time anyway
+- Shutdown cleanup in `run()` defer block requires synchronous execution
+
+**When async would help:**
+
+- Sending multiple messages concurrently without blocking the main loop
+- Higher throughput scenarios (many chats, broadcast messages)
+- You want fire-and-forget message sending without waiting for HTTP response
+
+**To make it async, you'd need to:**
+
+1. **Rewrite `http.Client`** to use `std.net.tcpConnectToHostAsync` + `std.event.Loop` or an async runtime
+2. **Add async keywords** to the call chain:
+
+   ```zig
+   pub async fn send_message(...) !void {
+       const response = try await async self.client.post(url, headers, body);
+       // ...
+   }
+   ```
+
+3. **Refactor callers** in `tick()` and `run()` to use `async`/`await` or an executor
+
+**Alternative (simpler)**: If you just want non-blocking sends without full async, use `std.Thread.spawn()` to send messages in background threads.
+
+**Verdict**: Keep it synchronous unless you have a specific performance need for concurrent message sending. The current architecture doesn't benefit from async.
+
 ## Configuration
 
 The agent's configuration is stored in `~/.bots/config.json`.
