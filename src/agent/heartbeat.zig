@@ -6,7 +6,7 @@ const std = @import("std");
 /// Runs every 30 minutes (1800 seconds) by default.
 pub const HeartbeatService = struct {
     allocator: std.mem.Allocator,
-    interval_s: u64 = 1800, // 30 * 60
+    interval_s: u64 = 1800, // 30 minutes * 60 seconds = 1800 seconds
     last_tick_ms: i64 = 0,
     workspace_path: []const u8,
 
@@ -40,7 +40,11 @@ pub const HeartbeatService = struct {
         };
         defer file.close();
 
-        const content = try file.readToEndAlloc(self.allocator, 1048576); // 1024 * 1024
+        const content = file.readToEndAlloc(self.allocator, 1048576) catch |err| {
+            std.log.err("Failed to read HEARTBEAT.md file: {}", .{err});
+            return err;
+        }; // 1MB buffer (1024 * 1024)
+
         defer self.allocator.free(content);
 
         if (self.is_empty(content)) return null;
@@ -70,33 +74,39 @@ pub const HeartbeatService = struct {
 };
 
 test "HeartbeatService: tick logic and prompt" {
+    // Example: Testing the heartbeat service's timing and file reading capabilities
     const allocator = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
+    // Get the temporary directory path for testing
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
 
     var service = HeartbeatService.init(allocator, tmp_path);
-    service.interval_s = 1; // 1 second for testing
+    service.interval_s = 1; // Override to 1 second for faster testing
 
-    // First call to should_tick sets last_tick_ms and returns false
+    // First call to should_tick initializes last_tick_ms and returns false
+    // This prevents immediate tick on service startup
     try std.testing.expect(!service.should_tick());
 
-    // Wait 1.1s
+    // Wait longer than the 1-second interval to trigger next tick
+    // Using 1.1 seconds to ensure we exceed the interval
     std.Thread.sleep(std.time.ns_per_s + std.time.ns_per_ms * 100);
     try std.testing.expect(service.should_tick());
 
-    // Test get_prompt with empty file
+    // Example: Test get_prompt with empty HEARTBEAT.md file
+    // An empty file should return null (no prompt needed)
     const hb_file = try tmp.dir.createFile("HEARTBEAT.md", .{});
     hb_file.close();
     try std.testing.expect((try service.get_prompt()) == null);
 
-    // Test get_prompt with content
+    // Example: Test get_prompt with content in HEARTBEAT.md
+    // A file with content should return a prompt string
     const hb_file2 = try tmp.dir.createFile("HEARTBEAT.md", .{});
     try hb_file2.writeAll("Do something\n");
     hb_file2.close();
     const prompt = try service.get_prompt();
     try std.testing.expect(prompt != null);
-    allocator.free(prompt.?);
+    allocator.free(prompt.?); // Clean up allocated prompt string
 }

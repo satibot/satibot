@@ -10,7 +10,7 @@ const session = @import("agent/session.zig");
 
 /// Get monotonic time for accurate timing
 var timer: ?std.time.Timer = null;
-fn nanotime() u64 {
+fn nanoTime() u64 {
     if (timer == null) {
         timer = std.time.Timer.start() catch unreachable;
     }
@@ -124,7 +124,7 @@ pub const AsyncEventLoop = struct {
     fn scheduleEvent(self: *AsyncEventLoop, event_type: EventType, delay_ms: u64, frame: anyframe) !void {
         const event = Event{
             .type = event_type,
-            .expires = nanotime() + (delay_ms * std.time.ns_per_ms),
+            .expires = nanoTime() + (delay_ms * std.time.ns_per_ms),
             .frame = frame,
         };
         try self.event_queue.add(event);
@@ -141,7 +141,7 @@ pub const AsyncEventLoop = struct {
             .chat_id = chat_id,
             .text = try self.allocator.dupe(u8, text),
             .session_id = session_id,
-            .timestamp = nanotime(),
+            .timestamp = nanoTime(),
         });
 
         // Track active chat
@@ -161,7 +161,7 @@ pub const AsyncEventLoop = struct {
         const cron_name = try self.allocator.dupe(u8, name);
         const cron_message = try self.allocator.dupe(u8, message);
 
-        const now = nanotime() / std.time.ns_per_ms;
+        const now = nanoTime() / std.time.ns_per_ms;
         const next_run = switch (schedule.kind) {
             .every => now + (schedule.every_ms orelse 0),
             .at => @as(u64, @intCast(schedule.at_ms orelse now)),
@@ -232,7 +232,7 @@ pub const AsyncEventLoop = struct {
             const next_run = job.next_run + (job.schedule.every_ms orelse 0);
             var new_job = job;
             new_job.next_run = next_run;
-            new_job.last_run = nanotime() / std.time.ns_per_ms;
+            new_job.last_run = nanoTime() / std.time.ns_per_ms;
 
             self.cron_mutex.lock();
             defer self.cron_mutex.unlock();
@@ -243,8 +243,8 @@ pub const AsyncEventLoop = struct {
             };
 
             // Schedule the next execution
-            const delay_ms = next_run - (nanotime() / std.time.ns_per_ms);
-            _ = async self.scheduleCronExecution(job.id, delay_ms);
+            const delay_ms = next_run - (nanoTime() / std.time.ns_per_ms);
+            self.scheduleCronExecution(job.id, delay_ms);
         }
     }
 
@@ -293,7 +293,7 @@ pub const AsyncEventLoop = struct {
         var cron_iter = self.cron_jobs.iterator();
         while (cron_iter.next()) |entry| {
             const job = entry.value_ptr.*;
-            const delay_ms = job.next_run - (nanotime() / std.time.ns_per_ms);
+            const delay_ms = job.next_run - (nanoTime() / std.time.ns_per_ms);
             _ = async self.scheduleCronExecution(job.id, @max(0, delay_ms));
         }
         self.cron_mutex.unlock();
@@ -318,7 +318,7 @@ pub const AsyncEventLoop = struct {
 
             // Process timed events
             if (self.event_queue.removeOrNull()) |event| {
-                const now = nanotime();
+                const now = nanoTime();
                 if (now < event.expires) {
                     // Sleep until event is due
                     std.time.sleep(event.expires - now);
