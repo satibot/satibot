@@ -66,31 +66,32 @@ pub const Gateway = struct {
                 std.debug.print("Error in Cron tick: {any}\n", .{err});
             };
 
-            // 3. Tick Heartbeat
-            if (self.heartbeat.should_tick()) {
-                if (try self.heartbeat.get_prompt()) |prompt| {
-                    std.debug.print("💓 Heartbeat tick: checking for tasks...\n", .{});
-                    var agent = Agent.init(self.allocator, self.config, "context:heartbeat");
-                    defer agent.deinit();
+            // 3. Tick Heartbeat - TEMPORARILY DISABLED
+            // if (self.heartbeat.should_tick()) {
+            //     if (try self.heartbeat.get_prompt()) |prompt| {
+            //         std.debug.print("💓 Heartbeat tick: checking for tasks...\n", .{});
+            //         var agent = Agent.init(self.allocator, self.config, "context:heartbeat");
+            //         defer agent.deinit();
 
-                    agent.run(prompt) catch |err| {
-                        std.debug.print("Error in Heartbeat run: {any}\n", .{err});
-                    };
+            //         agent.run(prompt) catch |err| {
+            //             std.debug.print("Error in Heartbeat agent run: {any}\n", .{err});
+            //         };
 
-                    const messages = agent.ctx.get_messages();
-                    if (messages.len > 0) {
-                        const last_msg = messages[messages.len - 1];
-                        if (last_msg.content) |content| {
-                            if (std.mem.indexOf(u8, content, "HEARTBEAT_OK") != null) {
-                                std.debug.print("💓 Heartbeat: OK (no action needed)\n", .{});
-                            } else {
-                                std.debug.print("💓 Heartbeat: task completed\n", .{});
-                            }
-                        }
-                    }
-                }
-                self.heartbeat.record_tick();
-            }
+            //         // Update the heartbeat file to indicate we've checked it
+            //         const heartbeat_path = try std.fs.path.join(self.allocator, &.{ self.heartbeat.workspace_path, "HEARTBEAT.md" });
+            //         defer self.allocator.free(heartbeat_path);
+
+            //         const file = std.fs.createFileAbsolute(heartbeat_path, .{ .truncate = false }) catch |err| {
+            //             std.debug.print("Error opening HEARTBEAT.md for update: {any}\n", .{err});
+            //         } else {
+            //             defer file.close();
+            //             const writer = file.writer();
+            //             try writer.print("\n\n<!-- Last checked: {d} -->\n", .{std.time.timestamp()});
+            //             std.debug.print("💓 Heartbeat: task completed\n", .{});
+            //         }
+            //     }
+            //     self.heartbeat.record_tick();
+            // }
 
             // Sleep a bit to avoid CPU pegging
             std.Thread.sleep(std.time.ns_per_s * 1);

@@ -102,6 +102,40 @@ pub fn build(b: *std.Build) void {
     // by passing `--prefix` or `-p`.
     b.installArtifact(exe);
 
+    // Async Telegram Bot executable (Zig 0.15.2+ incompatible)
+    // const async_telegram_exe = b.addExecutable(.{
+    //     .name = "async-telegram-bot",
+    //     .root_source_file = b.path("src/async_telegram_main.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    // async_telegram_exe.root_module.addImport("satibot", mod);
+    // async_telegram_exe.root_module.addImport("build_options", build_options.createModule());
+    // async_telegram_exe.root_module.addImport("tls", b.dependency("tls", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // }).module("tls"));
+    // b.installArtifact(async_telegram_exe);
+
+    // Threaded Telegram Bot executable (Zig 0.15.2+ compatible)
+    const threaded_telegram_exe = b.addExecutable(.{
+        .name = "threaded-telegram-bot",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/threaded_telegram_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+            },
+        }),
+    });
+    b.installArtifact(threaded_telegram_exe);
+
     // This creates a top level step. Top level steps have a name and can be
     // invoked by name when running `zig build` (e.g. `zig build run`).
     // This will evaluate the `run` step rather than the default step.
@@ -118,9 +152,16 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
 
+    // Run step for threaded telegram bot
+    const run_threaded_telegram_step = b.step("run-threaded-telegram", "Run the threaded telegram bot");
+    const run_threaded_telegram_cmd = b.addRunArtifact(threaded_telegram_exe);
+    run_threaded_telegram_step.dependOn(&run_threaded_telegram_cmd.step);
+
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     run_cmd.step.dependOn(b.getInstallStep());
+    // run_async_telegram_cmd.step.dependOn(b.getInstallStep());
+    run_threaded_telegram_cmd.step.dependOn(b.getInstallStep());
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`

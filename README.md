@@ -82,7 +82,7 @@ That's it! You have a mindful AI assistant running in seconds.
 
 ### Telegram
 
-1. Create bot via [@BotFather](https://t.me/BotFather) → `/newbot`
+1. Create bot via [@BotFather](https://t.me/BotFather) --> `/newbot`
 2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
 3. Add to config and run `zig build run -- telegram`
 4. **Or use `/setibot` command in Telegram to auto-generate config!**

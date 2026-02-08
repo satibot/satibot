@@ -148,7 +148,7 @@ Your `http.Client` uses **blocking I/O** (`std.net.tcpConnectToHost`, synchronou
 
 **Current situation:**
 
-- `send_message` → `client.post()` → blocking TCP/TLS I/O
+- `send_message` --> `client.post()` --> blocking TCP/TLS I/O
 - Sequential message processing in `tick()` - you process one message at a time anyway
 - Shutdown cleanup in `run()` defer block requires synchronous execution
 
