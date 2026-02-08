@@ -61,6 +61,10 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             }).module("tls") },
+            .{ .name = "xev", .module = b.dependency("xev", .{
+                .target = target,
+                .optimize = optimize,
+            }).module("xev") },
         },
     });
 
@@ -137,10 +141,37 @@ pub fn build(b: *std.Build) void {
                     .target = target,
                     .optimize = optimize,
                 }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("xev") },
             },
         }),
     });
     b.installArtifact(threaded_telegram_exe);
+
+    // Xev-based Telegram Bot executable
+    const xev_telegram_exe = b.addExecutable(.{
+        .name = "xev-telegram-bot",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/xev_telegram_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("xev") },
+            },
+        }),
+    });
+    b.installArtifact(xev_telegram_exe);
 
     // This creates a top level step. Top level steps have a name and can be
     // invoked by name when running `zig build` (e.g. `zig build run`).
@@ -163,11 +194,17 @@ pub fn build(b: *std.Build) void {
     const run_threaded_telegram_cmd = b.addRunArtifact(threaded_telegram_exe);
     run_threaded_telegram_step.dependOn(&run_threaded_telegram_cmd.step);
 
+    // Run step for xev telegram bot
+    const run_xev_telegram_step = b.step("run-xev-telegram", "Run the xev telegram bot");
+    const run_xev_telegram_cmd = b.addRunArtifact(xev_telegram_exe);
+    run_xev_telegram_step.dependOn(&run_xev_telegram_cmd.step);
+
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     run_cmd.step.dependOn(b.getInstallStep());
     // run_async_telegram_cmd.step.dependOn(b.getInstallStep());
     run_threaded_telegram_cmd.step.dependOn(b.getInstallStep());
+    run_xev_telegram_cmd.step.dependOn(b.getInstallStep());
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`

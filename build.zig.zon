@@ -36,6 +36,10 @@
             .url = "https://github.com/ianic/tls.zig/archive/refs/heads/zig-0.15.x.tar.gz",
             .hash = "tls-0.1.0-ER2e0kZoBQAKITpTPs0jkkeULb5FeQNnU5tGE2lN-wjI",
         },
+        .xev = .{
+            .url = "https://github.com/mitchellh/libxev/archive/refs/heads/main.tar.gz",
+            .hash = "libxev-0.0.0-86vtc0IbEwBzMSXa-ZPZ8JpcV4Mw1SrsTuvtJmFAQ7Uu",
+        },
     },
     .paths = .{
         "build.zig",
