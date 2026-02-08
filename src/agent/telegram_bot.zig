@@ -171,12 +171,7 @@ pub const TelegramBot = struct {
                         // This provides users with a quick reference for bot functionality.
                         if (std.mem.startsWith(u8, final_text, "/help")) {
                             const help_text =
-                                \\🐸 SatiBot Commands:
-                                \\
-                                \/new - Clear conversation session memory
-                                \/help - Show this help message
-                                \\
-                                \\Send any message to chat with the AI assistant.
+                                \\🐸 SatiBot Commands:\n\\n\\/new - Clear conversation session memory\n\\/help - Show this help message\n\\n\\Send any message to chat with the AI assistant.
                             ;
                             try self.send_message(tg_config.botToken, chat_id_str, help_text);
                             continue;

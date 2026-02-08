@@ -88,6 +88,7 @@ Add the WhatsApp configuration:
 ```
 
 Replace:
+
 - `YOUR_OPENROUTER_API_KEY` - Your OpenRouter API key
 - `YOUR_ACCESS_TOKEN` - From Step 4
 - `YOUR_PHONE_NUMBER_ID` - From Step 4
@@ -107,9 +108,11 @@ zig build run -- whatsapp
 
 1. Install [ngrok](https://ngrok.com/)
 2. Start ngrok to tunnel port 8080:
+
    ```bash
    ngrok http 8080
    ```
+
 3. Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
 4. In Meta Developer Dashboard, configure webhook:
    - **Callback URL**: `https://abc123.ngrok.io/webhook`
@@ -123,24 +126,11 @@ zig build run -- whatsapp
 
 ---
 
-## Quick Setup via WhatsApp (Auto-Config)
-
-If you have satibot running (even partially configured), you can use the `/setibot` command in WhatsApp:
-
-1. Send the message: `/setibot` to your bot
-2. The bot will create a default config file at `~/.bots/config.json` with:
-   - Default model: `anthropic/claude-3-5-sonnet-20241022`
-   - Template API keys (you need to fill these in)
-   - Your phone number (shown for easy reference)
-3. Edit the config file with your real API credentials
-4. Restart satibot
-
-### Available Commands
+## Available Commands
 
 Once connected, these commands are available in WhatsApp:
 
 - `/help` - Show available commands
-- `/setibot` - Generate default config file
 - `/new` - Clear conversation session memory
 - Any other message - Chat with the AI assistant
 

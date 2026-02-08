@@ -59,6 +59,55 @@
 - Remember to call `deinit()` on parsed JSON values
 - Use `.value` to access the actual data
 
+## String Literals
+
+### Multi-line String Literals (Common Pitfall)
+
+**ERROR:** `expected ';' after statement` when using `\\` on empty lines
+
+**Problem:** Zig's multi-line string literals cannot have continuation lines (`\\`) without content:
+
+```zig
+// WRONG - This causes a parse error:
+const help_text =
+    \\Line 1
+    \\           <-- Empty continuation line causes error
+    \\Line 2
+;
+```
+
+**Solution Options:**
+
+1. **Use explicit `\\n` in single-line string:**
+
+```zig
+const help_text =
+    \\Line 1\n\\n\\Line 2
+;
+```
+
+1. **Add content to every line:**
+
+```zig
+const help_text =
+    \\Line 1
+    \\ 
+    \\Line 2
+;
+```
+
+1. **Use `\n` literal strings instead:**
+
+```zig
+const help_text = "Line 1\n\nLine 2";
+```
+
+**When to use each:**
+
+- Multi-line `\\` strings: For long text blocks without special characters
+- Single-line with `\\n`: For help text requiring newlines
+- Regular `""` strings: For short strings or when escape sequences are needed
+
 ## Build Configuration
 
 - Comment out incompatible code rather than deleting

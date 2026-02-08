@@ -85,7 +85,6 @@ That's it! You have a mindful AI assistant running in seconds.
 1. Create bot via [@BotFather](https://t.me/BotFather) --> `/newbot`
 2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
 3. Add to config and run `zig build run -- telegram`
-4. **Or use `/setibot` command in Telegram to auto-generate config!**
 
 ### Discord, WhatsApp & More
 
@@ -135,8 +134,8 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 | [**Features**](docs/FEATURES.md) | Deep dive into Gateway, Voice, Cron systems |
 | [**Configuration**](docs/CONFIGURATION.md) | Complete config guide for providers & tools |
 | [**Architecture**](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & internals |
-| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup with `/setibot` |
-| [**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md) | WhatsApp Business API setup with `/setibot` |
+| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
+| [**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md) | WhatsApp Business API setup |
 | [**RAG Guide**](docs/RAG.md) | Understanding the memory system |
 | [**Release Guide**](docs/RELEASE_GUIDE.md) | Cross-platform builds and GitHub releases |
 

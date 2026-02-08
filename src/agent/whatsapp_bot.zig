@@ -86,12 +86,7 @@ pub const WhatsAppBot = struct {
         // Handle magic command /help to show available commands
         if (std.mem.startsWith(u8, text, "/help")) {
             const help_text =
-                \\🐸 SatiBot WhatsApp Commands:
-                \\
-                \/new - Clear conversation session memory
-                \/help - Show this help message
-                \\
-                \\Send any message to chat with the AI assistant.
+                \\🐸 SatiBot WhatsApp Commands:\n\\n\\/new - Clear conversation session memory\n\\/help - Show this help message\n\\n\\Send any message to chat with the AI assistant.
             ;
             try self.send_message(wa_config, from, help_text);
             return;

@@ -12,7 +12,6 @@
         "getenv",
         "groq",
         "openrouter",
-        "satibot",
-        "setibot"
+        "satibot"
     ]
 }
