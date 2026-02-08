@@ -30,10 +30,17 @@ pub fn main() !void {
         }
     }
 
-    // Require at least one command argument
+    // If no command is provided, default to running telegram bot with openrouter
     if (args.len < 2) {
-        // Show general help if no command is provided
-        try usage();
+        // Create args array for telegram with openrouter
+        const telegram_args = try allocator.alloc([:0]u8, 3);
+        defer allocator.free(telegram_args);
+
+        telegram_args[0] = try allocator.dupeZ(u8, "satibot");
+        telegram_args[1] = try allocator.dupeZ(u8, "telegram");
+        telegram_args[2] = try allocator.dupeZ(u8, "openrouter");
+
+        try runTelegramBot(allocator, telegram_args);
         return;
     }
 
@@ -51,9 +58,6 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "agent")) {
         // Run interactive agent or single message mode
         try runAgent(allocator, args);
-    } else if (std.mem.eql(u8, command, "onboard")) {
-        // Initialize configuration and directories
-        try runOnboard(allocator);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         // Test LLM provider connectivity
         try runTestLlm(allocator);
@@ -119,7 +123,6 @@ fn usage() !void {
     std.debug.print("  gateway       Run gateway service (Telegram + Cron + Heartbeat)\n", .{});
     std.debug.print("  vector-db     Manage vector database for RAG functionality\n", .{});
     std.debug.print("  status        Display system status and configuration\n", .{});
-    std.debug.print("  onboard       Initialize configuration and directories\n", .{});
     std.debug.print("  upgrade       Self-upgrade (git pull & rebuild)\n", .{});
     std.debug.print("  test-llm      Test LLM provider connectivity\n", .{});
     std.debug.print("  in            Quick start with auto-configuration\n", .{});
@@ -187,6 +190,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("  satibot agent -m \"Hello\"                # Single message\n", .{});
         std.debug.print("  satibot agent -s chat123 -m \"Hello\"     # With session\n", .{});
         std.debug.print("  satibot agent --no-rag                  # Disable RAG\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "vector-db")) {
         std.debug.print("🗃️  VECTOR-DB COMMAND\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -202,6 +206,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("  satibot vector-db search \"query text\"\n", .{});
         std.debug.print("  satibot vector-db search \"query\" 5    # Top 5 results\n", .{});
         std.debug.print("  satibot vector-db stats\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "telegram")) {
         std.debug.print("📱 TELEGRAM COMMAND\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -215,6 +220,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("  Requires telegram.botToken and telegram.chatId in config.json\n", .{});
         std.debug.print("  Get bot token from @BotFather\n", .{});
         std.debug.print("  Get chat ID from @userinfobot\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         std.debug.print("📱 WHATSAPP COMMAND\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -226,6 +232,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("CONFIGURATION:\n", .{});
         std.debug.print("  Uses ~/.bots/whatsapp.json configuration file\n", .{});
         std.debug.print("  Requires accessToken, phoneNumberId, and recipientPhoneNumber\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "gateway")) {
         std.debug.print("🌉 GATEWAY COMMAND\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -236,6 +243,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("  - Cron jobs for scheduled tasks\n", .{});
         std.debug.print("  - Heartbeat for periodic checks\n\n", .{});
         std.debug.print("  This is the main production deployment mode.\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "status")) {
         std.debug.print("📊 STATUS COMMAND\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -247,16 +255,7 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("  - Channel configurations\n", .{});
         std.debug.print("  - Data directory location\n", .{});
         std.debug.print("  - Active cron jobs\n", .{});
-    } else if (std.mem.eql(u8, command, "onboard")) {
-        std.debug.print("🚀 ONBOARD COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot onboard\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Initializes the satibot environment:\n", .{});
-        std.debug.print("  - Creates ~/.bots/ directory\n", .{});
-        std.debug.print("  - Creates default config.json\n", .{});
-        std.debug.print("  - Creates sessions directory\n", .{});
-        std.debug.print("  - Creates HEARTBEAT.md file\n", .{});
+        return;
     } else if (std.mem.eql(u8, command, "in")) {
         std.debug.print("⚡ IN COMMAND (Quick Start)\n\n", .{});
         std.debug.print("USAGE:\n", .{});
@@ -267,10 +266,11 @@ fn showCommandHelp(command: []const u8) !void {
         std.debug.print("DESCRIPTION:\n", .{});
         std.debug.print("  Quickly starts a bot with auto-configuration.\n", .{});
         std.debug.print("  Creates the necessary config files if they don't exist.\n", .{});
+        return;
     } else {
         std.debug.print("Unknown command: {s}\n\n", .{command});
         std.debug.print("Available commands: agent, telegram, whatsapp, gateway, vector-db,\n", .{});
-        std.debug.print("                  status, onboard, in\n", .{});
+        std.debug.print("                  status, in\n", .{});
     }
 }
 
@@ -687,77 +687,6 @@ fn validateConfig(config: satibot.config.Config) !void {
             std.process.exit(1);
         }
     }
-}
-
-/// Initialize onboarding process
-/// Creates necessary directories and default configuration files
-/// Sets up ~/.bots/ directory structure
-fn runOnboard(allocator: std.mem.Allocator) !void {
-    // Get home directory
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
-    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
-    defer allocator.free(bots_dir);
-
-    // Create ~/.bots directory if it doesn't exist
-    std.fs.makeDirAbsolute(bots_dir) catch |err| {
-        if (err != error.PathAlreadyExists) return err;
-    };
-
-    // Create default config.json if it doesn't exist
-    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "config.json" });
-    defer allocator.free(config_path);
-
-    std.fs.accessAbsolute(config_path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            const file = try std.fs.createFileAbsolute(config_path, .{});
-            defer file.close();
-            // Default configuration template
-            const default_json =
-                \\{
-                \\  "agents": {
-                \\    "defaults": {
-                \\      "model": "anthropic/claude-3-5-sonnet-20241022"
-                \\    }
-                \\  },
-                \\  "providers": {
-                \\    "openrouter": {
-                \\      "apiKey": "sk-or-v1-..."
-                \\    }
-                \\  },
-                \\  "tools": {
-                \\    "web": {
-                \\      "search": {
-                \\        "apiKey": "BSA..."
-                \\      }
-                \\    }
-                \\  }
-                \\}
-            ;
-            try file.writeAll(default_json);
-            std.debug.print("✅ Created default config at {s}\n", .{config_path});
-        }
-    };
-
-    // Create sessions directory for conversation persistence
-    const sessions_dir = try std.fs.path.join(allocator, &.{ bots_dir, "sessions" });
-    defer allocator.free(sessions_dir);
-    std.fs.makeDirAbsolute(sessions_dir) catch |err| {
-        if (err != error.PathAlreadyExists) return err;
-    };
-
-    // Create HEARTBEAT.md file for periodic tasks
-    const heartbeat_path = try std.fs.path.join(allocator, &.{ bots_dir, "HEARTBEAT.md" });
-    defer allocator.free(heartbeat_path);
-    std.fs.accessAbsolute(heartbeat_path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            const file = try std.fs.createFileAbsolute(heartbeat_path, .{});
-            defer file.close();
-            try file.writeAll("# HEARTBEAT.md\n\nAdd tasks here for the agent to pick up periodically.\n");
-            std.debug.print("✅ Created {s}\n", .{heartbeat_path});
-        }
-    };
-
-    std.debug.print("🐸 satibot onboarding complete!\n", .{});
 }
 
 /// Self-upgrade function
