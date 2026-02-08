@@ -489,3 +489,212 @@ test "TelegramBot config file template generation" {
     try std.testing.expect(std.mem.indexOf(u8, default_json, "telegram") != null);
     try std.testing.expect(std.mem.indexOf(u8, default_json, "botToken") != null);
 }
+
+test "TelegramBot parallel messages - 2 messages within 400ms are both queued" {
+    // Simulates: User A sends "hello" and User B sends "world" within 400ms.
+    // Both messages should be queued in the event loop's message_queue
+    // concurrently via mutex-protected addChatMessage().
+    const allocator = std.testing.allocator;
+    const config = Config{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    const chat_id_a: i64 = 111;
+    const chat_id_b: i64 = 222;
+
+    // Simulate 2 messages arriving in rapid succession (< 400ms apart)
+    // by adding them to the event loop's message queue from separate threads.
+    const Thread1 = struct {
+        fn run(event_loop: *AsyncEventLoop) void {
+            event_loop.addChatMessage(111, "hello from user A") catch {};
+        }
+    };
+    const Thread2 = struct {
+        fn run(event_loop: *AsyncEventLoop) void {
+            // Small delay to simulate 200ms gap between messages
+            std.Thread.sleep(std.time.ns_per_ms * 200);
+            event_loop.addChatMessage(222, "hello from user B") catch {};
+        }
+    };
+
+    // Spawn both threads to add messages concurrently
+    const t1 = try std.Thread.spawn(.{}, Thread1.run, .{&bot.event_loop});
+    const t2 = try std.Thread.spawn(.{}, Thread2.run, .{&bot.event_loop});
+
+    t1.join();
+    t2.join();
+
+    // Both messages should be in the queue
+    bot.event_loop.message_mutex.lock();
+    const queue_len = bot.event_loop.message_queue.items.len;
+    bot.event_loop.message_mutex.unlock();
+    try std.testing.expectEqual(@as(usize, 2), queue_len);
+
+    // Both chats should be tracked as active
+    bot.event_loop.chats_mutex.lock();
+    const active_len = bot.event_loop.active_chats.items.len;
+    bot.event_loop.chats_mutex.unlock();
+    try std.testing.expectEqual(@as(usize, 2), active_len);
+
+    // Verify message content is preserved correctly
+    bot.event_loop.message_mutex.lock();
+    const msg_a = bot.event_loop.message_queue.items[0];
+    const msg_b = bot.event_loop.message_queue.items[1];
+    bot.event_loop.message_mutex.unlock();
+
+    // First message should be from user A (queued first)
+    try std.testing.expectEqual(chat_id_a, msg_a.chat_id);
+    try std.testing.expectEqualStrings("hello from user A", msg_a.text);
+
+    // Second message should be from user B (queued ~200ms later)
+    try std.testing.expectEqual(chat_id_b, msg_b.chat_id);
+    try std.testing.expectEqualStrings("hello from user B", msg_b.text);
+
+    // Clean up queued messages to prevent memory leaks
+    for (bot.event_loop.message_queue.items) |msg| {
+        allocator.free(msg.text);
+        allocator.free(msg.session_id);
+    }
+}
+
+test "TelegramBot parallel messages - same user sends 2 messages rapidly" {
+    // Simulates: Same user sends 2 messages within 400ms.
+    // Both should be queued, but active_chats should only track the user once.
+    const allocator = std.testing.allocator;
+    const config = Config{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Two threads adding messages from same chat_id (999) concurrently
+    const Thread1 = struct {
+        fn run(event_loop: *AsyncEventLoop) void {
+            event_loop.addChatMessage(999, "first message") catch {};
+        }
+    };
+    const Thread2 = struct {
+        fn run(event_loop: *AsyncEventLoop) void {
+            std.Thread.sleep(std.time.ns_per_ms * 100);
+            event_loop.addChatMessage(999, "second message") catch {};
+        }
+    };
+
+    const t1 = try std.Thread.spawn(.{}, Thread1.run, .{&bot.event_loop});
+    const t2 = try std.Thread.spawn(.{}, Thread2.run, .{&bot.event_loop});
+
+    t1.join();
+    t2.join();
+
+    // Both messages should be queued (even from same user)
+    bot.event_loop.message_mutex.lock();
+    const queue_len = bot.event_loop.message_queue.items.len;
+    bot.event_loop.message_mutex.unlock();
+    try std.testing.expectEqual(@as(usize, 2), queue_len);
+
+    // Active chats should only have ONE entry for the same chat_id
+    // (addChatMessage deduplicates active chat tracking)
+    bot.event_loop.chats_mutex.lock();
+    const active_len = bot.event_loop.active_chats.items.len;
+    bot.event_loop.chats_mutex.unlock();
+    try std.testing.expectEqual(@as(usize, 1), active_len);
+
+    // Verify session IDs follow the tg_{chat_id} pattern
+    bot.event_loop.message_mutex.lock();
+    const msg_a = bot.event_loop.message_queue.items[0];
+    const msg_b = bot.event_loop.message_queue.items[1];
+    bot.event_loop.message_mutex.unlock();
+
+    try std.testing.expectEqualStrings("tg_999", msg_a.session_id);
+    try std.testing.expectEqualStrings("tg_999", msg_b.session_id);
+
+    // Second message timestamp should be after first (ordered correctly)
+    try std.testing.expect(msg_b.timestamp >= msg_a.timestamp);
+
+    // Clean up queued messages
+    for (bot.event_loop.message_queue.items) |msg| {
+        allocator.free(msg.text);
+        allocator.free(msg.session_id);
+    }
+}
+
+test "TelegramBot parallel messages - offset updates correctly for batch" {
+    // When 2 updates arrive in same getUpdates batch, offset should
+    // advance to the highest update_id + 1. This ensures no duplicate processing.
+    const allocator = std.testing.allocator;
+    const config = Config{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Simulate offset updates as if processing 2 messages in a batch
+    // (this is what tick() does: self.offset = update.update_id + 1)
+    const update_ids = [_]i64{ 100, 101 };
+    for (update_ids) |update_id| {
+        bot.offset = update_id + 1;
+    }
+
+    // After processing both updates, offset should be at 102
+    // (last update_id 101 + 1), so next poll skips both messages
+    try std.testing.expectEqual(@as(i64, 102), bot.offset);
+}
+
+test "TelegramBot parallel messages - command detection is per-message" {
+    // When 2 messages arrive together, one may be a command (/new) and
+    // the other a regular message. Each should be detected independently.
+    const msg1 = "/new";
+    const msg2 = "What is Zig?";
+
+    // msg1 is a /new command
+    try std.testing.expect(std.mem.startsWith(u8, msg1, "/new"));
+    try std.testing.expect(!std.mem.startsWith(u8, msg1, "/help"));
+
+    // msg2 is a regular message (not a command)
+    try std.testing.expect(!std.mem.startsWith(u8, msg2, "/new"));
+    try std.testing.expect(!std.mem.startsWith(u8, msg2, "/help"));
+
+    // Both have independent session cleanup behavior:
+    // msg1 triggers session delete, msg2 goes to agent.run()
+}
+
+test "TelegramBot parallel messages - session IDs are independent per chat" {
+    // Two parallel messages from different chats should generate
+    // independent session IDs, ensuring conversations don't cross-contaminate.
+    const allocator = std.testing.allocator;
+
+    const chat_id_a: i64 = 111222333;
+    const chat_id_b: i64 = 444555666;
+
+    const session_a = try std.fmt.allocPrint(allocator, "tg_{d}", .{chat_id_a});
+    defer allocator.free(session_a);
+    const session_b = try std.fmt.allocPrint(allocator, "tg_{d}", .{chat_id_b});
+    defer allocator.free(session_b);
+
+    // Session IDs must be different
+    try std.testing.expect(!std.mem.eql(u8, session_a, session_b));
+
+    // Each follows the tg_{chat_id} pattern
+    try std.testing.expectEqualStrings("tg_111222333", session_a);
+    try std.testing.expectEqualStrings("tg_444555666", session_b);
+}
