@@ -86,10 +86,10 @@ pub const AsyncEventLoop = struct {
     offset: std.atomic.Value(i64),
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !AsyncEventLoop {
-        return .{
+        const event_loop = AsyncEventLoop{
             .allocator = allocator,
             .config = config,
-            .task_queue = std.ArrayList(Task).initCapacity(allocator, 0) catch unreachable,
+            .task_queue = std.ArrayList(Task).initCapacity(allocator, 0) catch return error.OutOfMemory,
             .task_mutex = .{},
             .task_condition = .{},
             .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
@@ -97,9 +97,10 @@ pub const AsyncEventLoop = struct {
             .task_handler = null,
             .event_handler = null,
             .shutdown = std.atomic.Value(bool).init(false),
-            .worker_threads = std.ArrayList(std.Thread).initCapacity(allocator, 0) catch unreachable,
+            .worker_threads = std.ArrayList(std.Thread).initCapacity(allocator, 0) catch return error.OutOfMemory,
             .offset = std.atomic.Value(i64).init(0),
         };
+        return event_loop;
     }
 
     /// Set task handler callback
@@ -124,14 +125,18 @@ pub const AsyncEventLoop = struct {
     }
 
     pub fn deinit(self: *AsyncEventLoop) void {
+        std.debug.print("EventLoop deinit: Starting shutdown...\n", .{});
+        
         // Shutdown all worker threads
         self.shutdown.store(true, .seq_cst);
         self.task_condition.broadcast();
+        std.debug.print("EventLoop deinit: Shutdown flag set, broadcasting to workers\n", .{});
         
         // Wait for all threads to finish
         for (self.worker_threads.items) |thread| {
             thread.join();
         }
+        std.debug.print("EventLoop deinit: All worker threads joined\n", .{});
         self.worker_threads.deinit(self.allocator);
         
         // Free remaining tasks
@@ -199,6 +204,9 @@ pub const AsyncEventLoop = struct {
 
     /// Worker thread function for processing tasks
     fn taskWorker(self: *AsyncEventLoop) void {
+        const thread_id = std.Thread.getCurrentId();
+        std.debug.print("Worker thread {d} started\n", .{thread_id});
+        
         while (!self.shutdown.load(.seq_cst)) {
             self.task_mutex.lock();
             
@@ -214,11 +222,14 @@ pub const AsyncEventLoop = struct {
             
             // Get next task
             const task = self.task_queue.orderedRemove(0);
+            std.debug.print("Worker {d}: Got task {s} from {s}\n", .{ thread_id, task.id, task.source });
             self.task_mutex.unlock();
             
             // Process task
             self.processTask(task);
         }
+        
+        std.debug.print("Worker thread {d} shutting down\n", .{thread_id});
     }
 
 
@@ -274,9 +285,17 @@ pub const AsyncEventLoop = struct {
                 const now = std.time.nanoTimestamp();
                 
                 if (now < event.expires) {
-                    // Sleep until the next event is due
+                    // Sleep until the next event is due, but check shutdown periodically
                     const delay_ms = @as(u64, @intCast(@divTrunc(event.expires - now, std.time.ns_per_ms)));
-                    std.Thread.sleep(delay_ms * std.time.ns_per_ms);
+                    const sleep_chunks = @max(1, delay_ms / 10); // Check every 10ms max
+                    const chunk_delay = delay_ms / sleep_chunks;
+                    
+                    for (0..sleep_chunks) |_| {
+                        if (self.shutdown.load(.seq_cst)) break;
+                        std.Thread.sleep(chunk_delay * std.time.ns_per_ms);
+                    }
+                    
+                    if (self.shutdown.load(.seq_cst)) break;
                 }
                 
                 // Remove and process the event
@@ -311,6 +330,8 @@ pub const AsyncEventLoop = struct {
                 std.Thread.sleep(10 * std.time.ns_per_ms);
             }
         }
+        
+        std.debug.print("EventLoop: Main event loop exiting\n", .{});
     }
 
     /// Start the event loop

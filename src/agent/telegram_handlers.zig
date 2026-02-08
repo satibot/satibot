@@ -25,14 +25,12 @@ pub const TelegramContext = struct {
     allocator: std.mem.Allocator,
     config: Config,
     client: *const http.Client,
-    agent: ?*Agent,
     
     pub fn init(allocator: std.mem.Allocator, config: Config, client: *const http.Client) TelegramContext {
         return .{
             .allocator = allocator,
             .config = config,
             .client = client,
-            .agent = null,
         };
     }
 };
@@ -63,13 +61,18 @@ var global_telegram_context: ?*TelegramContext = null;
 
 /// Handle incoming Telegram messages
 pub fn handleTelegramTask(ctx: *TelegramContext, task: event_loop.Task) !void {
+    std.debug.print("handleTelegramTask: Starting task processing\n", .{});
+    
     const tg_data = try parseTelegramTask(ctx.allocator, task);
     defer ctx.allocator.free(tg_data.text);
     
     std.debug.print("Processing Telegram message from chat {d}: {s}\n", .{ tg_data.chat_id, tg_data.text });
     
     // Get Telegram config
-    const tg_config = ctx.config.tools.telegram orelse return;
+    const tg_config = ctx.config.tools.telegram orelse {
+        std.debug.print("Error: No Telegram config found\n", .{});
+        return;
+    };
     
     // Create or get agent for this chat
     const session_id = try std.fmt.allocPrint(ctx.allocator, "tg_{d}", .{tg_data.chat_id});
@@ -87,6 +90,7 @@ pub fn handleTelegramTask(ctx: *TelegramContext, task: event_loop.Task) !void {
     };
     
     // Process message with agent
+    std.debug.print("Calling agent.run()...\n", .{});
     agent.run(tg_data.text) catch |err| {
         std.debug.print("Error processing message: {any}\n", .{err});
         const error_msg = try std.fmt.allocPrint(ctx.allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
@@ -94,22 +98,59 @@ pub fn handleTelegramTask(ctx: *TelegramContext, task: event_loop.Task) !void {
         try sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg);
         return;
     };
+    std.debug.print("agent.run() completed successfully\n", .{});
     
     // Get response from agent's messages
     const messages = agent.ctx.get_messages();
+    std.debug.print("Agent has {d} messages\n", .{messages.len});
+    
+    // Print all messages for debugging
+    for (messages, 0..) |msg, i| {
+        std.debug.print("Message {d}: role={s}, content={any}\n", .{ i, msg.role, msg.content });
+    }
+    
     if (messages.len > 0) {
         const last_msg = messages[messages.len - 1];
+        std.debug.print("Last message role: {s}, content: {any}\n", .{ last_msg.role, last_msg.content });
+        
         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-            try sendMessage(ctx.client, tg_config.botToken, chat_id_str, last_msg.content.?);
+            std.debug.print("Sending response to Telegram...\n", .{});
+            sendMessage(ctx.client, tg_config.botToken, chat_id_str, last_msg.content.?) catch |err| {
+                std.debug.print("Failed to send message: {any}\n", .{err});
+            };
+            std.debug.print("Response sent successfully\n", .{});
+        } else {
+            std.debug.print("No assistant response found\n", .{});
+            // Send a default response if no assistant message
+            const default_msg = "I received your message but couldn't generate a response. Please try again.";
+            sendMessage(ctx.client, tg_config.botToken, chat_id_str, default_msg) catch |err| {
+                std.debug.print("Failed to send default message: {any}\n", .{err});
+            };
         }
+    } else {
+        std.debug.print("No messages in agent context\n", .{});
+        // Send a default response if no messages
+        const default_msg = "I'm having trouble processing messages right now. Please try again.";
+        sendMessage(ctx.client, tg_config.botToken, chat_id_str, default_msg) catch |err| {
+            std.debug.print("Failed to send default message: {any}\n", .{err});
+        };
     }
+    
+    // Save session state to Vector/Graph DB for long-term memory.
+    // This enables RAG (Retrieval-Augmented Generation) functionality.
+    agent.index_conversation() catch {};
 }
 
 /// Global task handler that uses the global context
 fn globalTaskHandler(allocator: std.mem.Allocator, task: event_loop.Task) !void {
-    const ctx = global_telegram_context orelse return error.ContextNotSet;
+    std.debug.print("globalTaskHandler: Received task from {s}\n", .{task.source});
+    const ctx = global_telegram_context orelse {
+        std.debug.print("Error: Global telegram context not set\n", .{});
+        return error.ContextNotSet;
+    };
     _ = allocator;
     try handleTelegramTask(ctx, task);
+    std.debug.print("globalTaskHandler: Task processing completed\n", .{});
 }
 
 /// Handle Telegram-specific events (e.g., scheduled messages, reminders)

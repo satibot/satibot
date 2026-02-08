@@ -179,6 +179,10 @@ Before committing code, verify:
 16. [ ] JSON API uses correct path (`std.json.Stringify.valueAlloc`)
 17. [ ] Const qualifier issues handled with `@constCast` when necessary
 18. [ ] Agent.run() return type handled correctly (void, not string)
+19. [ ] Struct methods are properly indented inside the struct
+20. [ ] Event loop integration uses separate threads for polling
+21. [ ] No duplicate function names in the same scope
+22. [ ] All struct methods are marked `pub` if used externally
 
 ## 7. Common Error Messages and Solutions
 
@@ -294,14 +298,66 @@ std.json.Stringify.valueAlloc(allocator, value, .{});
 @constCast(client).post(url, headers, body);
 ```
 
-### "expected type '[]const u8', found 'void'"
+### "no field or member function named 'X' in struct"
 
 ```zig
-// Error: expected type '[]const u8', found 'void'
-// Solution: Agent.run() returns void, get response from messages
-agent.run(text) catch {};
-const messages = agent.ctx.get_messages();
-const response = messages[messages.len - 1].content orelse "";
+// Error: no field or member function named 'run' in 'TelegramBot'
+try bot.run();
+
+// Common causes:
+// 1. Method defined outside struct (wrong indentation)
+// 2. Method not marked pub (private)
+// 3. Typo in method name
+
+// Solution: Ensure proper struct indentation
+pub const MyStruct = struct {
+    // Methods must be indented inside the struct
+    pub fn run(self: *MyStruct) !void {
+        // method body
+    }
+};
+```
+
+### Event Loop Integration Pattern
+
+When integrating polling with an event loop:
+
+```zig
+// WRONG: Event loop runs without polling
+pub fn run(self: *Bot) !void {
+    self.event_loop.run(); // Blocks forever, no polling
+}
+
+// CORRECT: Separate threads for event loop and polling
+pub fn run(self: *Bot) !void {
+    // Start event loop in background thread
+    const event_loop_thread = try std.Thread.spawn(.{}, EventLoop.run, .{&self.event_loop});
+    defer event_loop_thread.join();
+    
+    // Main thread handles polling
+    while (!shutdown_requested.load(.seq_cst)) {
+        self.tick() catch {};
+        std.Thread.sleep(100 * std.time.ns_per_ms);
+    }
+}
+```
+
+### Duplicate Function Names
+
+```zig
+// Error: duplicate struct member name 'run'
+pub const MyStruct = struct {
+    pub fn run(self: *MyStruct) !void { ... }
+};
+
+pub fn run(allocator: Allocator, config: Config) !void { ... } // Duplicate!
+
+// Solution: Use different names
+pub const MyStruct = struct {
+    pub fn run(self: *MyStruct) !void { ... } // Instance method
+};
+
+pub fn runMyService(allocator: Allocator, config: Config) !void { ... } // Module function
 ```
 
 ## 9. Zig 0.15.0 API Changes
@@ -573,7 +629,62 @@ const list = std.ArrayList(T).initCapacity(allocator, 0) catch unreachable;
 
 Always check your Zig version when encountering errors.
 
-## 16. Best Practices
+## 17. Debugging Struct Member Issues
+
+### Common Symptoms
+
+1. **"no field or member function named"** - Method not found
+2. **"duplicate struct member name"** - Name collision
+3. **Method not accessible** - Visibility issues
+
+### Debugging Steps
+
+1. **Check struct indentation**
+
+   ```zig
+   // Use consistent indentation (4 spaces recommended)
+   pub const MyStruct = struct {
+       field: Type,
+       
+       pub fn method(self: *MyStruct) void {
+           // Must be indented at same level as fields
+       }
+   };
+   ```
+
+2. **Verify method signatures**
+
+   ```zig
+   // Instance method needs self parameter
+   pub fn instanceMethod(self: *MyStruct) void { ... }
+   
+   // Static method doesn't need self
+   pub fn staticMethod() void { ... }
+   ```
+
+3. **Check visibility**
+
+   ```zig
+   // Private (only accessible within same file)
+   fn privateMethod(self: *MyStruct) void { ... }
+   
+   // Public (accessible from other files)
+   pub fn publicMethod(self: *MyStruct) void { ... }
+   ```
+
+4. **Use IDE features**
+   - Syntax highlighting shows struct boundaries
+   - Go-to-definition reveals actual location
+   - Error indicators mark structural issues
+
+### Prevention Strategies
+
+1. **Consistent indentation** - Use the same indent for all struct members
+2. **Clear naming** - Distinguish between instance and module functions
+3. **Explicit visibility** - Always mark pub if used externally
+4. **Regular compilation** - Catch errors early in development
+
+## 18. Best Practices
 
 ### Code Style
 

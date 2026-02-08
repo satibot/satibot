@@ -62,3 +62,18 @@ For example, do not add comments to simple codes:
 // Print response
 std.debug.print("Response: {s}\n", .{response.content});
 ```
+
+## Memory Management
+
+Follow strict memory management rules to prevent use-after-free and memory leaks:
+
+- See [memory-management.zig.md](memory-management.zig.md) for general memory management rules
+- See [async-event-loop-patterns.md](async-event-loop-patterns.md) for async/event loop specific rules
+- See [error-handling.zig.md](error-handling.zig.md) for error handling best practices
+
+Key principles:
+
+- Never store pointers to stack-local variables in structs that outlive the function
+- Ensure handler contexts have valid pointer references for async operations
+- Always verify pointer lifetime when passing to threads or callbacks
+- Never use `catch unreachable` for operations that can fail

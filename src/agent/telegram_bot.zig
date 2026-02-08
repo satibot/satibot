@@ -110,20 +110,23 @@ pub const TelegramBot = struct {
         // TODO: Integrate Telegram bot with new event loop architecture
         var event_loop = try AsyncEventLoop.init(allocator, config);
         
-        // Initialize Telegram context
-        var tg_ctx = telegram_handlers.TelegramContext.init(allocator, config, &client);
-        
-        // Set up handlers
-        event_loop.setTaskHandler(telegram_handlers.createTelegramTaskHandler(&tg_ctx));
-        event_loop.setEventHandler(telegram_handlers.createTelegramEventHandler(&tg_ctx));
-        
-        return .{
+        // Create the bot struct first
+        var bot = TelegramBot{
             .allocator = allocator,
             .config = config,
             .event_loop = event_loop,
             .client = client,
-            .tg_ctx = tg_ctx,
+            .tg_ctx = undefined, // Will be initialized below
         };
+        
+        // Now initialize the context with a pointer to the client in the struct
+        bot.tg_ctx = telegram_handlers.TelegramContext.init(allocator, config, &bot.client);
+        
+        // Set up handlers
+        event_loop.setTaskHandler(telegram_handlers.createTelegramTaskHandler(&bot.tg_ctx));
+        event_loop.setEventHandler(telegram_handlers.createTelegramEventHandler(&bot.tg_ctx));
+        
+        return bot;
     }
 
     /// Clean up resources used by the TelegramBot
@@ -273,32 +276,9 @@ pub const TelegramBot = struct {
                             task_data,
                             "telegram"
                         );
-
-                        // Send the final response back to Telegram.
-                        // The event loop processes the message asynchronously and we can get the result
-                        // For now, we'll process it synchronously to maintain the same interface
-                        // In a full async implementation, this would be handled by event loop callbacks
-                        agent.run(actual_text) catch |err| {
-                            std.debug.print("Error running agent: {any}\n", .{err});
-                            const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: Agent failed to process request\n\nPlease try again.", .{});
-                            defer self.allocator.free(error_msg);
-                            try self.send_message(tg_config.botToken, chat_id_str, error_msg);
-                        };
-
-                        // Get all messages from the agent's conversation context
-                        const messages = agent.ctx.get_messages();
-                        if (messages.len > 0) {
-                            // Get the last message (should be the assistant's response)
-                            const last_msg = messages[messages.len - 1];
-                            // Only send if it's an assistant message with content
-                            if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                                try self.send_message(tg_config.botToken, chat_id_str, last_msg.content.?);
-                            }
-                        }
-
-                        // Save session state to Vector/Graph DB for long-term memory.
-                        // This enables RAG (Retrieval-Augmented Generation) functionality.
-                        agent.index_conversation() catch {};
+                        
+                        // The event loop will process the message asynchronously
+                        // and send the response through the handler
                     }
                 }
             }
@@ -353,13 +333,57 @@ pub const TelegramBot = struct {
         const response = try self.client.post(url, headers, body);
         @constCast(&response).deinit();
     }
+    
+    /// Start the event loop with Telegram polling
+    /// This method integrates the event loop with Telegram's long-polling API
+    pub fn run(self: *TelegramBot) !void {
+        const tg_config = self.config.tools.telegram orelse return;
+        
+        std.debug.print("� Telegram bot running with async event loop. Press Ctrl+C to stop.\n", .{});
+        
+        // Setup signal handlers
+        global_event_loop = &self.event_loop;
+        const sa = std.posix.Sigaction{
+            .handler = .{ .handler = signalHandler },
+            .mask = std.mem.zeroes(std.posix.sigset_t),
+            .flags = 0,
+        };
+        std.posix.sigaction(std.posix.SIG.INT, &sa, null);
+        std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
+        
+        // Send startup message if configured
+        if (tg_config.chatId) |chat_id| {
+            std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
+            const startup_msg = "🐸 Bot is now online and ready! 🚀";
+            sendMessageToTelegram(self.allocator, tg_config.botToken, std.fmt.parseInt(i64, chat_id, 10) catch 0, startup_msg) catch |err| {
+                std.debug.print("Failed to send startup message: {any}\n", .{err});
+            };
+        }
+        
+        // Start event loop in a separate thread
+        const event_loop_thread = try std.Thread.spawn(.{}, AsyncEventLoop.run, .{&self.event_loop});
+        defer event_loop_thread.join();
+        
+        // Main thread handles Telegram polling
+        while (!shutdown_requested.load(.seq_cst)) {
+            self.tick() catch |err| {
+                std.debug.print("Error in tick: {any}\n", .{err});
+                // Continue running even if there's an error
+            };
+            
+            // Small delay to prevent excessive polling
+            std.Thread.sleep(100 * std.time.ns_per_ms);
+        }
+        
+        std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});
+    }
 };
 
 /// Main entry point for the Telegram Bot service.
 /// Initializes the bot and starts the async event loop.
 /// The event loop handles polling, message processing, and cron jobs.
 /// Sends a shutdown message to configured chat when terminated.
-pub fn run(allocator: std.mem.Allocator, config: Config) !void {
+pub fn runBot(allocator: std.mem.Allocator, config: Config) !void {
     // Extract telegram config first - required for operation
     const tg_config = config.tools.telegram orelse {
         std.debug.print("Error: telegram configuration is required but not found.\n", .{});
@@ -380,46 +404,8 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
         bot.deinit();
     }
 
-    // Setup signal handlers for graceful shutdown
-    // Set global event loop pointer so signal handler can access it
-    global_event_loop = &bot.event_loop;
-    
-    const sa = std.posix.Sigaction{
-        .handler = .{ .handler = signalHandler },
-        .mask = std.mem.zeroes(std.posix.sigset_t),
-        .flags = 0,
-    };
-    std.posix.sigaction(std.posix.SIG.INT, &sa, null);
-    std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
-
-    // Display startup message
-    std.debug.print("🐸 Telegram bot running with async event loop. Press Ctrl+C to stop.\n", .{});
-
-    // chatId is required - terminate if not configured
-    const chat_id = tg_config.chatId orelse {
-        std.debug.print("Error: telegram.chatId is required but not configured. Terminating.\n", .{});
-        return error.TelegramChatIdNotConfigured;
-    };
-
-    // Send startup message to configured chat
-    std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
-    const startup_msg = "🐸 Bot is now online and ready! 🚀";
-    sendMessageToTelegram(allocator, tg_config.botToken, std.fmt.parseInt(i64, chat_id, 10) catch 0, startup_msg) catch |err| {
-        std.debug.print("Failed to send startup message: {any}\n", .{err});
-    };
-
-    // Start the event loop
-    // The event loop will:
-    // 1. Process tasks from various sources (via addTask)
-    // 2. Handle scheduled events (via scheduleEvent)
-    // 3. Handle cron jobs and heartbeats
-    // 4. Send responses back to Telegram (via message_sender callback)
-    bot.event_loop.run() catch |err| {
-        std.debug.print("Error in event loop: {any}\n", .{err});
-        return err;
-    };
-    
-    std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});
+    // Run the bot (this will start both the event loop and polling)
+    try bot.run();
 }
 
 test "TelegramBot lifecycle" {
