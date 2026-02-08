@@ -101,6 +101,12 @@ pub const AsyncEventLoop = struct {
 
     pub fn deinit(self: *AsyncEventLoop) void {
         self.event_queue.deinit();
+
+        // Free allocated fields of any unprocessed messages remaining at shutdown
+        for (self.message_queue.items) |msg| {
+            self.allocator.free(msg.text);
+            self.allocator.free(msg.session_id);
+        }
         self.message_queue.deinit(self.allocator);
 
         // Free cron jobs

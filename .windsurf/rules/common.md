@@ -28,6 +28,26 @@ Before run:
 Replace arithmetic expressions with pre-calculated constants in memory allocations.
 For example, instead of `1024 * 1024`, use the result value `1048576` and add a comment to explain the calculation like `// 1024 * 1024`.
 
+## Free owned fields before deiniting containers
+
+When a struct has a `deinit` method that destroys a container (ArrayList, HashMap, etc.), always iterate over remaining items and free any heap-allocated fields **before** calling `container.deinit()`.
+
+**Why:** If items are added to a queue with `allocator.dupe()` / `allocPrint()` and consumed elsewhere (e.g. an event loop pops and frees them), items that are still in the container at shutdown will leak because `deinit()` only releases the container's backing memory, not the contents.
+
+**Rule:** For every container that holds structs with owned allocations:
+
+1. In `deinit`, loop over all remaining items and free each owned field.
+2. Then call `container.deinit()`.
+
+```zig
+// Example: free owned fields before deiniting the queue
+for (self.message_queue.items) |msg| {
+    self.allocator.free(msg.text);
+    self.allocator.free(msg.session_id);
+}
+self.message_queue.deinit(self.allocator);
+```
+
 ## When catch error
 
 When catch error, always log the error message.
