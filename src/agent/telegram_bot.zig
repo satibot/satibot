@@ -355,7 +355,6 @@ pub const TelegramBot = struct {
                                 ctx.state.done = true;
                             }
                         }.run, .{agent_ctx});
-                        defer agent_thread.join();
 
                         // Spawn typing indicator thread that sends "typing" action every 5 seconds
                         // while the agent is processing. This provides visual feedback to users.
