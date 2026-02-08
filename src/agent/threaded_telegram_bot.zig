@@ -111,7 +111,7 @@ pub const ThreadedTelegramBot = struct {
         // Structure for parsing the JSON response from Telegram
         const UpdateResponse = struct {
             ok: bool,
-            result: []struct {
+            result: ?[]struct {
                 update_id: i64,
                 message: ?struct {
                     chat: struct {
@@ -122,33 +122,35 @@ pub const ThreadedTelegramBot = struct {
                         file_id: []const u8,
                     } = null,
                 } = null,
-            },
+            } = null,
         };
 
         const parsed = try std.json.parseFromSlice(UpdateResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         // Process each update in the batch
-        for (parsed.value.result) |update| {
-            // Update offset so we acknowledge this message in the next poll
-            self.offset = update.update_id + 1;
+        if (parsed.value.result) |updates| {
+            for (updates) |update| {
+                // Update offset so we acknowledge this message in the next poll
+                self.offset = update.update_id + 1;
 
-            if (update.message) |msg| {
-                var transcribed_text: ?[]const u8 = null;
-                defer if (transcribed_text) |t| self.allocator.free(t);
+                if (update.message) |msg| {
+                    var transcribed_text: ?[]const u8 = null;
+                    defer if (transcribed_text) |t| self.allocator.free(t);
 
-                // Handle voice messages
-                if (msg.voice) |voice| {
-                    transcribed_text = try self.processVoiceMessage(msg.chat.id, voice.file_id);
-                }
+                    // Handle voice messages
+                    if (msg.voice) |voice| {
+                        transcribed_text = try self.processVoiceMessage(msg.chat.id, voice.file_id);
+                    }
 
-                // Determine final text input: either transcription result or direct text message
-                const final_text = transcribed_text orelse msg.text orelse continue;
+                    // Determine final text input: either transcription result or direct text message
+                    const final_text = transcribed_text orelse msg.text orelse continue;
 
-                if (final_text.len > 0) {
-                    // Add message to event loop for processing
-                    try self.event_loop.addChatMessage(msg.chat.id, final_text);
-                    std.debug.print("Queued message from chat {d} for processing\n", .{msg.chat.id});
+                    if (final_text.len > 0) {
+                        // Add message to event loop for processing
+                        try self.event_loop.addChatMessage(msg.chat.id, final_text);
+                        std.debug.print("Queued message from chat {d} for processing\n", .{msg.chat.id});
+                    }
                 }
             }
         }

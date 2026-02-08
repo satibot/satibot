@@ -162,17 +162,70 @@ pub const TelegramBot = struct {
                     const chat_id_str = try std.fmt.allocPrint(self.allocator, "{d}", .{msg.chat.id});
                     defer self.allocator.free(chat_id_str);
 
+                    // Variable to hold transcribed text from voice messages
+                    var transcribed_text: ?[]const u8 = null;
+                    defer if (transcribed_text) |t| self.allocator.free(t);
+
                     // --- VOICE MESSAGE HANDLING ---
-                    // Voice messages are currently not supported.
-                    // This feature requires transcription service configuration.
-                    if (msg.voice) |_| {
-                        // Send a message indicating voice messages are not supported
-                        try self.send_message(tg_config.botToken, chat_id_str, "🎤 Voice messages are not currently supported. Please send text messages instead.");
-                        continue; // Skip further processing for voice messages
+                    // If the message contains audio, we need to:
+                    // 1. Get the file path from Telegram using the file_id.
+                    // 2. Download the binary file.
+                    // 3. Send it to Groq for transcription.
+                    if (msg.voice) |voice| {
+                        if (self.config.providers.groq) |groq_cfg| {
+                            std.debug.print("Received voice message from {s}, transcribing...\n", .{chat_id_str});
+
+                            // 1. Get file path from Telegram API
+                            const file_info_url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/getFile?file_id={s}", .{ tg_config.botToken, voice.file_id });
+                            defer self.allocator.free(file_info_url);
+
+                            // Request file information from Telegram
+                            const file_info_resp = try self.client.get(file_info_url, &.{});
+                            defer @constCast(&file_info_resp).deinit();
+
+                            // Structure for parsing file info response
+                            const FileInfo = struct {
+                                /// Indicates if the request was successful
+                                ok: bool,
+                                /// File information, can be null if file not found
+                                result: ?struct {
+                                    /// Path to the file on Telegram servers
+                                    file_path: []const u8,
+                                } = null,
+                            };
+                            // Parse the file info response
+                            const parsed_file_info = try std.json.parseFromSlice(FileInfo, self.allocator, file_info_resp.body, .{ .ignore_unknown_fields = true });
+                            defer parsed_file_info.deinit();
+
+                            // Check if we got valid file info
+                            if (parsed_file_info.value.result) |res| {
+                                // 2. Download the actual audio file
+                                const download_url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/file/bot{s}/{s}", .{ tg_config.botToken, res.file_path });
+                                defer self.allocator.free(download_url);
+
+                                // Download the voice file data
+                                const file_data_resp = try self.client.get(download_url, &.{});
+                                defer @constCast(&file_data_resp).deinit();
+
+                                // 3. Transcribe using Groq
+                                // We initialize a temporary provider instance just for this operation.
+                                // In a higher-load system, we might want to share a provider instance.
+                                var groq = try @import("../root.zig").providers.groq.GroqProvider.init(self.allocator, groq_cfg.apiKey);
+                                defer groq.deinit();
+
+                                // Transcribe the audio data
+                                transcribed_text = try groq.transcribe(file_data_resp.body, "voice.ogg");
+                                std.debug.print("Transcription: {s}\n", .{transcribed_text.?});
+                            }
+                        } else {
+                            // Groq is not configured, send error message to user
+                            try self.send_message(tg_config.botToken, chat_id_str, "🎤 Voice message received, but transcription is not configured (need Groq API key).");
+                        }
                     }
 
-                    // Get the text message content
-                    const final_text = msg.text orelse continue; // Skip if no text content
+                    // Determine final text input: either transcription result or direct text message.
+                    // If neither exists (e.g., message with only stickers), continue to next message.
+                    const final_text = transcribed_text orelse msg.text orelse continue;
 
                     // Only process non-empty messages
                     if (final_text.len > 0) {
@@ -517,6 +570,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
                 const chat_id_str = std.fmt.allocPrint(allocator, "{d}", .{chat_id}) catch continue;
                 defer allocator.free(chat_id_str);
 
+                // Send shutdown message to user
                 const shutdown_msg = "🛑 Bot is turned off. See you next time! 👋";
                 bot.send_message(tg_config.botToken, chat_id_str, shutdown_msg) catch |err| {
                     // Log error but continue with other chats
@@ -526,15 +580,6 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
             }
         } else {
             std.debug.print("No active chats to send goodbye to\n", .{});
-        }
-
-        // Always send goodbye message to the configured chat if available
-        if (tg_config.chatId) |configured_chat_id| {
-            std.debug.print("Sending shutdown message to configured chat {s}...\n", .{configured_chat_id});
-            const shutdown_msg = "🛑 Bot is turned off. See you next time! 👋";
-            bot.send_message(tg_config.botToken, configured_chat_id, shutdown_msg) catch |err| {
-                std.debug.print("Failed to send shutdown message to configured chat: {any}\n", .{err});
-            };
         }
         // Clean up the active chats list
         active_chats.deinit(allocator);

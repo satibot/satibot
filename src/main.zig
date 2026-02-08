@@ -34,7 +34,12 @@ pub fn main() !void {
     if (args.len < 2) {
         // Create args array for telegram with openrouter
         const telegram_args = try allocator.alloc([:0]u8, 3);
-        defer allocator.free(telegram_args);
+        defer {
+            allocator.free(telegram_args[0]);
+            allocator.free(telegram_args[1]);
+            allocator.free(telegram_args[2]);
+            allocator.free(telegram_args);
+        }
 
         telegram_args[0] = try allocator.dupeZ(u8, "satibot");
         telegram_args[1] = try allocator.dupeZ(u8, "telegram");

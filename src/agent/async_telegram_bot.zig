@@ -113,7 +113,7 @@ pub const AsyncTelegramBot = struct {
         // Structure for parsing the JSON response from Telegram
         const UpdateResponse = struct {
             ok: bool,
-            result: []struct {
+            result: ?[]struct {
                 update_id: i64,
                 message: ?struct {
                     chat: struct {
@@ -124,16 +124,17 @@ pub const AsyncTelegramBot = struct {
                         file_id: []const u8,
                     } = null,
                 } = null,
-            },
+            } = null,
         };
 
         const parsed = try std.json.parseFromSlice(UpdateResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         // Process each update in the batch
-        for (parsed.value.result) |update| {
-            // Update offset so we acknowledge this message in the next poll
-            self.offset = update.update_id + 1;
+        if (parsed.value.result) |updates| {
+            for (updates) |update| {
+                // Update offset so we acknowledge this message in the next poll
+                self.offset = update.update_id + 1;
 
             if (update.message) |msg| {
                 var transcribed_text: ?[]const u8 = null;
@@ -152,6 +153,7 @@ pub const AsyncTelegramBot = struct {
                     try self.event_loop.addChatMessage(msg.chat.id, final_text);
                     std.debug.print("Queued message from chat {d} for async processing\n", .{msg.chat.id});
                 }
+            }
             }
         }
     }
