@@ -142,6 +142,13 @@ pub const TelegramBot = struct {
     /// in a loop for continuous operation.
     pub fn tick(self: *TelegramBot) !void {
         const tg_config = self.config.tools.telegram orelse return;
+        
+        // Debug: Check if bot token is present
+        if (tg_config.botToken.len == 0) {
+            std.debug.print("Error: Bot token is empty!\n", .{});
+            return error.EmptyBotToken;
+        }
+        std.debug.print("Bot token length: {d}\n", .{tg_config.botToken.len});
 
         // Long-polling request URL.
         // timeout=5 tells Telegram to wait up to 5 seconds for new
@@ -149,6 +156,11 @@ pub const TelegramBot = struct {
         // responses and network traffic, making polling more efficient.
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/getUpdates?offset={d}&timeout=5", .{ tg_config.botToken, self.event_loop.getOffset() });
         defer self.allocator.free(url);
+        
+        // Debug: Print polling URL (with token masked for security)
+        const masked_url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot[REDACTED]/getUpdates?offset={d}&timeout=5", .{self.event_loop.getOffset()});
+        defer self.allocator.free(masked_url);
+        std.debug.print("Polling URL: {s}\n", .{masked_url});
 
         // Make HTTP request to Telegram API
         const response = try self.client.get(url, &.{});
@@ -188,6 +200,15 @@ pub const TelegramBot = struct {
         // Parse JSON response from Telegram API
         const parsed = try std.json.parseFromSlice(UpdateResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
+
+        // Check if the API request was successful
+        if (!parsed.value.ok) {
+            std.debug.print("Telegram API error: {s}\n", .{response.body});
+            return error.TelegramApiError;
+        }
+
+        // Debug: Print response status and body
+        std.debug.print("Telegram response status: {d}, body: {s}\n", .{ @intFromEnum(response.status), response.body });
 
         // Process each update in the batch if updates exist
         if (parsed.value.result) |updates| {

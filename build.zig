@@ -173,6 +173,33 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(xev_telegram_exe);
 
+    // Create a run step for the xev-telegram-bot
+    const run_xev_telegram_cmd = b.addRunArtifact(xev_telegram_exe);
+
+    // Create a test executable for LLM with xev
+    const test_llm_xev_exe = b.addExecutable(.{
+        .name = "test-llm-xev",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("test_llm_xev.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{}).module("xev") },
+            },
+        }),
+    });
+    
+    // Add the test-llm-xev executable to the install step
+    b.installArtifact(test_llm_xev_exe);
+
+    // Create a run step for test-llm-xev
+    const run_test_llm_xev_cmd = b.addRunArtifact(test_llm_xev_exe);
+
     // This creates a top level step. Top level steps have a name and can be
     // invoked by name when running `zig build` (e.g. `zig build run`).
     // This will evaluate the `run` step rather than the default step.
@@ -196,8 +223,11 @@ pub fn build(b: *std.Build) void {
 
     // Run step for xev telegram bot
     const run_xev_telegram_step = b.step("run-xev-telegram", "Run the xev telegram bot");
-    const run_xev_telegram_cmd = b.addRunArtifact(xev_telegram_exe);
     run_xev_telegram_step.dependOn(&run_xev_telegram_cmd.step);
+
+    // Run step for test-llm-xev
+    const run_test_llm_xev_step = b.step("test-llm-xev", "Run LLM tests with xev");
+    run_test_llm_xev_step.dependOn(&run_test_llm_xev_cmd.step);
 
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
