@@ -334,30 +334,27 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
         std.debug.print("Failed to send startup message: {any}\n", .{err});
     };
 
-    // Main event loop - runs indefinitely until shutdown signal
-    // The event loop handles both Telegram polling and message processing
+    // Main polling loop - runs indefinitely until shutdown signal.
+    // tick() handles Telegram long-polling and synchronous message processing.
+    // NOTE: event_loop.run() is NOT called here because it blocks forever
+    // (contains heartbeatTask + eventLoopRunner infinite loops).
+    // For async event loop features (cron, heartbeat), use the gateway
+    // or threaded-telegram-bot entry points instead.
     while (!shutdown_requested.load(.seq_cst)) {
-        // Process any pending messages in the event loop
-        bot.event_loop.run() catch |err| {
-            std.debug.print("Error in event loop processing: {any}\n", .{err});
-            // Wait 5 seconds before retrying to avoid spamming error logs
-            std.Thread.sleep(std.time.ns_per_s * 5);
-        };
-
-        // Check for shutdown signal
-        if (shutdown_requested.load(.seq_cst)) {
-            std.debug.print("\n🛑 Shutdown requested. Sending goodbye messages 🌙.\n", .{});
-            break;
-        }
-
-        // Do Telegram polling in the main thread
+        // Poll Telegram for updates and process messages synchronously
         bot.tick() catch |err| {
             std.debug.print("Error in Telegram bot tick: {any}\n", .{err});
             // Wait 5 seconds before retrying to avoid spamming error logs
             std.Thread.sleep(std.time.ns_per_s * 5);
         };
 
-        // Small sleep to prevent CPU spinning
+        // Check for shutdown signal after tick
+        if (shutdown_requested.load(.seq_cst)) {
+            std.debug.print("\n🛑 Shutdown requested. Sending goodbye messages 🌙.\n", .{});
+            break;
+        }
+
+        // Small sleep to prevent CPU spinning between polls
         std.Thread.sleep(std.time.ns_per_ms * 100);
     }
 }
