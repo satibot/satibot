@@ -88,7 +88,7 @@ pub const ThreadedTelegramEventLoop = struct {
 
     pub fn deinit(self: *ThreadedTelegramEventLoop) void {
         self.requestShutdown();
-        
+
         // Wake up all waiting threads
         self.message_cond.broadcast();
 
@@ -186,7 +186,7 @@ pub const ThreadedTelegramEventLoop = struct {
             while (self.message_queue.items.len == 0 and !self.shutdown_flag.load(.seq_cst)) {
                 self.message_cond.wait(&self.message_mutex);
             }
-            
+
             if (self.message_queue.items.len > 0) {
                 msg = self.message_queue.orderedRemove(0);
             }
@@ -195,7 +195,7 @@ pub const ThreadedTelegramEventLoop = struct {
             // Process the message
             if (msg) |m| {
                 self.processChatMessage(m.chat_id, m.text, m.session_id);
-                
+
                 // Free allocated memory
                 self.allocator.free(m.text);
                 self.allocator.free(m.session_id);

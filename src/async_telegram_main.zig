@@ -6,7 +6,7 @@ const TelegramEventLoop = @import("agent/telegram_event_loop.zig").TelegramEvent
 /// Send a message to Telegram chat
 fn sendMessage(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
     const http = @import("http.zig");
-    
+
     var client = try http.Client.initWithSettings(allocator, .{
         .request_timeout_ms = 10000,
         .keep_alive = true,
@@ -32,7 +32,7 @@ fn sendMessage(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    
+
     // Load configuration
     var config = Config.load(allocator) catch |err| {
         std.debug.print("Failed to load config: {any}\n", .{err});

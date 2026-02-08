@@ -15,7 +15,7 @@ fn mockSendMessage(allocator: std.mem.Allocator, bot_token: []const u8, chat_id:
 
 test "AsyncTelegramBot initialization" {
     const allocator = testing.allocator;
-    
+
     const config = Config{
         .agents = .{ .defaults = .{ .model = "test-model" } },
         .providers = .{},
@@ -42,7 +42,7 @@ test "AsyncTelegramBot initialization" {
 
 test "TelegramEventLoop add and process message" {
     const allocator = testing.allocator;
-    
+
     const config = Config{
         .agents = .{ .defaults = .{ .model = "test-model" } },
         .providers = .{},
@@ -63,7 +63,7 @@ test "TelegramEventLoop add and process message" {
     // Check that message was added to queue
     event_loop.message_mutex.lock();
     defer event_loop.message_mutex.unlock();
-    
+
     try testing.expect(event_loop.message_queue.items.len == 1);
     try testing.expectEqual(@as(i64, 12345), event_loop.message_queue.items[0].chat_id);
     try testing.expectEqualStrings("Hello, world!", event_loop.message_queue.items[0].text);
@@ -71,7 +71,7 @@ test "TelegramEventLoop add and process message" {
 
 test "TelegramEventLoop cron job management" {
     const allocator = testing.allocator;
-    
+
     const config = Config{
         .agents = .{ .defaults = .{ .model = "test-model" } },
         .providers = .{},
@@ -95,7 +95,7 @@ test "TelegramEventLoop cron job management" {
     // Check that cron job was added
     event_loop.cron_mutex.lock();
     defer event_loop.cron_mutex.unlock();
-    
+
     const job = event_loop.cron_jobs.get("test_job");
     try testing.expect(job != null);
     try testing.expectEqualStrings("Test Job", job.?.name);

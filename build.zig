@@ -30,6 +30,12 @@ pub fn build(b: *std.Build) void {
     const build_time_str = b.fmt("{s} UTC", .{std.mem.trim(u8, date_output, "\n\r ")});
     build_options.addOption([]const u8, "build_time_str", build_time_str);
 
+    // Add version from current date (YYYY.MM.DD.HHMM)
+    // Example: 2025.01.13.1627
+    const date_version_output = b.run(&.{ "date", "-u", "+%Y.%m.%d.%H%M" });
+    const version = std.mem.trim(u8, date_version_output, "\n\r ");
+    build_options.addOption([]const u8, "version", version);
+
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Zig modules are the preferred way of making Zig code available to consumers.

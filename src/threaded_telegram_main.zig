@@ -27,7 +27,7 @@ fn sendMessage(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    
+
     // Load configuration
     var parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
@@ -57,7 +57,7 @@ pub fn main() !void {
         at_ms: ?i64 = null,
         every_ms: ?i64 = null,
     };
-    
+
     try event_loop.addCronJob("daily_report", "Daily Report", "Generate daily analytics report", DailySchedule{
         .kind = .every,
         .every_ms = 24 * 60 * 60 * 1000, // 24 hours

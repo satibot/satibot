@@ -31,3 +31,14 @@ For example, instead of `1024 * 1024`, use the result value `1048576` and add a 
 ## When catch error
 
 When catch error, always log the error message.
+
+## Add comments to code
+
+Add comments to code to explain why the code does or what the code does when it is complex.
+Do not add comments to simple codes.
+For example, do not add comments to simple codes:
+
+```zig
+// Print response
+std.debug.print("Response: {s}\n", .{response.content});
+```

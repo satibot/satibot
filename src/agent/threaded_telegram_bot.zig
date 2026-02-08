@@ -55,7 +55,7 @@ pub const ThreadedTelegramBot = struct {
     /// Process voice message transcription
     fn processVoiceMessage(self: *ThreadedTelegramBot, chat_id: i64, voice_file_id: []const u8) !?[]const u8 {
         const tg_config = self.config.tools.telegram orelse return null;
-        
+
         if (self.config.providers.groq == null) {
             try self.send_message(tg_config.botToken, try std.fmt.allocPrint(self.allocator, "{d}", .{chat_id}), "🎤 Voice message received, but transcription is not configured (need Groq API key).");
             return null;
@@ -175,7 +175,7 @@ pub const ThreadedTelegramBot = struct {
     /// Setup signal handlers for graceful shutdown
     fn setupSignalHandlers(self: *ThreadedTelegramBot) void {
         global_event_loop = self.event_loop;
-        
+
         const handler_fn = struct {
             fn handler(sig: i32, info: *const std.posix.siginfo_t, ctx: ?*anyopaque) callconv(.c) void {
                 _ = sig;
