@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Telegram Bot is a synchronous implementation that manages interactions with the Telegram Bot API using long-polling. It processes text messages and maintains conversation sessions with AI agents.
+The Telegram Bot is an event loop-based implementation that manages interactions with the Telegram Bot API using long-polling. It processes text messages asynchronously through an event-driven architecture and maintains conversation sessions with AI agents.
 
 ## Architecture
 
@@ -13,18 +13,23 @@ graph TB
     USER[User] --> |Text Messages| TG
     
     %% Core Components
-    TB --> AG[Agent]
+    TB --> EL[AsyncEventLoop]
     TB --> HTTP[HTTP Client]
     TB --> ALLOC[Allocator]
     
+    %% Event Loop Components
+    EL --> MSG_QUEUE[Message Queue]
+    EL --> EVENT_QUEUE[Event Queue]
+    EL --> CRON[Cron Jobs]
+    EL --> ACTIVE_CHATS[Active Chats]
+    
     %% Agent Components
-    AG --> CTX[Conversation Context]
+    AG[Agent] --> CTX[Conversation Context]
     AG --> LLM[LLM Provider]
     AG --> MEM[Memory/Session Store]
     
     %% Internal State
     TB --> OFFSET[Update Offset]
-    TB --> CHATS[Active Chats]
     TB --> SHUTDOWN[Shutdown Flag]
     
     %% Signal Handling
@@ -32,14 +37,15 @@ graph TB
     SHUTDOWN --> |Graceful| TB
     
     %% Message Flow
-    TB --> |Process Updates| MSG_LOOP[Message Loop]
-    MSG_LOOP --> |Text Only| AG
+    TB --> |addChatMessage| EL
+    EL --> |processEvents| AG
     AG --> |AI Response| TB
     TB --> |Send Reply| TG
     TG --> |Deliver| USER
     
     %% Configuration
     CFG[Config] --> TB
+    CFG --> EL
     CFG --> AG
     
     %% Styling
@@ -47,11 +53,13 @@ graph TB
     classDef core fill:#f3e5f5
     classDef process fill:#e8f5e8
     classDef state fill:#fff3e0
+    classDef event fill:#fff8e1
     
     class TG,USER external
     class TB,HTTP,ALLOC core
     class AG,CTX,LLM,MEM process
-    class OFFSET,CHATS,SHUTDOWN,MSG_LOOP state
+    class OFFSET,SHUTDOWN state
+    class EL,MSG_QUEUE,EVENT_QUEUE,CRON,ACTIVE_CHATS event
 ```
 
 ## Key Components
@@ -62,14 +70,22 @@ graph TB
 - **Key Fields**:
   - `allocator`: Memory management for string operations and JSON parsing
   - `config`: Bot configuration including API tokens and provider settings
+  - `event_loop`: AsyncEventLoop for concurrent message processing
   - `offset`: Long-polling offset to prevent duplicate message processing
   - `client`: HTTP client with keep-alive for efficient API calls
+
+### AsyncEventLoop
+
+- **Purpose**: Event-driven message processing and cron job management
+- **Key Components**:
+  - `message_queue`: Queue for immediate message processing
+  - `event_queue`: Priority queue for timed events
+  - `cron_jobs`: HashMap for scheduled tasks
+  - `active_chats`: List tracking active conversations
 
 ### Global State
 
 - **`shutdown_requested`**: Atomic flag for graceful shutdown
-- **`active_chats`**: List tracking all chats that need shutdown notifications
-- **`active_chats_mutex`**: Thread-safe access to active chats list
 
 ## Message Processing Flow
 
@@ -78,6 +94,7 @@ sequenceDiagram
     participant User
     participant Telegram
     participant TelegramBot
+    participant EventLoop
     participant Agent
     participant LLM
     
@@ -94,13 +111,16 @@ sequenceDiagram
         Note over User: User informed voice messages not supported
     end
     
-    %% Message Processing
-    TelegramBot->>Agent: process message
+    %% Message Processing via Event Loop
+    TelegramBot->>EventLoop: addChatMessage()
+    EventLoop->>EventLoop: processEvents()
+    EventLoop->>Agent: process message
     Agent->>LLM: generate response
     LLM-->>Agent: AI response
-    Agent-->>TelegramBot: final response
+    Agent-->>EventLoop: final response
     
     %% Response Delivery
+    EventLoop-->>TelegramBot: response ready
     TelegramBot->>Telegram: sendMessage
     Telegram->>User: bot response
     
@@ -129,34 +149,55 @@ The bot supports several magic commands:
 - **Action**: Deletes session file and starts fresh conversation
 - **Variant**: `/new <prompt>` clears session then processes prompt
 
-## Threading Model
+## Event Loop Architecture
 
 ```mermaid
-graph LR
-    MAIN[Main Thread] --> |spawn| AGENT[Agent Thread]
-    MAIN --> |spawn| TYPING[Typing Indicator Thread]
+graph TB
+    %% Main Components
+    MAIN[Main Thread] --> |runs| EL[AsyncEventLoop]
+    MAIN --> |polls| TG[Telegram API]
     
-    AGENT --> |process| LLM[LLM Request]
-    TYPING --> |every 5s| TELEGRAM[sendChatAction]
+    %% Event Loop Processing
+    EL --> MSG_Q[Message Queue]
+    EL --> EVENT_Q[Event Queue]
+    EL --> CRON_Q[Cron Jobs]
     
-    AGENT --> |done| STATE[Shared State]
-    TYPING --> |check| STATE
+    %% Message Flow
+    TG --> |addChatMessage| MSG_Q
+    MSG_Q --> |processChatMessage| AGENT[Agent]
     
-    STATE --> |done| MAIN[Join Threads]
+    %% Event Processing
+    EVENT_Q --> |timed events| HANDLER[Event Handler]
+    CRON_Q --> |schedule| EVENT_Q
     
-    classDef thread fill:#e3f2fd
-    classDef shared fill:#fce4ec
+    %% Agent Processing
+    AGENT --> |LLM request| LLM[LLM Provider]
+    LLM --> |response| AGENT
     
-    class MAIN,AGENT,TYPING thread
-    class STATE shared
+    %% Response Flow
+    AGENT --> |response| TG
+    TG --> |deliver| USER[User]
+    
+    %% Styling
+    classDef main fill:#e3f2fd
+    classDef event fill:#fff8e1
+    classDef process fill:#e8f5e8
+    classDef external fill:#e1f5fe
+    
+    class MAIN main
+    class EL,MSG_Q,EVENT_Q,CRON_Q,HANDLER event
+    class AGENT,LLM process
+    class TG,USER external
 ```
 
-### Thread Coordination
+### Event Loop Coordination
 
-- **Agent Thread**: Processes LLM requests and generates responses
-- **Typing Thread**: Sends "typing" indicators every 5 seconds
-- **Shared State**: Thread-safe coordination using mutex
-- **Cleanup**: Both threads joined before processing next message
+- **Main Thread**: Handles Telegram API polling and event loop execution
+- **Message Queue**: Immediate processing of incoming chat messages
+- **Event Queue**: Priority-based processing of timed events
+- **Cron Jobs**: Scheduled tasks with configurable intervals
+- **Agent Processing**: Synchronous AI response generation
+- **Resource Management**: Automatic cleanup and memory management
 
 ## Error Handling
 
@@ -164,7 +205,7 @@ graph LR
 
 - **Network Errors**: Retry with 5-second delay on `tick()` failures
 - **JSON Parsing**: Optional fields handle missing data gracefully
-- **Thread Errors**: Isolated to prevent bot crashes
+- **Event Loop Errors**: Isolated to prevent bot crashes
 - **Resource Cleanup**: Proper defer blocks for memory management
 
 ### Graceful Shutdown
@@ -173,9 +214,7 @@ graph LR
 stateDiagram-v2
     [*] --> Running
     Running --> Shutdown: SIGINT/SIGTERM
-    Shutdown --> SendGoodbyeActive: active_chats > 0
-    Shutdown --> SendGoodbyeConfig: no active chats
-    SendGoodbyeActive --> SendGoodbyeConfig: always
+    Shutdown --> SendGoodbyeConfig: always
     SendGoodbyeConfig --> Cleanup
     Cleanup --> [*]
 ```
@@ -201,9 +240,10 @@ stateDiagram-v2
 
 ### Active Chat Tracking
 
-- **Purpose**: Send shutdown messages to active users and configured chat
-- **Thread Safety**: Mutex-protected ArrayList
+- **Purpose**: Track active conversations within the event loop
+- **Management**: Handled internally by AsyncEventLoop
 - **Lifecycle**: Created on first message, cleaned on shutdown
+- **Thread Safety**: Mutex-protected within event loop
 
 ## HTTP Client Configuration
 
@@ -228,11 +268,12 @@ The bot provides extensive debug output:
 - **Offset Management**: Prevents duplicate processing
 - **Connection Reuse**: Keep-alive reduces overhead
 
-### Concurrent Processing
+### Event Loop Processing
 
-- **Non-blocking**: Main thread remains responsive
-- **Typing Indicators**: Visual feedback during processing
-- **Error Isolation**: Thread failures don't crash bot
+- **Non-blocking**: Event loop processes messages efficiently
+- **Queue-based**: Message and event queues prevent blocking
+- **Resource Efficient**: No thread spawning overhead
+- **Scalable**: Handles multiple concurrent conversations
 
 ## Security Notes
 

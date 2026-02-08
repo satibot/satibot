@@ -4,9 +4,6 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const providers = @import("../root.zig").providers;
-const base = @import("providers/base.zig");
-const tools = @import("agent/tools.zig");
-const session = @import("agent/session.zig");
 
 /// Get monotonic time for accurate timing
 var timer: ?std.time.Timer = null;
@@ -25,11 +22,10 @@ pub const EventType = enum {
     shutdown,
 };
 
-/// An event with its execution time and frame
+/// An event with its execution time
 const Event = struct {
     type: EventType,
     expires: u64,
-    frame: anyframe,
 
     // Event-specific data
     chat_id: ?i64 = null,
@@ -92,20 +88,20 @@ pub const AsyncEventLoop = struct {
         return .{
             .allocator = allocator,
             .config = config,
-            .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, undefined),
-            .message_queue = std.ArrayList(ChatMessage).init(allocator),
+            .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
+            .message_queue = std.ArrayList(ChatMessage).initCapacity(allocator, 0) catch unreachable,
             .message_mutex = .{},
             .cron_jobs = std.StringHashMap(CronJobEvent).init(allocator),
             .cron_mutex = .{},
             .shutdown = std.atomic.Value(bool).init(false),
-            .active_chats = std.ArrayList(i64).init(allocator),
+            .active_chats = std.ArrayList(i64).initCapacity(allocator, 0) catch unreachable,
             .chats_mutex = .{},
         };
     }
 
     pub fn deinit(self: *AsyncEventLoop) void {
         self.event_queue.deinit();
-        self.message_queue.deinit();
+        self.message_queue.deinit(self.allocator);
 
         // Free cron jobs
         var cron_iter = self.cron_jobs.iterator();
@@ -117,15 +113,15 @@ pub const AsyncEventLoop = struct {
         }
         self.cron_jobs.deinit();
 
-        self.active_chats.deinit();
+        self.active_chats.deinit(self.allocator);
     }
 
     /// Schedule an event to be executed at a specific time
-    fn scheduleEvent(self: *AsyncEventLoop, event_type: EventType, delay_ms: u64, frame: anyframe) !void {
+    fn scheduleEvent(self: *AsyncEventLoop, event_type: EventType, delay_ms: u64) !void {
         const event = Event{
             .type = event_type,
             .expires = nanoTime() + (delay_ms * std.time.ns_per_ms),
-            .frame = frame,
+            .frame = undefined, // Not used in synchronous version
         };
         try self.event_queue.add(event);
     }
@@ -137,7 +133,7 @@ pub const AsyncEventLoop = struct {
         self.message_mutex.lock();
         defer self.message_mutex.unlock();
 
-        try self.message_queue.append(.{
+        try self.message_queue.append(self.allocator, .{
             .chat_id = chat_id,
             .text = try self.allocator.dupe(u8, text),
             .session_id = session_id,
@@ -152,7 +148,7 @@ pub const AsyncEventLoop = struct {
         for (self.active_chats.items) |id| {
             if (id == chat_id) return;
         }
-        try self.active_chats.append(chat_id);
+        try self.active_chats.append(self.allocator, chat_id);
     }
 
     /// Add or update a cron job
@@ -181,14 +177,12 @@ pub const AsyncEventLoop = struct {
         try self.cron_jobs.put(cron_id, job);
     }
 
-    /// Suspend current frame until specified time passes
-    fn waitForTime(self: *AsyncEventLoop, delay_ms: u64) void {
-        suspend {
-            self.scheduleEvent(.message, delay_ms, @frame()) catch unreachable;
-        }
+    /// Wait for specified time (simplified synchronous version)
+    fn waitForTime(_: *AsyncEventLoop, delay_ms: u64) void {
+        std.Thread.sleep(delay_ms * std.time.ns_per_ms);
     }
 
-    /// Process a single chat message asynchronously
+    /// Process a single chat message
     fn processChatMessage(self: *AsyncEventLoop, chat_id: i64, text: []const u8, session_id: []const u8) void {
         // Simulate processing time
         self.waitForTime(100); // 100ms delay for demonstration
@@ -210,7 +204,7 @@ pub const AsyncEventLoop = struct {
         }
     }
 
-    /// Process a cron job asynchronously
+    /// Process a cron job
     fn processCronJob(self: *AsyncEventLoop, job: CronJobEvent) void {
         std.debug.print("[Cron {s}] Running job: {s}\n", .{ job.id, job.name });
 
@@ -229,7 +223,7 @@ pub const AsyncEventLoop = struct {
 
         // Schedule next run if it's a recurring job
         if (job.schedule.kind == .every) {
-            const next_run = job.next_run + (job.schedule.every_ms orelse 0);
+            const next_run = job.next_run + @as(u64, @intCast(job.schedule.every_ms orelse 0));
             var new_job = job;
             new_job.next_run = next_run;
             new_job.last_run = nanoTime() / std.time.ns_per_ms;
@@ -253,14 +247,10 @@ pub const AsyncEventLoop = struct {
         self.waitForTime(@max(0, delay_ms));
 
         self.cron_mutex.lock();
-        const job = self.cron_jobs.get(cron_id);
+        const job = self.cron_jobs.get(cron_id) orelse return;
         self.cron_mutex.unlock();
 
-        if (job) |j| {
-            if (j.enabled) {
-                self.processCronJob(j);
-            }
-        }
+        self.processCronJob(job);
     }
 
     /// Heartbeat check task
@@ -285,8 +275,8 @@ pub const AsyncEventLoop = struct {
 
     /// Main event loop runner
     fn eventLoopRunner(self: *AsyncEventLoop) void {
-        // Start heartbeat task
-        _ = async self.heartbeatTask();
+        // Start heartbeat task (simplified for now)
+        self.heartbeatTask();
 
         // Schedule initial cron jobs
         self.cron_mutex.lock();
@@ -294,7 +284,7 @@ pub const AsyncEventLoop = struct {
         while (cron_iter.next()) |entry| {
             const job = entry.value_ptr.*;
             const delay_ms = job.next_run - (nanoTime() / std.time.ns_per_ms);
-            _ = async self.scheduleCronExecution(job.id, @max(0, delay_ms));
+            self.scheduleCronExecution(job.id, @max(0, delay_ms));
         }
         self.cron_mutex.unlock();
 
@@ -306,8 +296,8 @@ pub const AsyncEventLoop = struct {
                 const msg = self.message_queue.orderedRemove(0);
                 self.message_mutex.unlock();
 
-                // Process message asynchronously
-                _ = async self.processChatMessage(msg.chat_id, msg.text, msg.session_id);
+                // Process message
+                self.processChatMessage(msg.chat_id, msg.text, msg.session_id);
 
                 // Free allocated memory
                 self.allocator.free(msg.text);
@@ -321,11 +311,39 @@ pub const AsyncEventLoop = struct {
                 const now = nanoTime();
                 if (now < event.expires) {
                     // Sleep until event is due
-                    std.time.sleep(event.expires - now);
+                    std.Thread.sleep(event.expires - now);
                 }
 
-                // Resume the suspended frame
-                resume event.frame;
+                // Handle event based on type
+                switch (event.type) {
+                    .message => {
+                        if (event.chat_id) |chat_id| {
+                            if (event.message) |message| {
+                                const session_id = std.fmt.allocPrint(self.allocator, "tg_{d}", .{chat_id}) catch |err| {
+                                    std.debug.print("Error allocating session_id: {any}\n", .{err});
+                                    continue;
+                                };
+                                defer self.allocator.free(session_id);
+                                self.processChatMessage(chat_id, message, session_id);
+                            }
+                        }
+                    },
+                    .cron_job => {
+                        if (event.cron_id) |cron_id| {
+                            self.cron_mutex.lock();
+                            if (self.cron_jobs.get(cron_id)) |job| {
+                                self.processCronJob(job);
+                            }
+                            self.cron_mutex.unlock();
+                        }
+                    },
+                    .heartbeat => {
+                        self.heartbeatTask();
+                    },
+                    .shutdown => {
+                        break;
+                    },
+                }
             } else {
                 // No events, small sleep to prevent CPU spinning
                 std.Thread.sleep(std.time.ns_per_ms * 10);
@@ -341,7 +359,7 @@ pub const AsyncEventLoop = struct {
         try self.loadCronJobs();
 
         // Start the main event loop
-        var main_task = async self.eventLoopRunner();
+        self.eventLoopRunner();
 
         // Wait for shutdown
         while (!self.shutdown.load(.seq_cst)) {
@@ -349,12 +367,11 @@ pub const AsyncEventLoop = struct {
         }
 
         // Clean shutdown
-        nosuspend await main_task;
         std.debug.print("🛑 Event loop stopped\n", .{});
     }
 
     /// Request graceful shutdown
-    pub fn shutdown(self: *AsyncEventLoop) void {
+    pub fn requestShutdown(self: *AsyncEventLoop) void {
         self.shutdown.store(true, .seq_cst);
 
         // Send shutdown messages to active chats
@@ -415,7 +432,7 @@ pub fn main() !void {
     });
 
     // Simulate receiving messages from different chats
-    _ = async eventLoopSimulator(&event_loop);
+    eventLoopSimulator(&event_loop);
 
     // Run the event loop
     try event_loop.run();
