@@ -1,4 +1,6 @@
-# Async Event Loop Architecture
+# Async Event Loop Architecture (DEPRECATED)
+
+> **⚠️ Deprecated**: This documentation describes the async/await-based event loop that was used in Zig versions before 0.15.0. Since Zig 0.15.0 removed async/await support, this implementation is no longer maintained. Please see [THREAD_BASED_EVENT_LOOP.md](THREAD_BASED_EVENT_LOOP.md) for the current thread-based implementation.
 
 This document describes the async event loop implementation for efficiently handling multiple ChatIDs and cron jobs in SatiBot.
 

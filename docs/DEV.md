@@ -2,6 +2,18 @@
 
 This project is built with Zig 0.15.2.
 
+### Important: Zig 0.15.0 Migration
+
+This version includes significant changes from previous versions:
+
+- **Async/Await Removed**: Zig 0.15.0 removed async/await support. The event loop has been migrated to use `std.Thread`, `std.Thread.Mutex`, and `std.Thread.Condition`.
+- **ArrayList API Changes**: `init()` → `initCapacity()`, `deinit()` and `append()` now require allocator parameter.
+- **Type Casting**: `@intCast` now requires explicit type with `@as(Type, @intCast(...))`.
+- **Signal Handling**: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
+- **Division**: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
+
+See [THREAD_BASED_EVENT_LOOP.md](THREAD_BASED_EVENT_LOOP.md) for details on the new architecture.
+
 ### Prerequisites
 
 You can check your Zig version with:

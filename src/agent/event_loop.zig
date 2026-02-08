@@ -1,65 +1,34 @@
-/// Async Event Loop for managing multiple ChatIDs and cron jobs efficiently.
-/// Based on Zig's async/await pattern with priority queues for timed events.
+/// Generic Async Event Loop using threads
+/// Provides concurrent task processing with efficient scheduling
 const std = @import("std");
 const Config = @import("../config.zig").Config;
-const Agent = @import("../agent.zig").Agent;
-const http = @import("../http.zig");
-const providers = @import("../root.zig").providers;
-
-/// Get monotonic time for accurate timing
-var timer: ?std.time.Timer = null;
-fn nanoTime() u64 {
-    if (timer == null) {
-        timer = std.time.Timer.start() catch unreachable;
-    }
-    return timer.?.read();
-}
 
 /// Event types that can be scheduled in the event loop
 pub const EventType = enum {
-    message,
-    cron_job,
-    heartbeat,
+    custom,
     shutdown,
 };
 
 /// An event with its execution time
-const Event = struct {
+pub const Event = struct {
     type: EventType,
-    expires: u64,
-
-    // Event-specific data
-    chat_id: ?i64 = null,
-    message: ?[]const u8 = null,
-    cron_id: ?[]const u8 = null,
-
+    expires: i64,  // Using nanoseconds from std.time.nanoTimestamp()
+    
+    // Generic event data - can hold any type of payload
+    payload: ?[]const u8 = null,
+    
     fn compare(context: void, a: Event, b: Event) std.math.Order {
         _ = context;
         return std.math.order(a.expires, b.expires);
     }
 };
 
-/// Chat message structure
-const ChatMessage = struct {
-    chat_id: i64,
-    text: []const u8,
-    session_id: []const u8,
-    timestamp: u64,
-};
-
-/// Cron job structure
-const CronJobEvent = struct {
+/// Generic task structure for immediate processing
+pub const Task = struct {
     id: []const u8,
-    name: []const u8,
-    message: []const u8,
-    schedule: struct {
-        kind: enum { at, every },
-        at_ms: ?i64 = null,
-        every_ms: ?i64 = null,
-    },
-    enabled: bool = true,
-    last_run: ?u64 = null,
-    next_run: u64,
+    data: []const u8,
+    source: []const u8,
+    timestamp: i64,
 };
 
 /// Global event loop pointer for signal handler access
@@ -79,481 +48,267 @@ fn signalHandler(sig: i32) callconv(.c) void {
     }
 }
 
-/// Static message sender function for the event loop callback
-/// Sends a text message to a Telegram chat
-fn sendMessageToTelegram(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
-    const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{chat_id});
-    defer allocator.free(chat_id_str);
-    
-    // Build the API URL for sending messages  
-    const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
-    defer allocator.free(url);
+/// Callback function type for handling immediate tasks
+pub const TaskHandler = *const fn (allocator: std.mem.Allocator, task: Task) anyerror!void;
 
-    // Create JSON payload with chat_id and message text
-    const body = try std.json.Stringify.valueAlloc(allocator, .{
-        .chat_id = chat_id_str,
-        .text = text,
-    }, .{});
-    defer allocator.free(body);
+/// Callback function type for handling scheduled events
+pub const EventHandler = *const fn (allocator: std.mem.Allocator, event: Event) anyerror!void;
 
-    // Set HTTP headers for JSON content
-    const headers = &[_]std.http.Header{
-        .{ .name = "Content-Type", .value = "application/json" },
-    };
-
-    // Create a temporary HTTP client for sending
-    var client = try http.Client.initWithSettings(allocator, .{
-        .request_timeout_ms = 30000,
-        .keep_alive = false,
-    });
-    defer client.deinit();
-
-    // Send POST request to Telegram API
-    const response = try client.post(url, headers, body);
-    defer @constCast(&response).deinit();
-    
-    if (response.status_code != 200) {
-        std.debug.print("Failed to send message: status {d}\n", .{response.status_code});
-        return error.SendMessageFailed;
-    }
-}
-
-/// Callback function type for sending messages to Telegram
-const MessageSender = *const fn (allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) anyerror!void;
-
-/// Async Event Loop that manages all bot operations
+/// Event Loop using threads for concurrent processing
 pub const AsyncEventLoop = struct {
     allocator: std.mem.Allocator,
     config: Config,
     
-    // Telegram-specific fields
-    bot_token: ?[]const u8,
-    message_sender: ?MessageSender,
-    http_client: ?*http.Client,
-    offset: i64,
-
-    // Priority queue for timed events
+    // Thread-safe task queue for immediate processing
+    task_queue: std.ArrayList(Task),
+    // Mutex for thread-safe access to task queue
+    task_mutex: std.Thread.Mutex,
+    // Condition variable for task queue
+    task_condition: std.Thread.Condition,
+    
+    // Priority queue for scheduled events
     event_queue: std.PriorityQueue(Event, void, Event.compare),
+    
+    // Event queue mutex for thread safety
+    event_mutex: std.Thread.Mutex,
 
-    // Chat message queue (immediate processing)
-    message_queue: std.ArrayList(ChatMessage),
-    message_mutex: std.Thread.Mutex,
-
-    // Cron jobs storage
-    cron_jobs: std.StringHashMap(CronJobEvent),
-    cron_mutex: std.Thread.Mutex,
+    // Handlers
+    task_handler: ?TaskHandler,
+    event_handler: ?EventHandler,
 
     // Shutdown flag
     shutdown: std.atomic.Value(bool),
-
-    // Active chat tracking
-    active_chats: std.ArrayList(i64),
-    chats_mutex: std.Thread.Mutex,
+    
+    // Worker threads
+    worker_threads: std.ArrayList(std.Thread),
+    
+    // Generic offset tracking for polling APIs (atomic for thread safety)
+    offset: std.atomic.Value(i64),
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !AsyncEventLoop {
         return .{
             .allocator = allocator,
             .config = config,
-            .bot_token = null,
-            .message_sender = null,
-            .http_client = null,
-            .offset = 0,
+            .task_queue = std.ArrayList(Task).initCapacity(allocator, 0) catch unreachable,
+            .task_mutex = .{},
+            .task_condition = .{},
             .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
-            .message_queue = std.ArrayList(ChatMessage).initCapacity(allocator, 0) catch unreachable,
-            .message_mutex = .{},
-            .cron_jobs = std.StringHashMap(CronJobEvent).init(allocator),
-            .cron_mutex = .{},
+            .event_mutex = .{},
+            .task_handler = null,
+            .event_handler = null,
             .shutdown = std.atomic.Value(bool).init(false),
-            .active_chats = std.ArrayList(i64).initCapacity(allocator, 0) catch unreachable,
-            .chats_mutex = .{},
+            .worker_threads = std.ArrayList(std.Thread).initCapacity(allocator, 0) catch unreachable,
+            .offset = std.atomic.Value(i64).init(0),
         };
     }
 
-    /// Initialize with Telegram bot support
-    pub fn initWithBot(allocator: std.mem.Allocator, config: Config, bot_token: []const u8, message_sender: MessageSender, http_client: *http.Client) !AsyncEventLoop {
-        return .{
-            .allocator = allocator,
-            .config = config,
-            .bot_token = bot_token,
-            .message_sender = message_sender,
-            .http_client = http_client,
-            .offset = 0,
-            .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
-            .message_queue = std.ArrayList(ChatMessage).initCapacity(allocator, 0) catch unreachable,
-            .message_mutex = .{},
-            .cron_jobs = std.StringHashMap(CronJobEvent).init(allocator),
-            .cron_mutex = .{},
-            .shutdown = std.atomic.Value(bool).init(false),
-            .active_chats = std.ArrayList(i64).initCapacity(allocator, 0) catch unreachable,
-            .chats_mutex = .{},
-        };
+    /// Set task handler callback
+    pub fn setTaskHandler(self: *AsyncEventLoop, handler: TaskHandler) void {
+        self.task_handler = handler;
+    }
+
+    /// Set event handler callback
+    pub fn setEventHandler(self: *AsyncEventLoop, handler: EventHandler) void {
+        self.event_handler = handler;
+    }
+
+    /// Get current offset for polling
+    pub fn getOffset(self: *AsyncEventLoop) i64 {
+        return self.offset.load(.seq_cst);
+    }
+
+    /// Update offset for polling (thread-safe)
+    pub fn updateOffset(self: *AsyncEventLoop, new_offset: i64) void {
+        // Use atomic compare-and-swap to ensure thread safety
+        _ = self.offset.fetchMax(new_offset, .seq_cst);
     }
 
     pub fn deinit(self: *AsyncEventLoop) void {
+        // Shutdown all worker threads
+        self.shutdown.store(true, .seq_cst);
+        self.task_condition.broadcast();
+        
+        // Wait for all threads to finish
+        for (self.worker_threads.items) |thread| {
+            thread.join();
+        }
+        self.worker_threads.deinit(self.allocator);
+        
+        // Free remaining tasks
+        self.task_mutex.lock();
+        for (self.task_queue.items) |task| {
+            self.allocator.free(task.id);
+            self.allocator.free(task.data);
+            self.allocator.free(task.source);
+        }
+        self.task_queue.deinit(self.allocator);
+        self.task_mutex.unlock();
+        
+        // Free any remaining events
+        self.event_mutex.lock();
+        while (self.event_queue.removeOrNull()) |event| {
+            if (event.payload) |payload| {
+                self.allocator.free(payload);
+            }
+        }
         self.event_queue.deinit();
-
-        // Free allocated fields of any unprocessed messages remaining at shutdown
-        for (self.message_queue.items) |msg| {
-            self.allocator.free(msg.text);
-            self.allocator.free(msg.session_id);
-        }
-        self.message_queue.deinit(self.allocator);
-
-        // Free cron jobs
-        var cron_iter = self.cron_jobs.iterator();
-        while (cron_iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*.id);
-            self.allocator.free(entry.value_ptr.*.name);
-            self.allocator.free(entry.value_ptr.*.message);
-        }
-        self.cron_jobs.deinit();
-
-        self.active_chats.deinit(self.allocator);
+        self.event_mutex.unlock();
     }
 
-    /// Schedule an event to be executed at a specific time
-    fn scheduleEvent(self: *AsyncEventLoop, event_type: EventType, delay_ms: u64) !void {
+    /// Schedule a custom event to be executed at a specific time
+    pub fn scheduleEvent(self: *AsyncEventLoop, payload: ?[]const u8, delay_ms: u64) !void {
         const event = Event{
-            .type = event_type,
-            .expires = nanoTime() + (delay_ms * std.time.ns_per_ms),
-            .frame = undefined, // Not used in synchronous version
+            .type = .custom,
+            .expires = std.time.nanoTimestamp() + (@as(i64, @intCast(delay_ms)) * std.time.ns_per_ms),
+            .payload = if (payload) |p| try self.allocator.dupe(u8, p) else null,
         };
+        
+        self.event_mutex.lock();
+        defer self.event_mutex.unlock();
         try self.event_queue.add(event);
     }
 
-    /// Add a chat message to be processed immediately
-    pub fn addChatMessage(self: *AsyncEventLoop, chat_id: i64, text: []const u8) !void {
-        const session_id = try std.fmt.allocPrint(self.allocator, "tg_{d}", .{chat_id});
-
-        self.message_mutex.lock();
-        defer self.message_mutex.unlock();
-
-        try self.message_queue.append(self.allocator, .{
-            .chat_id = chat_id,
-            .text = try self.allocator.dupe(u8, text),
-            .session_id = session_id,
-            .timestamp = nanoTime(),
-        });
-
-        // Track active chat
-        self.chats_mutex.lock();
-        defer self.chats_mutex.unlock();
-
-        // Check if already tracked
-        for (self.active_chats.items) |id| {
-            if (id == chat_id) return;
-        }
-        try self.active_chats.append(self.allocator, chat_id);
-    }
-
-    /// Add or update a cron job
-    pub fn addCronJob(self: *AsyncEventLoop, id: []const u8, name: []const u8, message: []const u8, schedule: anytype) !void {
-        const cron_id = try self.allocator.dupe(u8, id);
-        const cron_name = try self.allocator.dupe(u8, name);
-        const cron_message = try self.allocator.dupe(u8, message);
-
-        const now = nanoTime() / std.time.ns_per_ms;
-        const next_run = switch (schedule.kind) {
-            .every => now + (schedule.every_ms orelse 0),
-            .at => @as(u64, @intCast(schedule.at_ms orelse now)),
+    /// Schedule shutdown event
+    fn scheduleShutdown(self: *AsyncEventLoop, delay_ms: u64) !void {
+        const event = Event{
+            .type = .shutdown,
+            .expires = std.time.nanoTimestamp() + (@as(i64, @intCast(delay_ms)) * std.time.ns_per_ms),
         };
+        
+        self.event_mutex.lock();
+        defer self.event_mutex.unlock();
+        try self.event_queue.add(event);
+    }
 
-        const job = CronJobEvent{
-            .id = try self.allocator.dupe(u8, cron_id),
-            .name = cron_name,
-            .message = cron_message,
-            .schedule = schedule,
-            .next_run = next_run,
+    /// Add a task to be processed immediately (thread-safe)
+    pub fn addTask(self: *AsyncEventLoop, id: []const u8, data: []const u8, source: []const u8) !void {
+        const task = Task{
+            .id = try self.allocator.dupe(u8, id),
+            .data = try self.allocator.dupe(u8, data),
+            .source = try self.allocator.dupe(u8, source),
+            .timestamp = @intCast(std.time.nanoTimestamp()),
         };
-
-        self.cron_mutex.lock();
-        defer self.cron_mutex.unlock();
-
-        try self.cron_jobs.put(cron_id, job);
+        
+        self.task_mutex.lock();
+        defer self.task_mutex.unlock();
+        
+        try self.task_queue.append(self.allocator, task);
+        self.task_condition.signal();
     }
 
-    /// Wait for specified time (simplified synchronous version)
-    fn waitForTime(_: *AsyncEventLoop, delay_ms: u64) void {
-        std.Thread.sleep(delay_ms * std.time.ns_per_ms);
-    }
 
-    /// Process a single chat message
-    fn processChatMessage(self: *AsyncEventLoop, chat_id: i64, text: []const u8, session_id: []const u8) void {
-        // Simulate processing time
-        self.waitForTime(100); // 100ms delay for demonstration
-
-        var agent = Agent.init(self.allocator, self.config, session_id);
-        defer agent.deinit();
-
-        agent.run(text) catch |err| {
-            std.debug.print("Error processing message from chat {d}: {any}\n", .{ chat_id, err });
-            return;
-        };
-
-        // Send response via Telegram if message_sender is configured
-        const messages = agent.ctx.get_messages();
-        if (messages.len > 0) {
-            const last_msg = messages[messages.len - 1];
-            if (last_msg.content) |content| {
-                if (self.message_sender) |sender| {
-                    if (self.bot_token) |token| {
-                        sender(self.allocator, token, chat_id, content) catch |err| {
-                            std.debug.print("Error sending response to chat {d}: {any}\n", .{ chat_id, err });
-                        };
-                    }
-                } else {
-                    std.debug.print("[Chat {d}] Response: {s}\n", .{ chat_id, content });
-                }
-            }
-        }
-    }
-
-    /// Poll Telegram API for new messages and add them to the queue
-    fn pollTelegramTask(self: *AsyncEventLoop) void {
-        // Only run if Telegram bot is configured
-        if (self.bot_token == null or self.http_client == null) {
-            std.debug.print("[Telegram Polling] Bot not configured, polling task exiting\n", .{});
-            return;
-        }
-
-        const bot_token = self.bot_token.?;
-        const client = self.http_client.?;
-
-        std.debug.print("🤖 Telegram polling started\n", .{});
-
+    /// Worker thread function for processing tasks
+    fn taskWorker(self: *AsyncEventLoop) void {
         while (!self.shutdown.load(.seq_cst)) {
-            // Build long-polling URL with current offset
-            const url = std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/getUpdates?offset={d}&timeout=5", .{ bot_token, self.offset }) catch |err| {
-                std.debug.print("[Telegram Polling] Error building URL: {any}\n", .{err});
-                self.waitForTime(5000); // 5s retry delay
-                continue;
-            };
-            defer self.allocator.free(url);
-
-            // Make HTTP request to Telegram API
-            const response = client.get(url, &.{}) catch |err| {
-                std.debug.print("[Telegram Polling] HTTP error: {any}\n", .{err});
-                self.waitForTime(5000); // 5s retry delay
-                continue;
-            };
-            defer @constCast(&response).deinit();
-
-            // Structure for parsing the JSON response from Telegram
-            const UpdateResponse = struct {
-                ok: bool,
-                result: ?[]struct {
-                    update_id: i64,
-                    message: ?struct {
-                        chat: struct {
-                            id: i64,
-                        },
-                        text: ?[]const u8 = null,
-                        voice: ?struct {
-                            file_id: []const u8,
-                        } = null,
-                    } = null,
-                } = null,
-            };
-
-            const parsed = std.json.parseFromSlice(UpdateResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
-                std.debug.print("[Telegram Polling] JSON parse error: {any}\n", .{err});
-                continue;
-            };
-            defer parsed.deinit();
-
-            // Process each update in the batch
-            if (parsed.value.result) |updates| {
-                for (updates) |update| {
-                    // Update offset so we acknowledge this message in the next poll
-                    self.offset = update.update_id + 1;
-
-                    if (update.message) |msg| {
-                        // Handle voice messages - skip them (not supported in basic polling)
-                        if (msg.voice) |_| {
-                            std.debug.print("[Telegram Polling] Voice message from chat {d} skipped (not supported)\n", .{msg.chat.id});
-                            continue;
-                        }
-
-                        // Get the text message content
-                        const final_text = msg.text orelse continue;
-
-                        if (final_text.len > 0) {
-                            std.debug.print("[Telegram Polling] Queuing message from chat {d}: {s}\n", .{ msg.chat.id, final_text });
-                            
-                            // Add message to event loop for async processing
-                            self.addChatMessage(msg.chat.id, final_text) catch |err| {
-                                std.debug.print("[Telegram Polling] Error queuing message: {any}\n", .{err});
-                            };
-                        }
-                    }
-                }
+            self.task_mutex.lock();
+            
+            // Wait for tasks or shutdown
+            while (self.task_queue.items.len == 0 and !self.shutdown.load(.seq_cst)) {
+                self.task_condition.wait(&self.task_mutex);
             }
-
-            // Small sleep to prevent tight looping
-            self.waitForTime(100);
+            
+            if (self.shutdown.load(.seq_cst)) {
+                self.task_mutex.unlock();
+                break;
+            }
+            
+            // Get next task
+            const task = self.task_queue.orderedRemove(0);
+            self.task_mutex.unlock();
+            
+            // Process task
+            self.processTask(task);
         }
-
-        std.debug.print("🛑 Telegram polling stopped\n", .{});
     }
 
-    /// Process a cron job
-    fn processCronJob(self: *AsyncEventLoop, job: CronJobEvent) void {
-        std.debug.print("[Cron {s}] Running job: {s}\n", .{ job.id, job.name });
 
-        const session_id = std.fmt.allocPrint(self.allocator, "cron_{s}", .{job.id}) catch |err| {
-            std.debug.print("Error allocating session_id: {any}\n", .{err});
-            return;
-        };
-        defer self.allocator.free(session_id);
 
-        var agent = Agent.init(self.allocator, self.config, session_id);
-        defer agent.deinit();
 
-        agent.run(job.message) catch |err| {
-            std.debug.print("[Cron {s}] Error: {any}\n", .{ job.id, err });
-        };
-
-        // Schedule next run if it's a recurring job
-        if (job.schedule.kind == .every) {
-            const next_run = job.next_run + @as(u64, @intCast(job.schedule.every_ms orelse 0));
-            var new_job = job;
-            new_job.next_run = next_run;
-            new_job.last_run = nanoTime() / std.time.ns_per_ms;
-
-            self.cron_mutex.lock();
-            defer self.cron_mutex.unlock();
-
-            self.cron_jobs.put(job.id, new_job) catch |err| {
-                std.debug.print("Error updating cron job: {any}\n", .{err});
-                return;
+    /// Process a single task using the registered handler
+    fn processTask(self: *AsyncEventLoop, task: Task) void {
+        defer {
+            // Free allocated memory
+            self.allocator.free(task.id);
+            self.allocator.free(task.data);
+            self.allocator.free(task.source);
+        }
+        
+        if (self.task_handler) |handler| {
+            handler(self.allocator, task) catch |err| {
+                std.debug.print("Error processing task from {s}: {any}\n", .{ task.source, err });
             };
-
-            // Schedule the next execution
-            const delay_ms = next_run - (nanoTime() / std.time.ns_per_ms);
-            self.scheduleCronExecution(job.id, delay_ms);
+        } else {
+            std.debug.print("[Task {s}] {s}: {s}\n", .{ task.id, task.source, task.data });
         }
     }
 
-    /// Schedule a cron job execution
-    fn scheduleCronExecution(self: *AsyncEventLoop, cron_id: []const u8, delay_ms: u64) void {
-        self.waitForTime(@max(0, delay_ms));
-
-        self.cron_mutex.lock();
-        const job = self.cron_jobs.get(cron_id) orelse return;
-        self.cron_mutex.unlock();
-
-        self.processCronJob(job);
-    }
-
-    /// Heartbeat check task
-    fn heartbeatTask(self: *AsyncEventLoop) void {
-        while (!self.shutdown.load(.seq_cst)) {
-            self.waitForTime(30 * 60 * 1000); // 30 minutes
-
-            if (self.shutdown.load(.seq_cst)) break;
-
-            std.debug.print("[Heartbeat] Checking system health...\n", .{});
-
-            // Could check system health, send notifications, etc.
-            const session_id = "heartbeat";
-            var agent = Agent.init(self.allocator, self.config, session_id);
-            defer agent.deinit();
-
-            agent.run("Check system health and report any issues") catch |err| {
-                std.debug.print("[Heartbeat] Error: {any}\n", .{err});
-            };
-        }
-    }
-
-    /// Main event loop runner
+    /// Main event loop runner (in main thread)
     fn eventLoopRunner(self: *AsyncEventLoop) void {
-        // Start Telegram polling task if bot is configured
-        if (self.bot_token != null and self.http_client != null) {
-            // Spawn polling as a separate thread
-            const polling_thread = std.Thread.spawn(.{}, pollTelegramTask, .{self}) catch |err| {
-                std.debug.print("[Event Loop] Failed to start polling thread: {any}\n", .{err});
-                return;
-            };
-            polling_thread.detach();
-        }
-
-        // Start heartbeat task in a separate thread
-        const heartbeat_thread = std.Thread.spawn(.{}, heartbeatTask, .{self}) catch |err| {
-            std.debug.print("[Event Loop] Failed to start heartbeat thread: {any}\n", .{err});
-            return;
-        };
-        heartbeat_thread.detach();
-
-        // Schedule initial cron jobs
-        self.cron_mutex.lock();
-        var cron_iter = self.cron_jobs.iterator();
-        while (cron_iter.next()) |entry| {
-            const job = entry.value_ptr.*;
-            const delay_ms = job.next_run - (nanoTime() / std.time.ns_per_ms);
-            self.scheduleCronExecution(job.id, @max(0, delay_ms));
-        }
-        self.cron_mutex.unlock();
-
-        // Main event loop
-        while (!self.shutdown.load(.seq_cst)) {
-            // Process immediate messages first
-            self.message_mutex.lock();
-            if (self.message_queue.items.len > 0) {
-                const msg = self.message_queue.orderedRemove(0);
-                self.message_mutex.unlock();
-
-                // Process message
-                self.processChatMessage(msg.chat_id, msg.text, msg.session_id);
-
-                // Free allocated memory
-                self.allocator.free(msg.text);
-                self.allocator.free(msg.session_id);
-                continue;
-            }
-            self.message_mutex.unlock();
-
-            // Process timed events
-            if (self.event_queue.removeOrNull()) |event| {
-                const now = nanoTime();
-                if (now < event.expires) {
-                    // Sleep until event is due
-                    std.Thread.sleep(event.expires - now);
+        // Start worker threads for task processing
+        const num_workers = @max(1, std.Thread.getCpuCount() catch 1);
+        
+        for (0..num_workers) |_| {
+            const worker = std.Thread.spawn(.{}, struct {
+                fn run(ctx: *AsyncEventLoop) void {
+                    ctx.taskWorker();
                 }
-
+            }.run, .{self}) catch |err| {
+                std.debug.print("Failed to spawn worker thread: {any}\n", .{err});
+                continue;
+            };
+            
+            self.worker_threads.append(self.allocator, worker) catch |err| {
+                std.debug.print("Failed to track worker thread: {any}\n", .{err});
+                worker.detach();
+            };
+        }
+        
+        // Main thread handles scheduled events
+        while (!self.shutdown.load(.seq_cst)) {
+            // Check for scheduled events
+            self.event_mutex.lock();
+            const next_event = self.event_queue.peek();
+            self.event_mutex.unlock();
+            
+            if (next_event) |event| {
+                const now = std.time.nanoTimestamp();
+                
+                if (now < event.expires) {
+                    // Sleep until the next event is due
+                    const delay_ms = @as(u64, @intCast(@divTrunc(event.expires - now, std.time.ns_per_ms)));
+                    std.Thread.sleep(delay_ms * std.time.ns_per_ms);
+                }
+                
+                // Remove and process the event
+                self.event_mutex.lock();
+                const ready_event = self.event_queue.removeOrNull().?;
+                self.event_mutex.unlock();
+                
                 // Handle event based on type
-                switch (event.type) {
-                    .message => {
-                        if (event.chat_id) |chat_id| {
-                            if (event.message) |message| {
-                                const session_id = std.fmt.allocPrint(self.allocator, "tg_{d}", .{chat_id}) catch |err| {
-                                    std.debug.print("Error allocating session_id: {any}\n", .{err});
-                                    continue;
-                                };
-                                defer self.allocator.free(session_id);
-                                self.processChatMessage(chat_id, message, session_id);
+                switch (ready_event.type) {
+                    .custom => {
+                        if (self.event_handler) |handler| {
+                            handler(self.allocator, ready_event) catch |err| {
+                                std.debug.print("Error handling custom event: {any}\n", .{err});
+                            };
+                        } else {
+                            if (ready_event.payload) |payload| {
+                                std.debug.print("[Custom Event] {s}\n", .{payload});
                             }
                         }
-                    },
-                    .cron_job => {
-                        if (event.cron_id) |cron_id| {
-                            self.cron_mutex.lock();
-                            if (self.cron_jobs.get(cron_id)) |job| {
-                                self.processCronJob(job);
-                            }
-                            self.cron_mutex.unlock();
+                        
+                        // Free event payload
+                        if (ready_event.payload) |payload| {
+                            self.allocator.free(payload);
                         }
-                    },
-                    .heartbeat => {
-                        self.heartbeatTask();
                     },
                     .shutdown => {
                         break;
                     },
                 }
             } else {
-                // No events, small sleep to prevent CPU spinning
-                std.Thread.sleep(std.time.ns_per_ms * 10);
+                // No events, short sleep to prevent CPU spinning
+                std.Thread.sleep(10 * std.time.ns_per_ms);
             }
         }
     }
@@ -561,18 +316,23 @@ pub const AsyncEventLoop = struct {
     /// Start the event loop
     pub fn run(self: *AsyncEventLoop) !void {
         std.debug.print("🚀 Async Event Loop started\n", .{});
-
-        // Load cron jobs from storage if needed
-        try self.loadCronJobs();
-
-        // Start the main event loop
+        
+        // Set up signal handlers
+        global_event_loop = self;
+        _ = std.posix.sigaction(std.posix.SIG.INT, &.{
+            .handler = .{ .handler = signalHandler },
+            .mask = std.posix.sigemptyset(),
+            .flags = 0,
+        }, null);
+        _ = std.posix.sigaction(std.posix.SIG.TERM, &.{
+            .handler = .{ .handler = signalHandler },
+            .mask = std.posix.sigemptyset(),
+            .flags = 0,
+        }, null);
+        
+        // Start the event loop
         self.eventLoopRunner();
-
-        // Wait for shutdown
-        while (!self.shutdown.load(.seq_cst)) {
-            std.Thread.sleep(std.time.ns_per_s * 1);
-        }
-
+        
         // Clean shutdown
         std.debug.print("🛑 Event loop stopped\n", .{});
     }
@@ -580,85 +340,10 @@ pub const AsyncEventLoop = struct {
     /// Request graceful shutdown
     pub fn requestShutdown(self: *AsyncEventLoop) void {
         self.shutdown.store(true, .seq_cst);
-
-        // Send shutdown messages to active chats
-        self.chats_mutex.lock();
-        defer self.chats_mutex.unlock();
-
-        std.debug.print("Sending shutdown to {d} active chats...\n", .{self.active_chats.items.len});
-        for (self.active_chats.items) |chat_id| {
-            std.debug.print("Goodbye chat {d}\n", .{chat_id});
-            // Would send actual message via respective platform
-        }
-    }
-
-    /// Load cron jobs from persistent storage
-    fn loadCronJobs(self: *AsyncEventLoop) !void {
-        const home = std.posix.getenv("HOME") orelse "/tmp";
-        const cron_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "cron_jobs.json" });
-        defer self.allocator.free(cron_path);
-
-        const file = std.fs.openFileAbsolute(cron_path, .{}) catch |err| {
-            if (err == error.FileNotFound) return;
-            return err;
-        };
-        defer file.close();
-
-        const content = try file.readToEndAlloc(self.allocator, 10485760);
-        defer self.allocator.free(content);
-
-        // Parse and load cron jobs
-        // Implementation would depend on your cron job format
-        std.debug.print("Loaded {d} cron jobs\n", .{self.cron_jobs.count()});
+        
+        // Wake up all worker threads
+        self.task_condition.broadcast();
+        
+        std.debug.print("Shutdown requested\n", .{});
     }
 };
-
-// Example usage and test
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-
-    // Example config (would load from file)
-    const config = Config{
-        .agents = .{ .defaults = .{ .model = "test-model" } },
-        .providers = .{},
-        .tools = .{},
-    };
-
-    var event_loop = try AsyncEventLoop.init(allocator, config);
-    defer event_loop.deinit();
-
-    // Add some example cron jobs
-    try event_loop.addCronJob("daily_report", "Daily Report", "Generate daily analytics report", .{
-        .kind = .every,
-        .every_ms = 24 * 60 * 60 * 1000, // 24 hours
-    });
-
-    try event_loop.addCronJob("hourly_check", "Hourly Check", "Check system status", .{
-        .kind = .every,
-        .every_ms = 60 * 60 * 1000, // 1 hour
-    });
-
-    // Simulate receiving messages from different chats
-    eventLoopSimulator(&event_loop);
-
-    // Run the event loop
-    try event_loop.run();
-}
-
-fn eventLoopSimulator(loop: *AsyncEventLoop) void {
-    var i: u32 = 0;
-    while (i < 5) : (i += 1) {
-        loop.waitForTime(2000); // Every 2 seconds
-
-        // Simulate message from different chat
-        const chat_id = @as(i64, 1000 + i);
-        const message = try std.fmt.allocPrint(loop.allocator, "Hello from chat {d}!", .{chat_id});
-        defer loop.allocator.free(message);
-
-        loop.addChatMessage(chat_id, message) catch {};
-    }
-
-    // Shutdown after simulation
-    loop.waitForTime(12000);
-    loop.shutdown();
-}

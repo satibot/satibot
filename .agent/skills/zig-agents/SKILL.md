@@ -8,6 +8,7 @@ description: Patterns and best practices for building AI agents in Zig. Covers t
 ## Overview
 
 This skill covers patterns for building AI agents in Zig, including:
+
 - Tool system design and implementation
 - Conversation context management
 - LLM provider abstractions
@@ -92,11 +93,12 @@ pub const ToolRegistry = struct {
 ### Implementing Tools
 
 Tools should:
+
 1. Parse JSON arguments
 2. Perform the operation
 3. Return a string result (allocated with ctx.allocator)
 
-**Example: File reading tool**
+Example: File reading tool
 
 ```zig
 pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
@@ -113,7 +115,7 @@ pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 }
 ```
 
-**Example: Web search tool with HTTP**
+Example: Web search tool with HTTP
 
 ```zig
 pub fn web_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
@@ -590,7 +592,7 @@ const MockProvider = struct {
 ### 1. Memory Management
 
 - **Always use `defer` for cleanup** immediately after acquisition
-- **Use `errdefer` for error-path cleanup** 
+- **Use `errdefer` for error-path cleanup**
 - **Pass allocators explicitly** to all functions
 - **Duplicate strings** when storing in context to ensure ownership
 

@@ -20,6 +20,15 @@ A multi-threaded supervisor that runs background services:
 - **Cron Thread**: Ticks every second to check for scheduled jobs.
 - **Heartbeat Thread**: Ticks periodically to process the heartbeat file.
 
+### 2.1 `AsyncEventLoop` (`src/agent/event_loop.zig`)
+
+A thread-based event loop for concurrent task processing (Zig 0.15.0 compatible):
+
+- **Thread Pool**: Worker threads for parallel task execution
+- **Task Queue**: Thread-safe queue for immediate processing
+- **Event Scheduler**: Priority queue for timed events
+- **Generic Handlers**: Pluggable task/event handlers for different platforms
+
 ### 3. `ToolRegistry` (`src/agent/tools.zig`)
 
 A dynamic dispatch system for tools. Tools are defined as Zig functions matching the signature:
@@ -115,6 +124,8 @@ src/
 │   ├── heartbeat.zig   # Proactive behavior
 │   ├── gateway.zig     # Service orchestration
 │   ├── telegram_bot.zig# Telegram implementation
+│   ├── telegram_handlers.zig # Telegram-specific event loop handlers
+│   ├── event_loop.zig  # Thread-based event loop (Zig 0.15.0)
 │   ├── vector_db.zig   # Embeddings & Search
 │   └── graph_db.zig    # Knowledge Graph
 │

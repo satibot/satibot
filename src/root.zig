@@ -11,6 +11,8 @@ pub const agent = struct {
     pub const cron = @import("agent/cron.zig");
     pub const heartbeat = @import("agent/heartbeat.zig");
     pub const gateway = @import("agent/gateway.zig");
+    pub const event_loop = @import("agent/event_loop.zig");
+    pub const telegram_handlers = @import("agent/telegram_handlers.zig");
 };
 pub const http = @import("http.zig");
 pub const providers = struct {
