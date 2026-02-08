@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Telegram Bot is an event loop-based implementation that manages interactions with the Telegram Bot API using long-polling. It processes text messages asynchronously through an event-driven architecture and maintains conversation sessions with AI agents.
+The Telegram Bot is a fully async event loop-based implementation that manages interactions with the Telegram Bot API using long-polling. Telegram polling runs as a background task within the event loop, messages are processed asynchronously, and responses are sent via a callback mechanism.
 
 Source code: `src/agent/telegram_bot.zig`.
 
@@ -72,13 +72,12 @@ graph TB
 - **Key Fields**:
   - `allocator`: Memory management for string operations and JSON parsing
   - `config`: Bot configuration including API tokens and provider settings
-  - `event_loop`: `AsyncEventLoop` for concurrent message processing
-  - `offset`: `i64` long-polling offset (default `0`), prevents duplicate message processing
+  - `event_loop`: `AsyncEventLoop` for concurrent message processing (contains offset, bot_token, message_sender callback)
   - `client`: `http.Client` with keep-alive for efficient API calls
 - **Methods**:
-  - `init()`: Creates HTTP client (60s timeout, keep-alive) and event loop
+  - `init()`: Creates HTTP client (60s timeout, keep-alive) and event loop with Telegram bot support
   - `deinit()`: Cleans up event loop and HTTP connections
-  - `tick()`: Single polling iteration - fetches updates, processes messages, sends replies
+  - `tick()`: (Legacy) Single polling iteration - fetches updates, processes messages, sends replies
   - `send_chat_action()`: Sends typing indicators to Telegram
   - `send_message()`: Sends text messages via Telegram API
 
@@ -87,21 +86,32 @@ graph TB
 - **Purpose**: Main entry point for the Telegram Bot service
 - **Flow**:
   1. Validates `telegram` config exists (returns `TelegramConfigNotFound` if missing)
-  2. Initializes bot instance
-  3. Sets up SIGINT/SIGTERM signal handlers
+  2. Initializes bot instance with async event loop
+  3. Sets up SIGINT/SIGTERM signal handlers (signal handler calls `event_loop.requestShutdown()`)
   4. Validates `chatId` is configured (returns `TelegramChatIdNotConfigured` if missing)
   5. Sends startup message to configured chat
-  6. Enters main loop: `event_loop.run()` → check shutdown → `tick()` → sleep 100ms
+  6. Starts event loop: `event_loop.run()` (blocking, handles polling + processing)
   7. On shutdown: sends goodbye message to configured chat via defer block
+
+**Note**: The main loop no longer calls `tick()` directly. Instead, `pollTelegramTask()` runs as a background thread within the event loop, fetching updates and queuing messages for async processing.
 
 ### AsyncEventLoop
 
-- **Purpose**: Event-driven message processing and cron job management
+- **Purpose**: Event-driven message processing, cron job management, and Telegram polling
 - **Key Components**:
   - `message_queue`: Queue for immediate message processing
   - `event_queue`: Priority queue for timed events
   - `cron_jobs`: HashMap for scheduled tasks
   - `active_chats`: List tracking active conversations
+  - `bot_token`: Telegram bot token for API calls
+  - `message_sender`: Callback function for sending responses to Telegram
+  - `http_client`: Shared HTTP client for polling
+  - `offset`: Long-polling offset to prevent duplicate message processing
+- **Key Methods**:
+  - `initWithBot()`: Initialize with Telegram bot support (token, sender callback, HTTP client)
+  - `pollTelegramTask()`: Background task that polls Telegram API and queues messages
+  - `processChatMessage()`: Process messages and send responses via callback
+  - `run()`: Main event loop (starts polling thread, heartbeat, cron jobs, processes queue)
 
 ### Global State
 
@@ -122,46 +132,24 @@ sequenceDiagram
     Note over TelegramBot: run() validates config, sends startup message
     
     %% Main Loop
-    loop Every 100ms until shutdown
-        TelegramBot->>EventLoop: event_loop.run()
-        TelegramBot->>Telegram: getUpdates (long-polling, 5s timeout)
-        Telegram-->>TelegramBot: JSON updates array
+    Note over TelegramBot: event_loop.run() starts polling thread
+    
+    %% Async Polling
+    loop Async polling in background
+        AsyncEventLoop->>AsyncEventLoop: pollTelegramTask()
+        AsyncEventLoop->>Telegram: getUpdates (long-polling, 5s timeout)
+        Telegram-->>AsyncEventLoop: JSON updates array
+        AsyncEventLoop->>AsyncEventLoop: Add messages to queue
     end
     
-    %% Message Reception
-    User->>Telegram: Sends text message
-    Telegram->>TelegramBot: Included in getUpdates response
-    Note over TelegramBot: offset = update_id + 1
-    
-    %% Voice Message Handling
-    alt Voice Message
-        TelegramBot->>Telegram: sendMessage("voice not supported")
-        Telegram->>User: Voice not supported notice
+    %% Message Processing
+    loop Process messages from queue
+        AsyncEventLoop->>Agent: processChatMessage()
+        Agent->>LLM: generate response
+        LLM-->>Agent: AI response
+        Agent-->>AsyncEventLoop: response via message_sender callback
+        AsyncEventLoop->>Telegram: sendMessage(response)
     end
-    
-    %% Command Handling
-    alt /help command
-        TelegramBot->>Telegram: sendMessage(help text)
-    else /new command
-        TelegramBot->>TelegramBot: Delete session file
-        Note over TelegramBot: If "/new prompt", continue processing
-    end
-    
-    %% Agent Processing (synchronous)
-    TelegramBot->>Telegram: sendChatAction("typing")
-    TelegramBot->>EventLoop: addChatMessage(chat_id, text)
-    TelegramBot->>Agent: Agent.init() loads session from disk
-    TelegramBot->>Agent: agent.run(text)
-    Agent->>LLM: generate response
-    LLM-->>Agent: AI response
-    
-    %% Response Delivery
-    TelegramBot->>TelegramBot: Get last assistant message from context
-    TelegramBot->>Telegram: sendMessage(response)
-    Telegram->>User: bot response
-    
-    %% Post-processing
-    Agent->>Agent: index_conversation() to RAG
 ```
 
 ## Command Handling
@@ -229,24 +217,27 @@ graph TB
 
 ### Event Loop Coordination
 
-- **Main Thread**: Handles Telegram API polling and event loop execution
-- **Message Queue**: Immediate processing of incoming chat messages
-- **Event Queue**: Priority-based processing of timed events
-- **Cron Jobs**: Scheduled tasks with configurable intervals
-- **Agent Processing**: Synchronous AI response generation
+- **Main Thread**: Calls `event_loop.run()` which blocks until shutdown
+- **Polling Thread**: Background thread running `pollTelegramTask()` for Telegram API long-polling
+- **Heartbeat Thread**: Background thread for periodic health checks
+- **Message Queue**: Immediate processing of incoming chat messages (populated by polling thread)
+- **Event Queue**: Priority-based processing of timed events (cron jobs)
+- **Agent Processing**: Synchronous AI response generation within event loop
+- **Response Delivery**: Via `message_sender` callback to send responses back to Telegram
 - **Resource Management**: Automatic cleanup and memory management
 
 ## Error Handling
 
 ### Robustness Features
 
-- **Network Errors**: Retry with 5-second delay on `tick()` failures
-- **Event Loop Errors**: Retry with 5-second delay on `event_loop.run()` failures
+- **Network Errors**: Retry with 5-second delay on polling failures
+- **Event Loop Errors**: Logged but don't crash the bot
 - **Agent Errors**: Caught per-message, sends error notice to user, does not crash bot
 - **JSON Parsing**: `ignore_unknown_fields = true`, optional fields handle missing data
 - **Resource Cleanup**: Proper `defer` blocks for all allocations (`allocPrint`, `path.join`, etc.)
 - **Typing Indicator**: `send_chat_action` errors are silently ignored (`catch {}`)
 - **RAG Indexing**: `index_conversation()` errors are silently ignored (`catch {}`)
+- **Signal Handling**: SIGINT/SIGTERM triggers graceful shutdown via `requestShutdown()`
 
 ### Graceful Shutdown
 
@@ -257,9 +248,14 @@ stateDiagram-v2
     ValidateConfig --> [*]: missing config (error)
     InitBot --> SetupSignals
     SetupSignals --> SendStartup
-    SendStartup --> MainLoop
-    MainLoop --> MainLoop: event_loop.run() → tick() → sleep 100ms
-    MainLoop --> Shutdown: SIGINT/SIGTERM sets atomic flag
+    SendStartup --> StartEventLoop: event_loop.run()
+    StartEventLoop --> PollTelegram: spawn pollTelegramTask thread
+    StartEventLoop --> Heartbeat: spawn heartbeat thread
+    StartEventLoop --> ProcessQueue: process messages
+    PollTelegram --> ProcessQueue: queue messages
+    ProcessQueue --> SendResponse: via message_sender callback
+    SendResponse --> TelegramAPI: sendMessage()
+    StartEventLoop --> Shutdown: SIGINT/SIGTERM
     Shutdown --> SendGoodbye: defer block sends to configured chatId
     SendGoodbye --> Cleanup: bot.deinit()
     Cleanup --> [*]
@@ -428,19 +424,28 @@ The bot provides extensive debug output:
 
 ## Performance Considerations
 
+### Async Architecture Benefits
+
+- **True Async**: Polling runs in background thread, main thread processes queue
+- **No Blocking**: Main thread never blocked by network I/O during polling
+- **Queue-based**: Messages queued for processing, preventing message loss during high load
+- **Thread Safety**: Mutex-protected queues enable concurrent access
+- **Scalable**: Handles multiple concurrent conversations efficiently
+
 ### Long-Polling Optimization
 
 - **Timeout**: 5-second server-side wait reduces empty responses
 - **Offset Management**: `self.offset = update_id + 1` prevents duplicate processing
 - **Connection Reuse**: Keep-alive HTTP client reduces TLS handshake overhead
-- **Polling Interval**: 100ms sleep between cycles prevents CPU spinning
+- **Polling Interval**: 100ms sleep between cycles in pollTelegramTask() prevents tight looping
 
 ### Event Loop Processing
 
-- **Non-blocking**: Event loop processes messages efficiently
-- **Queue-based**: Message and event queues prevent blocking
-- **Resource Efficient**: No thread spawning overhead
-- **Scalable**: Handles multiple concurrent conversations
+- **Non-blocking**: Event loop processes messages from queue without waiting for polling
+- **Queue-based**: Message and event queues prevent blocking between components
+- **Resource Efficient**: Minimal thread spawning (only polling + heartbeat threads)
+- **Scalable**: Handles multiple concurrent conversations via queue processing
+- **Callback-based**: Responses sent via message_sender callback, decoupling components
 
 ### Agent Lifecycle
 
@@ -458,12 +463,13 @@ The bot provides extensive debug output:
 
 ## Unit Tests
 
-The file includes the following tests (lines 365-492):
+The file includes the following tests:
 
-- **`TelegramBot lifecycle`**: Init/deinit, offset defaults to 0
-- **`TelegramBot tick returns if no config`**: `tick()` returns early when telegram config is null
+- **`TelegramBot lifecycle`**: Init/deinit with event loop configured for Telegram
+- **`TelegramBot init fails without config`**: init() returns error when telegram config is null
 - **`TelegramBot config validation`**: Verifies fields are accessible after init
 - **`TelegramBot session ID generation`**: `tg_{chat_id}` format validation
 - **`TelegramBot command detection - /new`**: `startsWith` logic for `/new` and `/new <prompt>`
 - **`TelegramBot message JSON serialization`**: JSON output contains expected fields
 - **`TelegramBot config file template generation`**: Template contains all required config keys
+- **`TelegramBot parallel messages`** (various tests): Tests concurrent message queuing via event loop

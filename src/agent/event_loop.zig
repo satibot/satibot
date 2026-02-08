@@ -3,6 +3,7 @@
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
+const http = @import("../http.zig");
 const providers = @import("../root.zig").providers;
 
 /// Get monotonic time for accurate timing
@@ -61,10 +62,75 @@ const CronJobEvent = struct {
     next_run: u64,
 };
 
+/// Global event loop pointer for signal handler access
+var global_event_loop: ?*AsyncEventLoop = null;
+
+/// Global shutdown flag for signal handling
+var shutdown_requested = std.atomic.Value(bool).init(false);
+
+/// Signal handler for SIGINT (Ctrl+C) and SIGTERM
+/// Sets the global shutdown flag and requests event loop shutdown
+fn signalHandler(sig: i32) callconv(.c) void {
+    _ = sig;
+    std.debug.print("\n🛑 Shutdown signal received, stopping event loop...\n", .{});
+    shutdown_requested.store(true, .seq_cst);
+    if (global_event_loop) |el| {
+        el.requestShutdown();
+    }
+}
+
+/// Static message sender function for the event loop callback
+/// Sends a text message to a Telegram chat
+fn sendMessageToTelegram(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
+    const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{chat_id});
+    defer allocator.free(chat_id_str);
+    
+    // Build the API URL for sending messages  
+    const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
+    defer allocator.free(url);
+
+    // Create JSON payload with chat_id and message text
+    const body = try std.json.Stringify.valueAlloc(allocator, .{
+        .chat_id = chat_id_str,
+        .text = text,
+    }, .{});
+    defer allocator.free(body);
+
+    // Set HTTP headers for JSON content
+    const headers = &[_]std.http.Header{
+        .{ .name = "Content-Type", .value = "application/json" },
+    };
+
+    // Create a temporary HTTP client for sending
+    var client = try http.Client.initWithSettings(allocator, .{
+        .request_timeout_ms = 30000,
+        .keep_alive = false,
+    });
+    defer client.deinit();
+
+    // Send POST request to Telegram API
+    const response = try client.post(url, headers, body);
+    defer @constCast(&response).deinit();
+    
+    if (response.status_code != 200) {
+        std.debug.print("Failed to send message: status {d}\n", .{response.status_code});
+        return error.SendMessageFailed;
+    }
+}
+
+/// Callback function type for sending messages to Telegram
+const MessageSender = *const fn (allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) anyerror!void;
+
 /// Async Event Loop that manages all bot operations
 pub const AsyncEventLoop = struct {
     allocator: std.mem.Allocator,
     config: Config,
+    
+    // Telegram-specific fields
+    bot_token: ?[]const u8,
+    message_sender: ?MessageSender,
+    http_client: ?*http.Client,
+    offset: i64,
 
     // Priority queue for timed events
     event_queue: std.PriorityQueue(Event, void, Event.compare),
@@ -88,6 +154,30 @@ pub const AsyncEventLoop = struct {
         return .{
             .allocator = allocator,
             .config = config,
+            .bot_token = null,
+            .message_sender = null,
+            .http_client = null,
+            .offset = 0,
+            .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
+            .message_queue = std.ArrayList(ChatMessage).initCapacity(allocator, 0) catch unreachable,
+            .message_mutex = .{},
+            .cron_jobs = std.StringHashMap(CronJobEvent).init(allocator),
+            .cron_mutex = .{},
+            .shutdown = std.atomic.Value(bool).init(false),
+            .active_chats = std.ArrayList(i64).initCapacity(allocator, 0) catch unreachable,
+            .chats_mutex = .{},
+        };
+    }
+
+    /// Initialize with Telegram bot support
+    pub fn initWithBot(allocator: std.mem.Allocator, config: Config, bot_token: []const u8, message_sender: MessageSender, http_client: *http.Client) !AsyncEventLoop {
+        return .{
+            .allocator = allocator,
+            .config = config,
+            .bot_token = bot_token,
+            .message_sender = message_sender,
+            .http_client = http_client,
+            .offset = 0,
             .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
             .message_queue = std.ArrayList(ChatMessage).initCapacity(allocator, 0) catch unreachable,
             .message_mutex = .{},
@@ -198,16 +288,113 @@ pub const AsyncEventLoop = struct {
 
         agent.run(text) catch |err| {
             std.debug.print("Error processing message from chat {d}: {any}\n", .{ chat_id, err });
+            return;
         };
 
-        // Send response (would integrate with Telegram/Discord/etc.)
+        // Send response via Telegram if message_sender is configured
         const messages = agent.ctx.get_messages();
         if (messages.len > 0) {
             const last_msg = messages[messages.len - 1];
             if (last_msg.content) |content| {
-                std.debug.print("[Chat {d}] Response: {s}\n", .{ chat_id, content });
+                if (self.message_sender) |sender| {
+                    if (self.bot_token) |token| {
+                        sender(self.allocator, token, chat_id, content) catch |err| {
+                            std.debug.print("Error sending response to chat {d}: {any}\n", .{ chat_id, err });
+                        };
+                    }
+                } else {
+                    std.debug.print("[Chat {d}] Response: {s}\n", .{ chat_id, content });
+                }
             }
         }
+    }
+
+    /// Poll Telegram API for new messages and add them to the queue
+    fn pollTelegramTask(self: *AsyncEventLoop) void {
+        // Only run if Telegram bot is configured
+        if (self.bot_token == null or self.http_client == null) {
+            std.debug.print("[Telegram Polling] Bot not configured, polling task exiting\n", .{});
+            return;
+        }
+
+        const bot_token = self.bot_token.?;
+        const client = self.http_client.?;
+
+        std.debug.print("🤖 Telegram polling started\n", .{});
+
+        while (!self.shutdown.load(.seq_cst)) {
+            // Build long-polling URL with current offset
+            const url = std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/getUpdates?offset={d}&timeout=5", .{ bot_token, self.offset }) catch |err| {
+                std.debug.print("[Telegram Polling] Error building URL: {any}\n", .{err});
+                self.waitForTime(5000); // 5s retry delay
+                continue;
+            };
+            defer self.allocator.free(url);
+
+            // Make HTTP request to Telegram API
+            const response = client.get(url, &.{}) catch |err| {
+                std.debug.print("[Telegram Polling] HTTP error: {any}\n", .{err});
+                self.waitForTime(5000); // 5s retry delay
+                continue;
+            };
+            defer @constCast(&response).deinit();
+
+            // Structure for parsing the JSON response from Telegram
+            const UpdateResponse = struct {
+                ok: bool,
+                result: ?[]struct {
+                    update_id: i64,
+                    message: ?struct {
+                        chat: struct {
+                            id: i64,
+                        },
+                        text: ?[]const u8 = null,
+                        voice: ?struct {
+                            file_id: []const u8,
+                        } = null,
+                    } = null,
+                } = null,
+            };
+
+            const parsed = std.json.parseFromSlice(UpdateResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
+                std.debug.print("[Telegram Polling] JSON parse error: {any}\n", .{err});
+                continue;
+            };
+            defer parsed.deinit();
+
+            // Process each update in the batch
+            if (parsed.value.result) |updates| {
+                for (updates) |update| {
+                    // Update offset so we acknowledge this message in the next poll
+                    self.offset = update.update_id + 1;
+
+                    if (update.message) |msg| {
+                        // Handle voice messages - skip them (not supported in basic polling)
+                        if (msg.voice) |_| {
+                            std.debug.print("[Telegram Polling] Voice message from chat {d} skipped (not supported)\n", .{msg.chat.id});
+                            continue;
+                        }
+
+                        // Get the text message content
+                        const final_text = msg.text orelse continue;
+
+                        if (final_text.len > 0) {
+                            std.debug.print("[Telegram Polling] Queuing message from chat {d}: {s}\n", .{ msg.chat.id, final_text });
+                            
+                            // Add message to event loop for async processing
+                            self.addChatMessage(msg.chat.id, final_text) catch |err| {
+                                std.debug.print("[Telegram Polling] Error queuing message: {any}\n", .{err});
+                            };
+                        }
+                    }
+                }
+            }
+
+            // Small sleep to prevent tight looping
+            self.waitForTime(100);
+        }
+
+        std.debug.print("🛑 Telegram polling stopped\n", .{});
     }
 
     /// Process a cron job
@@ -281,8 +468,22 @@ pub const AsyncEventLoop = struct {
 
     /// Main event loop runner
     fn eventLoopRunner(self: *AsyncEventLoop) void {
-        // Start heartbeat task (simplified for now)
-        self.heartbeatTask();
+        // Start Telegram polling task if bot is configured
+        if (self.bot_token != null and self.http_client != null) {
+            // Spawn polling as a separate thread
+            const polling_thread = std.Thread.spawn(.{}, pollTelegramTask, .{self}) catch |err| {
+                std.debug.print("[Event Loop] Failed to start polling thread: {any}\n", .{err});
+                return;
+            };
+            polling_thread.detach();
+        }
+
+        // Start heartbeat task in a separate thread
+        const heartbeat_thread = std.Thread.spawn(.{}, heartbeatTask, .{self}) catch |err| {
+            std.debug.print("[Event Loop] Failed to start heartbeat thread: {any}\n", .{err});
+            return;
+        };
+        heartbeat_thread.detach();
 
         // Schedule initial cron jobs
         self.cron_mutex.lock();

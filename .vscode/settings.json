@@ -12,6 +12,8 @@
         "getenv",
         "groq",
         "openrouter",
-        "satibot"
+        "satibot",
+        "Sigaction",
+        "sigset"
     ]
 }
