@@ -72,9 +72,27 @@ graph TB
 - **Key Fields**:
   - `allocator`: Memory management for string operations and JSON parsing
   - `config`: Bot configuration including API tokens and provider settings
-  - `event_loop`: AsyncEventLoop for concurrent message processing
-  - `offset`: Long-polling offset to prevent duplicate message processing
-  - `client`: HTTP client with keep-alive for efficient API calls
+  - `event_loop`: `AsyncEventLoop` for concurrent message processing
+  - `offset`: `i64` long-polling offset (default `0`), prevents duplicate message processing
+  - `client`: `http.Client` with keep-alive for efficient API calls
+- **Methods**:
+  - `init()`: Creates HTTP client (60s timeout, keep-alive) and event loop
+  - `deinit()`: Cleans up event loop and HTTP connections
+  - `tick()`: Single polling iteration - fetches updates, processes messages, sends replies
+  - `send_chat_action()`: Sends typing indicators to Telegram
+  - `send_message()`: Sends text messages via Telegram API
+
+### `run()` Entry Point
+
+- **Purpose**: Main entry point for the Telegram Bot service
+- **Flow**:
+  1. Validates `telegram` config exists (returns `TelegramConfigNotFound` if missing)
+  2. Initializes bot instance
+  3. Sets up SIGINT/SIGTERM signal handlers
+  4. Validates `chatId` is configured (returns `TelegramChatIdNotConfigured` if missing)
+  5. Sends startup message to configured chat
+  6. Enters main loop: `event_loop.run()` → check shutdown → `tick()` → sleep 100ms
+  7. On shutdown: sends goodbye message to configured chat via defer block
 
 ### AsyncEventLoop
 
@@ -87,7 +105,7 @@ graph TB
 
 ### Global State
 
-- **`shutdown_requested`**: Atomic flag for graceful shutdown
+- **`shutdown_requested`**: `std.atomic.Value(bool)` with `seq_cst` ordering for thread-safe shutdown signaling
 
 ## Message Processing Flow
 
@@ -101,49 +119,72 @@ sequenceDiagram
     participant LLM
     
     %% Initial Setup
-    Note over TelegramBot: Bot starts and sends startup message
+    Note over TelegramBot: run() validates config, sends startup message
+    
+    %% Main Loop
+    loop Every 100ms until shutdown
+        TelegramBot->>EventLoop: event_loop.run()
+        TelegramBot->>Telegram: getUpdates (long-polling, 5s timeout)
+        Telegram-->>TelegramBot: JSON updates array
+    end
     
     %% Message Reception
     User->>Telegram: Sends text message
-    Telegram->>TelegramBot: getUpdates webhook
+    Telegram->>TelegramBot: Included in getUpdates response
+    Note over TelegramBot: offset = update_id + 1
     
-    %% Voice Message Handling (if applicable)
+    %% Voice Message Handling
     alt Voice Message
-        TelegramBot->>TelegramBot: Send "not supported" message
-        Note over User: User informed voice messages not supported
+        TelegramBot->>Telegram: sendMessage("voice not supported")
+        Telegram->>User: Voice not supported notice
     end
     
-    %% Message Processing via Event Loop
-    TelegramBot->>EventLoop: addChatMessage()
-    EventLoop->>EventLoop: processEvents()
-    EventLoop->>Agent: process message
+    %% Command Handling
+    alt /help command
+        TelegramBot->>Telegram: sendMessage(help text)
+    else /new command
+        TelegramBot->>TelegramBot: Delete session file
+        Note over TelegramBot: If "/new prompt", continue processing
+    end
+    
+    %% Agent Processing (synchronous)
+    TelegramBot->>Telegram: sendChatAction("typing")
+    TelegramBot->>EventLoop: addChatMessage(chat_id, text)
+    TelegramBot->>Agent: Agent.init() loads session from disk
+    TelegramBot->>Agent: agent.run(text)
     Agent->>LLM: generate response
     LLM-->>Agent: AI response
-    Agent-->>EventLoop: final response
     
     %% Response Delivery
-    EventLoop-->>TelegramBot: response ready
-    TelegramBot->>Telegram: sendMessage
+    TelegramBot->>TelegramBot: Get last assistant message from context
+    TelegramBot->>Telegram: sendMessage(response)
     Telegram->>User: bot response
     
-    %% Session Management
-    Agent->>Agent: index_conversation()
+    %% Post-processing
+    Agent->>Agent: index_conversation() to RAG
 ```
 
 ## Command Handling
 
-The bot supports several magic commands:
+The bot supports two magic commands (detected via `std.mem.startsWith`):
 
 ### `/help`
 
 - **Purpose**: Display available commands
-- **Response**: Shows command list and usage instructions
+- **Response**: Shows command list (`/new`, `/help`) and usage instructions
+- **Behavior**: Sends help text and skips further processing (`continue`)
 
 ### `/new`
 
 - **Purpose**: Clear conversation session memory
-- **Action**: Deletes session file and starts fresh conversation
-- **Variant**: `/new <prompt>` clears session then processes prompt
+- **Action**: Deletes session file at `~/.bots/sessions/tg_{chat_id}.json`
+- **Variant**: `/new` alone sends confirmation and skips processing
+- **Variant**: `/new <prompt>` clears session then processes `<prompt>` with a fresh agent
+
+### Session ID Format
+
+- **Pattern**: `tg_{chat_id}` (e.g., `tg_123456789`)
+- **Storage**: `~/.bots/sessions/tg_{chat_id}.json`
 
 ## Event Loop Architecture
 
@@ -200,18 +241,27 @@ graph TB
 ### Robustness Features
 
 - **Network Errors**: Retry with 5-second delay on `tick()` failures
-- **JSON Parsing**: Optional fields handle missing data gracefully
-- **Event Loop Errors**: Isolated to prevent bot crashes
-- **Resource Cleanup**: Proper defer blocks for memory management
+- **Event Loop Errors**: Retry with 5-second delay on `event_loop.run()` failures
+- **Agent Errors**: Caught per-message, sends error notice to user, does not crash bot
+- **JSON Parsing**: `ignore_unknown_fields = true`, optional fields handle missing data
+- **Resource Cleanup**: Proper `defer` blocks for all allocations (`allocPrint`, `path.join`, etc.)
+- **Typing Indicator**: `send_chat_action` errors are silently ignored (`catch {}`)
+- **RAG Indexing**: `index_conversation()` errors are silently ignored (`catch {}`)
 
 ### Graceful Shutdown
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Running
-    Running --> Shutdown: SIGINT/SIGTERM
-    Shutdown --> SendGoodbyeConfig: always
-    SendGoodbyeConfig --> Cleanup
+    [*] --> ValidateConfig
+    ValidateConfig --> InitBot: config OK
+    ValidateConfig --> [*]: missing config (error)
+    InitBot --> SetupSignals
+    SetupSignals --> SendStartup
+    SendStartup --> MainLoop
+    MainLoop --> MainLoop: event_loop.run() → tick() → sleep 100ms
+    MainLoop --> Shutdown: SIGINT/SIGTERM sets atomic flag
+    Shutdown --> SendGoodbye: defer block sends to configured chatId
+    SendGoodbye --> Cleanup: bot.deinit()
     Cleanup --> [*]
 ```
 
@@ -347,6 +397,20 @@ The bot also implements **Retrieval-Augmented Generation**:
 - **Lifecycle**: Created on first message, cleaned on shutdown
 - **Thread Safety**: Mutex-protected within event loop
 
+## Telegram API Methods
+
+The bot uses three Telegram Bot API endpoints:
+
+- **`getUpdates`**: `GET /bot{token}/getUpdates?offset={n}&timeout=5` - Long-polling for new messages
+- **`sendMessage`**: `POST /bot{token}/sendMessage` - Send text replies to users
+- **`sendChatAction`**: `POST /bot{token}/sendChatAction` - Show "typing" indicator
+
+### Request Format
+
+- **Content-Type**: `application/json`
+- **Body**: JSON with `chat_id` + `text` (sendMessage) or `action` (sendChatAction)
+- **Response Parsing**: `UpdateResponse` struct defined inline in `tick()` with `ignore_unknown_fields`
+
 ## HTTP Client Configuration
 
 - **Timeout**: 60 seconds for all requests
@@ -366,9 +430,10 @@ The bot provides extensive debug output:
 
 ### Long-Polling Optimization
 
-- **Timeout**: 5 seconds to reduce empty responses
-- **Offset Management**: Prevents duplicate processing
-- **Connection Reuse**: Keep-alive reduces overhead
+- **Timeout**: 5-second server-side wait reduces empty responses
+- **Offset Management**: `self.offset = update_id + 1` prevents duplicate processing
+- **Connection Reuse**: Keep-alive HTTP client reduces TLS handshake overhead
+- **Polling Interval**: 100ms sleep between cycles prevents CPU spinning
 
 ### Event Loop Processing
 
@@ -377,8 +442,28 @@ The bot provides extensive debug output:
 - **Resource Efficient**: No thread spawning overhead
 - **Scalable**: Handles multiple concurrent conversations
 
+### Agent Lifecycle
+
+- **Per-message**: A fresh `Agent` is created for each incoming message
+- **Session Loading**: Agent loads history from disk on init
+- **Session Saving**: Agent saves updated history after `run()` completes
+- **Cleanup**: Agent is deinitialized via `defer` after each message
+
 ## Security Notes
 
 - **Token Protection**: Never log or expose bot tokens
-- **Input Validation**: JSON parsing with unknown field ignored
-- **Memory Safety**: Proper cleanup of allocated strings
+- **Input Validation**: JSON parsing with `ignore_unknown_fields = true`
+- **Memory Safety**: Proper cleanup of all allocated strings via `defer`
+- **Voice Messages**: Rejected with user-facing notice (not processed)
+
+## Unit Tests
+
+The file includes the following tests (lines 365-492):
+
+- **`TelegramBot lifecycle`**: Init/deinit, offset defaults to 0
+- **`TelegramBot tick returns if no config`**: `tick()` returns early when telegram config is null
+- **`TelegramBot config validation`**: Verifies fields are accessible after init
+- **`TelegramBot session ID generation`**: `tg_{chat_id}` format validation
+- **`TelegramBot command detection - /new`**: `startsWith` logic for `/new` and `/new <prompt>`
+- **`TelegramBot message JSON serialization`**: JSON output contains expected fields
+- **`TelegramBot config file template generation`**: Template contains all required config keys
