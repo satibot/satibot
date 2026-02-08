@@ -4,6 +4,8 @@
 
 The Telegram Bot is an event loop-based implementation that manages interactions with the Telegram Bot API using long-polling. It processes text messages asynchronously through an event-driven architecture and maintains conversation sessions with AI agents.
 
+Source code: `src/agent/telegram_bot.zig`.
+
 ## Architecture
 
 ```mermaid
@@ -137,12 +139,6 @@ The bot supports several magic commands:
 - **Purpose**: Display available commands
 - **Response**: Shows command list and usage instructions
 
-### `/setibot`
-
-- **Purpose**: Generate default configuration file
-- **Action**: Creates `~/.bots/config.json` with template
-- **Features**: Handles existing config gracefully
-
 ### `/new`
 
 - **Purpose**: Clear conversation session memory
@@ -232,11 +228,117 @@ stateDiagram-v2
 
 ## Memory Management
 
-### Session Storage
+### JSON-Based Session Storage
 
-- **Location**: `~/.bots/sessions/{session_id}.json`
-- **Format**: JSON conversation history
-- **Cleanup**: Manual via `/new` command
+The bot uses **JSON-based memory** stored in `~/.bots/sessions/` directory:
+
+- **Storage Format**: JSON files named `{session_id}.json`
+- **Location**: `~/.bots/sessions/` (shared across bot instances)
+- **Structure**: Each session contains an array of `LLMMessage` objects
+
+### Memory Components
+
+#### Session Module (`src/agent/session.zig`)
+
+- **Purpose**: Persistent conversation storage
+- **Functions**:
+  - `save()`: Serializes messages to JSON with 2-space indentation
+  - `load()`: Deserializes JSON back to memory structures
+  - `saveToPath()`/`load_internal()`: Low-level file operations
+
+#### Context Module (`src/agent/context.zig`)
+
+- **Purpose**: In-memory conversation management
+- **Structure**: `ArrayListUnmanaged(LLMMessage)` for efficient message storage
+- **Operations**: Add messages, retrieve conversation history
+
+#### Message Structure
+
+```zig
+pub const LLMMessage = struct {
+    role: []const u8,           // "user", "assistant", "system", "tool"
+    content: ?[]const u8,       // Message text (optional for tool results)
+    tool_call_id: ?[]const u8,  // Tool call identifier
+    tool_calls: ?[]const ToolCall, // Array of tool calls
+};
+```
+
+### Memory Flow to LLM
+
+#### Session Loading (Agent initialization)
+
+```zig
+// In Agent.init()
+if (session.load(allocator, session_id)) |history| {
+    for (history) |msg| {
+        self.ctx.add_message(msg) catch {};
+    }
+}
+```
+
+#### Memory Transmission to LLM
+
+1. **Context Retrieval**: `self.ctx.get_messages()` returns all conversation messages
+2. **Provider Integration**: Messages sent directly to LLM providers (Anthropic, Groq, etc.)
+3. **Complete History**: Entire conversation context included in each LLM request
+
+#### Session Persistence
+
+```zig
+// After each message processing
+try session.save(self.allocator, self.session_id, self.ctx.get_messages());
+```
+
+### Long-Term Memory (RAG)
+
+The bot also implements **Retrieval-Augmented Generation**:
+
+#### index_conversation()
+
+- Concatenates all message content into full text
+- Creates embeddings using `get_embeddings()`
+- Stores in vector database via `vector_upsert()`
+- Enables semantic search across conversation history
+
+### Session Management Features
+
+#### Session Commands
+
+- `/new`: Clears session file, starts fresh conversation
+- `/new <prompt>`: Clears session then processes immediate prompt
+
+#### Memory Safety
+
+- Deep copying of all strings to prevent memory corruption
+- Proper cleanup with `deinit()` methods
+- Tool call data duplication for independence
+
+#### Session Error Handling
+
+- Graceful handling of missing session files (returns empty array)
+- JSON parsing with `ignore_unknown_fields = true`
+- 10MB file size limit for session loading
+
+### JSON Session Example
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, how are you?"
+    },
+    {
+      "role": "assistant", 
+      "content": "I'm doing well, thank you!"
+    },
+    {
+      "role": "user",
+      "content": "Can you help me with Zig programming?"
+    }
+  ]
+}
+```
 
 ### Active Chat Tracking
 

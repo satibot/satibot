@@ -88,80 +88,12 @@ pub const WhatsAppBot = struct {
             const help_text =
                 \\🐸 SatiBot WhatsApp Commands:
                 \\
-                \\/setibot - Generate default config file at ~/.bots/config.json
-                \\/new - Clear conversation session memory
-                \\/help - Show this help message
+                \/new - Clear conversation session memory
+                \/help - Show this help message
                 \\
                 \\Send any message to chat with the AI assistant.
             ;
             try self.send_message(wa_config, from, help_text);
-            return;
-        }
-
-        // Handle magic command /setibot to auto-generate config file
-        if (std.mem.startsWith(u8, text, "/setibot")) {
-            const home = std.posix.getenv("HOME") orelse "/tmp";
-
-            // Create .bots directory if it doesn't exist
-            const bots_dir = try std.fs.path.join(self.allocator, &.{ home, ".bots" });
-            defer self.allocator.free(bots_dir);
-
-            std.fs.makeDirAbsolute(bots_dir) catch |err| {
-                if (err != error.PathAlreadyExists) {
-                    try self.send_message(wa_config, from, "❌ Error creating .bots directory");
-                    return;
-                }
-            };
-
-            // Create config.json with default template including WhatsApp config
-            const config_path = try std.fs.path.join(self.allocator, &.{ bots_dir, "config.json" });
-            defer self.allocator.free(config_path);
-
-            const default_json =
-                \\{
-                \\  "agents": {
-                \\    "defaults": {
-                \\      "model": "anthropic/claude-3-5-sonnet-20241022"
-                \\    }
-                \\  },
-                \\  "providers": {
-                \\    "openrouter": {
-                \\      "apiKey": "sk-or-v1-..."
-                \\    }
-                \\  },
-                \\  "tools": {
-                \\    "web": {
-                \\      "search": {
-                \\        "apiKey": "BSA..."
-                \\      }
-                \\    },
-                \\    "whatsapp": {
-                \\      "accessToken": "YOUR_ACCESS_TOKEN_HERE",
-                \\      "phoneNumberId": "YOUR_PHONE_NUMBER_ID_HERE",
-                \\      "recipientPhoneNumber": "YOUR_PHONE_NUMBER_HERE"
-                \\    }
-                \\  }
-                \\}
-            ;
-
-            // Check if config already exists
-            std.fs.accessAbsolute(config_path, .{}) catch |err| {
-                if (err == error.FileNotFound) {
-                    const file = try std.fs.createFileAbsolute(config_path, .{});
-                    defer file.close();
-                    try file.writeAll(default_json);
-
-                    const response_msg = try std.fmt.allocPrint(self.allocator, "✅ Config file created at: {s}\n\n📋 Next steps:\n1. Edit the config file with your API keys\n2. Restart satibot with your new config\n\n💡 Your phone number: {s}", .{ config_path, from });
-                    defer self.allocator.free(response_msg);
-                    try self.send_message(wa_config, from, response_msg);
-                    return;
-                }
-            };
-
-            // Config already exists
-            const response_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Config file already exists at: {s}\n\nUse /new to clear session or edit the file manually.\n\n💡 Your phone number: {s}", .{ config_path, from });
-            defer self.allocator.free(response_msg);
-            try self.send_message(wa_config, from, response_msg);
             return;
         }
 
@@ -408,15 +340,6 @@ test "WhatsAppBot command detection - /help" {
 
     const not_help = "help";
     try std.testing.expect(!std.mem.startsWith(u8, not_help, "/help"));
-}
-
-test "WhatsAppBot command detection - /setibot" {
-    // Test command detection
-    const setibot_cmd = "/setibot";
-    try std.testing.expect(std.mem.startsWith(u8, setibot_cmd, "/setibot"));
-
-    const setibot_with_args = "/setibot --force";
-    try std.testing.expect(std.mem.startsWith(u8, setibot_with_args, "/setibot"));
 }
 
 test "WhatsAppBot command detection - /new" {

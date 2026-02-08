@@ -245,85 +245,12 @@ pub const TelegramBot = struct {
                             const help_text =
                                 \\🐸 SatiBot Commands:
                                 \\
-                                \\/setibot - Generate default config file at ~/.bots/config.json
-                                \\/new - Clear conversation session memory
-                                \\/help - Show this help message
+                                \/new - Clear conversation session memory
+                                \/help - Show this help message
                                 \\
                                 \\Send any message to chat with the AI assistant.
                             ;
                             try self.send_message(tg_config.botToken, chat_id_str, help_text);
-                            continue;
-                        }
-
-                        // Handle magic command /setibot to auto-generate config file.
-                        // This allows users to set up satibot configuration directly from Telegram.
-                        if (std.mem.startsWith(u8, final_text, "/setibot")) {
-                            // Get user's home directory
-                            const home = std.posix.getenv("HOME") orelse "/tmp";
-
-                            // Create .bots directory if it doesn't exist
-                            const bots_dir = try std.fs.path.join(self.allocator, &.{ home, ".bots" });
-                            defer self.allocator.free(bots_dir);
-
-                            // Attempt to create the directory, ignore if it already exists
-                            std.fs.makeDirAbsolute(bots_dir) catch |err| {
-                                if (err != error.PathAlreadyExists) {
-                                    try self.send_message(tg_config.botToken, chat_id_str, "❌ Error creating .bots directory");
-                                    continue;
-                                }
-                            };
-
-                            // Create config.json with default template
-                            const config_path = try std.fs.path.join(self.allocator, &.{ bots_dir, "config.json" });
-                            defer self.allocator.free(config_path);
-
-                            // Default configuration template with placeholder values
-                            const default_json =
-                                \\{
-                                \\  "agents": {
-                                \\    "defaults": {
-                                \\      "model": "anthropic/claude-3-5-sonnet-20241022"
-                                \\    }
-                                \\  },
-                                \\  "providers": {
-                                \\    "openrouter": {
-                                \\      "apiKey": "sk-or-v1-..."
-                                \\    }
-                                \\  },
-                                \\  "tools": {
-                                \\    "web": {
-                                \\      "search": {
-                                \\        "apiKey": "BSA..."
-                                \\      }
-                                \\    },
-                                \\    "telegram": {
-                                \\      "botToken": "YOUR_BOT_TOKEN_HERE",
-                                \\      "chatId": "YOUR_CHAT_ID_HERE"
-                                \\    }
-                                \\  }
-                                \\}
-                            ;
-
-                            // Check if config already exists
-                            std.fs.accessAbsolute(config_path, .{}) catch |err| {
-                                if (err == error.FileNotFound) {
-                                    // Config doesn't exist, create it
-                                    const file = try std.fs.createFileAbsolute(config_path, .{});
-                                    defer file.close();
-                                    try file.writeAll(default_json);
-
-                                    // Send success message with setup instructions
-                                    const response_msg = try std.fmt.allocPrint(self.allocator, "✅ Config file created at: {s}\n\n📋 Next steps:\n1. Edit the config file with your API keys\n2. Restart satibot with your new config\n\n💡 Current chat ID: {s}", .{ config_path, chat_id_str });
-                                    defer self.allocator.free(response_msg);
-                                    try self.send_message(tg_config.botToken, chat_id_str, response_msg);
-                                    continue;
-                                }
-                            };
-
-                            // Config already exists, inform user
-                            const response_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Config file already exists at: {s}\n\nUse /new to clear session or edit the file manually.\n\n💡 Your chat ID: {s}", .{ config_path, chat_id_str });
-                            defer self.allocator.free(response_msg);
-                            try self.send_message(tg_config.botToken, chat_id_str, response_msg);
                             continue;
                         }
 
@@ -712,15 +639,6 @@ test "TelegramBot command detection - /help" {
 
     const not_help = "help";
     try std.testing.expect(!std.mem.startsWith(u8, not_help, "/help"));
-}
-
-test "TelegramBot command detection - /setibot" {
-    // Test command detection
-    const setibot_cmd = "/setibot";
-    try std.testing.expect(std.mem.startsWith(u8, setibot_cmd, "/setibot"));
-
-    const setibot_with_args = "/setibot --force";
-    try std.testing.expect(std.mem.startsWith(u8, setibot_with_args, "/setibot"));
 }
 
 test "TelegramBot command detection - /new" {
