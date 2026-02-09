@@ -18,6 +18,9 @@ pub const Response = struct {
     status: std.http.Status,
     body: []u8,
     allocator: std.mem.Allocator,
+    rate_limit_limit: ?u64 = null,
+    rate_limit_remaining: ?u64 = null,
+    rate_limit_reset: ?u64 = null,
 
     /// Free the response body memory.
     pub fn deinit(self: *Response) void {
@@ -78,6 +81,9 @@ pub const Client = struct {
             .status = resp.head.status,
             .body = try response_body.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
+            .rate_limit_limit = resp.head.rate_limit_limit,
+            .rate_limit_remaining = resp.head.rate_limit_remaining,
+            .rate_limit_reset = resp.head.rate_limit_reset,
         };
     }
 
@@ -137,6 +143,9 @@ pub const Request = struct {
         status: std.http.Status,
         content_length: ?u64 = null,
         chunked: bool = false,
+        rate_limit_limit: ?u64 = null,
+        rate_limit_remaining: ?u64 = null,
+        rate_limit_reset: ?u64 = null,
     };
 
     pub const IncomingResponse = struct {
@@ -250,6 +259,10 @@ pub const Request = struct {
 
         var content_length: ?u64 = null;
         var chunked = false;
+        var rate_limit_limit: ?u64 = null;
+        var rate_limit_remaining: ?u64 = null;
+        var rate_limit_reset: ?u64 = null;
+
         while (it.next()) |line| {
             if (line.len == 0) break;
             var line_it = std.mem.splitScalar(u8, line, ':');
@@ -262,6 +275,12 @@ pub const Request = struct {
                 if (std.ascii.indexOfIgnoreCase(value, "chunked") != null) {
                     chunked = true;
                 }
+            } else if (std.ascii.eqlIgnoreCase(name, "x-ratelimit-limit")) {
+                rate_limit_limit = std.fmt.parseInt(u64, value, 10) catch null;
+            } else if (std.ascii.eqlIgnoreCase(name, "x-ratelimit-remaining")) {
+                rate_limit_remaining = std.fmt.parseInt(u64, value, 10) catch null;
+            } else if (std.ascii.eqlIgnoreCase(name, "x-ratelimit-reset")) {
+                rate_limit_reset = std.fmt.parseInt(u64, value, 10) catch null;
             }
         }
 
@@ -269,6 +288,9 @@ pub const Request = struct {
             .status = @enumFromInt(status_code),
             .content_length = content_length,
             .chunked = chunked,
+            .rate_limit_limit = rate_limit_limit,
+            .rate_limit_remaining = rate_limit_remaining,
+            .rate_limit_reset = rate_limit_reset,
         };
         self.response_head = head;
         return IncomingResponse{

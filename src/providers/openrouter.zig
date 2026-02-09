@@ -107,6 +107,12 @@ pub const OpenRouterProvider = struct {
             return error.ApiRequestFailed;
         }
 
+        if (response.rate_limit_remaining) |remaining| {
+            if (response.rate_limit_limit) |limit| {
+                std.debug.print("[OpenRouter] Rate Limit: {d}/{d}\n", .{ remaining, limit });
+            }
+        }
+
         return try self.allocator.dupe(u8, response.body);
     }
 
@@ -382,6 +388,15 @@ pub const OpenRouterProvider = struct {
             // send message to user, example: "API request failed with status 429: Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"
             callback(cb_ctx, final_msg);
             return error.ApiRequestFailed;
+        }
+
+        // Send rate limit info to user if available
+        if (response.head.rate_limit_remaining) |remaining| {
+            if (response.head.rate_limit_limit) |limit| {
+                const limit_msg = try std.fmt.allocPrint(self.allocator, "📊 Rate Limit: {d}/{d}\n\n", .{ remaining, limit });
+                defer self.allocator.free(limit_msg);
+                callback(cb_ctx, limit_msg);
+            }
         }
 
         var full_content = std.ArrayListUnmanaged(u8){};
