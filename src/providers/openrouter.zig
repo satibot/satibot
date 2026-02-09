@@ -274,16 +274,11 @@ pub const OpenRouterProvider = struct {
         try self.async_client.?.postAsync(request_id, url, headers, body, &wrapper_instance.httpResultCallback, self.allocator);
     }
 
-    pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
+    pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
 
-        const payload = .{
-            .model = model,
-            .messages = messages,
-        };
-
-        const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
+        const body = try self.buildRequestBody(messages, model, tools, false);
         defer self.allocator.free(body);
 
         const response_body = try self.execPost(url, body);
@@ -315,8 +310,11 @@ pub const OpenRouterProvider = struct {
             for (calls, 0..) |call, i| {
                 tool_calls.?[i] = .{
                     .id = try self.allocator.dupe(u8, call.id),
-                    .function_name = try self.allocator.dupe(u8, call.function.name),
-                    .arguments = try self.allocator.dupe(u8, call.function.arguments),
+                    .type = "function",
+                    .function = .{
+                        .name = try self.allocator.dupe(u8, call.function.name),
+                        .arguments = try self.allocator.dupe(u8, call.function.arguments),
+                    },
                 };
                 allocated += 1;
             }
@@ -329,17 +327,11 @@ pub const OpenRouterProvider = struct {
         };
     }
 
-    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
+    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
 
-        const payload = .{
-            .model = model,
-            .messages = messages,
-            .stream = true,
-        };
-
-        const body = try std.json.Stringify.valueAlloc(self.allocator, payload, .{});
+        const body = try self.buildRequestBody(messages, model, tools, true);
         defer self.allocator.free(body);
 
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
@@ -356,6 +348,7 @@ pub const OpenRouterProvider = struct {
 
         var head_buf: [4096]u8 = undefined;
         var response = try req.receiveHead(&head_buf);
+        std.debug.print("[OpenRouter] Status: {d}\n", .{@intFromEnum(response.head.status)});
 
         if (response.head.status != .ok) {
             var err_body = std.ArrayListUnmanaged(u8){};
@@ -374,6 +367,7 @@ pub const OpenRouterProvider = struct {
                     message: []const u8,
                 },
             };
+            std.debug.print("[OpenRouter] Error Body: {s}\n", .{err_body.items});
             const parsed_err = std.json.parseFromSlice(ErrorResponse, self.allocator, err_body.items, .{ .ignore_unknown_fields = true }) catch null;
             defer if (parsed_err) |p| p.deinit();
 
@@ -445,6 +439,7 @@ pub const OpenRouterProvider = struct {
                         if (std.mem.eql(u8, data, "[DONE]")) {
                             break :while_read;
                         } else {
+                            // std.debug.print("[OpenRouter Raw Data]: {s}\n", .{data});
                             const ChunkResponse = struct {
                                 choices: []struct {
                                     delta: struct {
@@ -488,7 +483,9 @@ pub const OpenRouterProvider = struct {
                                         }
                                     }
                                 }
-                            } else |_| {}
+                            } else |err| {
+                                std.debug.print("\n[OpenRouter] Failed to parse chunk JSON: {any} Data: {s}\n", .{ err, data });
+                            }
                         }
                     }
                 }
@@ -506,8 +503,11 @@ pub const OpenRouterProvider = struct {
             while (it.next()) |entry| {
                 final_tool_calls.?[i] = .{
                     .id = try entry.value_ptr.id.toOwnedSlice(self.allocator),
-                    .function_name = try entry.value_ptr.name.toOwnedSlice(self.allocator),
-                    .arguments = try entry.value_ptr.arguments.toOwnedSlice(self.allocator),
+                    .type = "function",
+                    .function = .{
+                        .name = try entry.value_ptr.name.toOwnedSlice(self.allocator),
+                        .arguments = try entry.value_ptr.arguments.toOwnedSlice(self.allocator),
+                    },
                 };
                 i += 1;
             }
@@ -518,6 +518,58 @@ pub const OpenRouterProvider = struct {
             .tool_calls = final_tool_calls,
             .allocator = self.allocator,
         };
+    }
+
+    fn buildRequestBody(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
+        var json_buf = std.ArrayListUnmanaged(u8){};
+        defer json_buf.deinit(self.allocator);
+        const writer = json_buf.writer(self.allocator);
+
+        try writer.writeAll("{");
+        try writer.print("\"model\": \"{s}\"", .{model});
+        if (stream) try writer.writeAll(",\"stream\": true");
+
+        try writer.writeAll(",\"messages\": ");
+        const msgs_json = try std.json.Stringify.valueAlloc(self.allocator, messages, .{});
+        defer self.allocator.free(msgs_json);
+        try writer.writeAll(msgs_json);
+
+        if (tools) |t_list| {
+            if (t_list.len > 0) {
+                try writer.writeAll(",\"tools\": [");
+                for (t_list, 0..) |t, i| {
+                    if (i > 0) try writer.writeAll(",");
+                    try writer.writeAll("{\"type\": \"function\", \"function\": {");
+                    try writer.writeAll("\"name\": ");
+                    try writeEscaped(writer, t.name);
+                    try writer.writeAll(",\"description\": ");
+                    try writeEscaped(writer, t.description);
+                    try writer.writeAll(",\"parameters\": ");
+                    try writer.writeAll(t.parameters); // Parameters is already valid JSON
+                    try writer.writeAll("}}");
+                }
+                try writer.writeAll("]");
+            }
+        }
+        try writer.writeAll("}");
+        const final_body = try json_buf.toOwnedSlice(self.allocator);
+        // std.debug.print("\n[OpenRouter Request Body]: {s}\n", .{final_body});
+        return final_body;
+    }
+
+    fn writeEscaped(writer: anytype, text: []const u8) !void {
+        try writer.writeAll("\"");
+        for (text) |c| {
+            switch (c) {
+                '"' => try writer.writeAll("\\\""),
+                '\\' => try writer.writeAll("\\\\"),
+                '\n' => try writer.writeAll("\\n"),
+                '\r' => try writer.writeAll("\\r"),
+                '\t' => try writer.writeAll("\\t"),
+                else => try writer.writeByte(c),
+            }
+        }
+        try writer.writeAll("\"");
     }
 
     pub fn embeddings(self: *OpenRouterProvider, request: base.EmbeddingRequest) !base.EmbeddingResponse {

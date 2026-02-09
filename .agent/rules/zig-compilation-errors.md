@@ -211,9 +211,20 @@ Before committing code, verify:
 
 ```zig
 // Error: struct 'ArrayList' has no member named 'init'
-// Solution: Use initCapacity() instead
-const list = std.ArrayList(T).initCapacity(allocator, 0) catch unreachable;
+
+// WRONG
+var list = std.ArrayList(u8).init(allocator);
+
+// Solution 1: Use ArrayListUnmanaged (PREFERRED in this codebase)
+var list = std.ArrayListUnmanaged(u8){};
+defer list.deinit(allocator);
+
+// Solution 2: Use initCapacity() for managed ArrayList
+var list = std.ArrayList(u8).initCapacity(allocator, 0) catch unreachable;
+defer list.deinit(allocator);
 ```
+
+**Note**: In Zig 0.15.2, `std.ArrayList(T)` often lacks the `init(allocator)` method. Using the `Unmanaged` variant explicitly makes memory management more transparent and prevents this error.
 
 ### "member function expected X argument(s), found Y"
 

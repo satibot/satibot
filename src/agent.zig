@@ -9,11 +9,7 @@ const session = @import("agent/session.zig");
 /// Helper function to print streaming response chunks to stdout.
 fn print_chunk(ctx: ?*anyopaque, chunk: []const u8) void {
     _ = ctx;
-    const stdout = std.fs.File.stdout();
-    var buf: [4096]u8 = undefined;
-    var writer = stdout.writer(&buf);
-    writer.interface.writeAll(chunk) catch {};
-    writer.interface.flush() catch {};
+    std.debug.print("{s}", .{chunk});
 }
 
 /// Main Agent struct that orchestrates conversation with LLM providers.
@@ -55,8 +51,9 @@ pub const Agent = struct {
                 if (msg.tool_calls) |calls| {
                     for (calls) |call| {
                         allocator.free(call.id);
-                        allocator.free(call.function_name);
-                        allocator.free(call.arguments);
+                        allocator.free(call.type);
+                        allocator.free(call.function.name);
+                        allocator.free(call.function.arguments);
                     }
                     allocator.free(calls);
                 }
@@ -68,7 +65,7 @@ pub const Agent = struct {
         self.registry.register(.{
             .name = "list_files",
             .description = "List files in the current directory",
-            .parameters = "{}",
+            .parameters = "{\"type\": \"object\", \"properties\": {}}",
             .execute = tools.list_files,
         }) catch {};
         self.registry.register(.{
@@ -92,7 +89,7 @@ pub const Agent = struct {
         self.registry.register(.{
             .name = "list_marketplace",
             .description = "List all available skills in the agent-skills.md marketplace",
-            .parameters = "{}",
+            .parameters = "{\"type\": \"object\", \"properties\": {}}",
             .execute = tools.list_marketplace_skills,
         }) catch {};
         self.registry.register(.{
@@ -116,7 +113,7 @@ pub const Agent = struct {
         self.registry.register(.{
             .name = "discord_send_message",
             .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
-            .parameters = "{\"type\": [\"object\"], \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
             .execute = tools.discord_send_message,
         }) catch {};
         self.registry.register(.{
@@ -170,7 +167,7 @@ pub const Agent = struct {
         self.registry.register(.{
             .name = "cron_list",
             .description = "List all scheduled cron jobs",
-            .parameters = "{}",
+            .parameters = "{\"type\": \"object\", \"properties\": {}}",
             .execute = tools.cron_list,
         }) catch {};
         self.registry.register(.{
@@ -193,6 +190,25 @@ pub const Agent = struct {
         }) catch {};
 
         return self;
+    }
+
+    /// Ensure a system prompt exists in the conversation context.
+    /// If not present, adds a default prompt that describes the bot and its tools.
+    pub fn ensure_system_prompt(self: *Agent) !void {
+        const messages = self.ctx.get_messages();
+        for (messages) |msg| {
+            if (std.mem.eql(u8, msg.role, "system")) return;
+        }
+
+        const system_prompt =
+            \\You are satibot, a helpful AI assistant.
+            \\You have access to a local Vector Database where you can store and retrieve information from past conversations.
+            \\Use 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.
+            \\Use 'vector_upsert' to remember important facts or details the user shares.
+            \\Use 'web_search' for current events or information you don't have.
+            \\You can also read, write, and list files in the current directory if needed.
+        ;
+        try self.ctx.add_message(.{ .role = "system", .content = system_prompt });
     }
 
     pub fn deinit(self: *Agent) void {
@@ -251,6 +267,8 @@ pub const Agent = struct {
     }
 
     pub fn run(self: *Agent, message: []const u8) !void {
+        try self.ensure_system_prompt();
+
         try self.ctx.add_message(.{ .role = "user", .content = message });
 
         const model = self.config.agents.defaults.model;
@@ -267,6 +285,30 @@ pub const Agent = struct {
             .get_embeddings = get_embeddings,
             .spawn_subagent = spawn_subagent,
         };
+
+        // Collect tools for the provider
+        var provider_tools = std.ArrayListUnmanaged(base.ToolDefinition){};
+        defer provider_tools.deinit(self.allocator);
+        var tool_it = self.registry.tools.valueIterator();
+        while (tool_it.next()) |tool| {
+            try provider_tools.append(self.allocator, .{
+                .name = tool.name,
+                .description = tool.description,
+                .parameters = tool.parameters,
+            });
+        }
+
+        // Filter messages to avoid invalid assistant entries
+        var filtered_messages = std.ArrayListUnmanaged(base.LLMMessage){};
+        defer filtered_messages.deinit(self.allocator);
+        for (self.ctx.get_messages()) |msg| {
+            if (std.mem.eql(u8, msg.role, "assistant")) {
+                if (msg.content == null and (msg.tool_calls == null or msg.tool_calls.?.len == 0)) {
+                    continue; // Skip invalid assistant message
+                }
+            }
+            try filtered_messages.append(self.allocator, msg);
+        }
 
         while (iterations < max_iterations) : (iterations += 1) {
             std.debug.print("\n--- Iteration {d} ---\n", .{iterations + 1});
@@ -298,7 +340,7 @@ pub const Agent = struct {
                     var provider = try providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (Anthropic): ", .{});
-                    response = provider.chatStream(self.ctx.get_messages(), model, internal_cb, self) catch |err| {
+                    response = provider.chatStream(filtered_messages.items, model, provider_tools.items, internal_cb, self) catch |err| {
                         if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                             std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                             std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
@@ -314,7 +356,7 @@ pub const Agent = struct {
                     var provider = try providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (OpenRouter): ", .{});
-                    response = provider.chatStream(self.ctx.get_messages(), model, internal_cb, self) catch |err| {
+                    response = provider.chatStream(filtered_messages.items, model, provider_tools.items, internal_cb, self) catch |err| {
                         if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                             std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                             std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
@@ -340,11 +382,11 @@ pub const Agent = struct {
 
             if (response.tool_calls) |calls| {
                 for (calls) |call| {
-                    std.debug.print("Tool Call: {s}({s})\n", .{ call.function_name, call.arguments });
+                    std.debug.print("Tool Call: {s}({s})\n", .{ call.function.name, call.function.arguments });
 
-                    if (self.registry.get(call.function_name)) |tool| {
-                        const result = tool.execute(tool_ctx, call.arguments) catch |err| {
-                            const error_msg = try std.fmt.allocPrint(self.allocator, "Error executing tool {s}: {any}", .{ call.function_name, err });
+                    if (self.registry.get(call.function.name)) |tool| {
+                        const result = tool.execute(tool_ctx, call.function.arguments) catch |err| {
+                            const error_msg = try std.fmt.allocPrint(self.allocator, "Error executing tool {s}: {any}", .{ call.function.name, err });
                             defer self.allocator.free(error_msg);
                             std.debug.print("{s}\n", .{error_msg});
                             try self.ctx.add_message(.{
@@ -363,7 +405,7 @@ pub const Agent = struct {
                             .tool_call_id = call.id,
                         });
                     } else {
-                        const error_msg = try std.fmt.allocPrint(self.allocator, "Error: Tool {s} not found", .{call.function_name});
+                        const error_msg = try std.fmt.allocPrint(self.allocator, "Error: Tool {s} not found", .{call.function.name});
                         defer self.allocator.free(error_msg);
                         std.debug.print("{s}\n", .{error_msg});
                         try self.ctx.add_message(.{
@@ -389,21 +431,7 @@ pub const Agent = struct {
             return;
         }
         const messages = self.ctx.get_messages();
-        var full_text = std.ArrayListUnmanaged(u8){};
-        defer full_text.deinit(self.allocator);
-
-        for (messages) |msg| {
-            if (msg.content) |content| {
-                if (content.len > 0) {
-                    try full_text.appendSlice(self.allocator, msg.role);
-                    try full_text.appendSlice(self.allocator, ": ");
-                    try full_text.appendSlice(self.allocator, content);
-                    try full_text.appendSlice(self.allocator, "\n\n");
-                }
-            }
-        }
-
-        if (full_text.items.len == 0) return;
+        if (messages.len < 2) return;
 
         const tool_ctx = tools.ToolContext{
             .allocator = self.allocator,
@@ -411,12 +439,40 @@ pub const Agent = struct {
             .get_embeddings = get_embeddings,
         };
 
-        const args = try std.json.Stringify.valueAlloc(self.allocator, .{ .text = full_text.items }, .{});
-        defer self.allocator.free(args);
+        // Index each assistant response with its preceding user context
+        var i: usize = 0;
+        while (i < messages.len) : (i += 1) {
+            const msg = messages[i];
+            if (std.mem.eql(u8, msg.role, "assistant")) {
+                if (msg.content) |content| {
+                    if (content.len < 10) continue; // Skip very short responses
 
-        const result = try tools.vector_upsert(tool_ctx, args);
-        defer self.allocator.free(result);
-        std.debug.print("Session indexed to RAG: {s}\n", .{result});
+                    var entry_text = std.ArrayListUnmanaged(u8){};
+                    defer entry_text.deinit(self.allocator);
+
+                    // Include preceding user message if available
+                    if (i > 0) {
+                        const prev = messages[i - 1];
+                        if (std.mem.eql(u8, prev.role, "user")) {
+                            if (prev.content) |user_content| {
+                                try entry_text.appendSlice(self.allocator, "user: ");
+                                try entry_text.appendSlice(self.allocator, user_content);
+                                try entry_text.appendSlice(self.allocator, "\n\n");
+                            }
+                        }
+                    }
+
+                    try entry_text.appendSlice(self.allocator, "assistant: ");
+                    try entry_text.appendSlice(self.allocator, content);
+
+                    const args = try std.json.Stringify.valueAlloc(self.allocator, .{ .text = entry_text.items }, .{});
+                    defer self.allocator.free(args);
+
+                    const result = try tools.vector_upsert(tool_ctx, args);
+                    self.allocator.free(result);
+                }
+            }
+        }
     }
 };
 

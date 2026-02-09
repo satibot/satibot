@@ -16,9 +16,12 @@
 
 ### ArrayList
 
-- `init()` --> `initCapacity(allocator, 0)` or provide initial capacity
-- `deinit()` --> `deinit(allocator)` - now requires allocator parameter
-- `append(item)` --> `append(allocator, item)` - now requires allocator parameter
+- **Note**: In Zig 0.15.2 (as configured in this project), `std.ArrayList(T)` often returns an **Unmanaged** variant or is treated as such.
+- **DO NOT** use `std.ArrayList(T).init(allocator)`. This will cause a compilation error: `struct ... has no member named 'init'`.
+- `init()` --> `std.ArrayListUnmanaged(T){}` (Preferred) or `std.ArrayList(T).initCapacity(allocator, 0)`.
+- `deinit()` --> `list.deinit(allocator)` - now requires allocator parameter.
+- `append(item)` --> `list.append(allocator, item)` - now requires allocator parameter.
+- `writer()` --> `list.writer(allocator)` - now requires allocator parameter.
 
 ### URI/URL Encoding
 

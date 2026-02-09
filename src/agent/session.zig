@@ -91,8 +91,11 @@ fn dupe_tool_calls(allocator: std.mem.Allocator, calls: []const base.ToolCall) !
     for (calls, 0..) |call, i| {
         new_calls[i] = .{
             .id = try allocator.dupe(u8, call.id),
-            .function_name = try allocator.dupe(u8, call.function_name),
-            .arguments = try allocator.dupe(u8, call.arguments),
+            .type = try allocator.dupe(u8, call.type),
+            .function = .{
+                .name = try allocator.dupe(u8, call.function.name),
+                .arguments = try allocator.dupe(u8, call.function.arguments),
+            },
         };
     }
     return new_calls;
@@ -122,8 +125,9 @@ test "Session: save and load" {
             if (msg.tool_calls) |calls| {
                 for (calls) |call| {
                     allocator.free(call.id);
-                    allocator.free(call.function_name);
-                    allocator.free(call.arguments);
+                    allocator.free(call.type);
+                    allocator.free(call.function.name);
+                    allocator.free(call.function.arguments);
                 }
                 allocator.free(calls);
             }
@@ -144,7 +148,7 @@ test "Session: save and load with tool calls" {
     defer tmp.cleanup();
 
     const tool_calls = &[_]base.ToolCall{
-        .{ .id = "call_1", .function_name = "test_tool", .arguments = "{\"arg\": \"value\"}" },
+        .{ .id = "call_1", .type = "function", .function = .{ .name = "test_tool", .arguments = "{\"arg\": \"value\"}" } },
     };
 
     const messages = &[_]base.LLMMessage{
@@ -177,8 +181,9 @@ test "Session: save and load with tool calls" {
             if (msg.tool_calls) |calls| {
                 for (calls) |call| {
                     allocator.free(call.id);
-                    allocator.free(call.function_name);
-                    allocator.free(call.arguments);
+                    allocator.free(call.type);
+                    allocator.free(call.function.name);
+                    allocator.free(call.function.arguments);
                 }
                 allocator.free(calls);
             }
@@ -198,8 +203,8 @@ test "Session: save and load with tool calls" {
     try std.testing.expect(loaded[1].tool_calls != null);
     try std.testing.expectEqual(@as(usize, 1), loaded[1].tool_calls.?.len);
     try std.testing.expectEqualStrings("call_1", loaded[1].tool_calls.?[0].id);
-    try std.testing.expectEqualStrings("test_tool", loaded[1].tool_calls.?[0].function_name);
-    try std.testing.expectEqualStrings("{\"arg\": \"value\"}", loaded[1].tool_calls.?[0].arguments);
+    try std.testing.expectEqualStrings("test_tool", loaded[1].tool_calls.?[0].function.name);
+    try std.testing.expectEqualStrings("{\"arg\": \"value\"}", loaded[1].tool_calls.?[0].function.arguments);
 
     // Check third message (tool result)
     try std.testing.expectEqualStrings("tool", loaded[2].role);
@@ -234,8 +239,9 @@ test "Session: save and load empty messages" {
             if (msg.tool_calls) |calls| {
                 for (calls) |call| {
                     allocator.free(call.id);
-                    allocator.free(call.function_name);
-                    allocator.free(call.arguments);
+                    allocator.free(call.type);
+                    allocator.free(call.function.name);
+                    allocator.free(call.function.arguments);
                 }
                 allocator.free(calls);
             }
@@ -250,30 +256,31 @@ test "Session: dupe_tool_calls function" {
     const allocator = std.testing.allocator;
 
     const original_calls = &[_]base.ToolCall{
-        .{ .id = "call_1", .function_name = "func1", .arguments = "{\"a\": 1}" },
-        .{ .id = "call_2", .function_name = "func2", .arguments = "{\"b\": 2}" },
+        .{ .id = "call_1", .type = "function", .function = .{ .name = "func1", .arguments = "{\"a\": 1}" } },
+        .{ .id = "call_2", .type = "function", .function = .{ .name = "func2", .arguments = "{\"b\": 2}" } },
     };
 
     const duped = try dupe_tool_calls(allocator, original_calls);
     defer {
         for (duped) |call| {
             allocator.free(call.id);
-            allocator.free(call.function_name);
-            allocator.free(call.arguments);
+            allocator.free(call.type);
+            allocator.free(call.function.name);
+            allocator.free(call.function.arguments);
         }
         allocator.free(duped);
     }
 
     try std.testing.expectEqual(@as(usize, 2), duped.len);
     try std.testing.expectEqualStrings("call_1", duped[0].id);
-    try std.testing.expectEqualStrings("func1", duped[0].function_name);
-    try std.testing.expectEqualStrings("{\"a\": 1}", duped[0].arguments);
+    try std.testing.expectEqualStrings("func1", duped[0].function.name);
+    try std.testing.expectEqualStrings("{\"a\": 1}", duped[0].function.arguments);
     try std.testing.expectEqualStrings("call_2", duped[1].id);
-    try std.testing.expectEqualStrings("func2", duped[1].function_name);
-    try std.testing.expectEqualStrings("{\"b\": 2}", duped[1].arguments);
+    try std.testing.expectEqualStrings("func2", duped[1].function.name);
+    try std.testing.expectEqualStrings("{\"b\": 2}", duped[1].function.arguments);
 
     // Verify they are independent copies by checking different memory addresses
     try std.testing.expect(@intFromPtr(duped[0].id.ptr) != @intFromPtr(original_calls[0].id.ptr));
-    try std.testing.expect(@intFromPtr(duped[0].function_name.ptr) != @intFromPtr(original_calls[0].function_name.ptr));
-    try std.testing.expect(@intFromPtr(duped[0].arguments.ptr) != @intFromPtr(original_calls[0].arguments.ptr));
+    try std.testing.expect(@intFromPtr(duped[0].function.name.ptr) != @intFromPtr(original_calls[0].function.name.ptr));
+    try std.testing.expect(@intFromPtr(duped[0].function.arguments.ptr) != @intFromPtr(original_calls[0].function.arguments.ptr));
 }

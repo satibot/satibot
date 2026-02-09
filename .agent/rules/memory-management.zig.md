@@ -166,3 +166,21 @@ Before approving code that manages pointers:
 - [ ] Initialization order respects dependencies
 - [ ] Callbacks capture valid context
 - [ ] Memory is freed in matching deinit patterns
+- [ ] Preferred `std.ArrayListUnmanaged(T)` over managed `ArrayList` for consistency and transparency in memory allocation.
+
+## 9. Container Patterns (Zig 0.15.2+)
+
+### Rule: Prefer `std.ArrayListUnmanaged(T)` over `std.ArrayList(T)`
+
+In this project (Zig 0.15.2), `std.ArrayList(T)` behaves essentially as an unmanaged list. To avoid confusion and compilation errors regarding missing `.init()` members, always use the Unmanaged variant explicitly.
+
+```zig
+// ❌ WRONG
+var list = std.ArrayList(u8).init(allocator); // Error: no member named 'init'
+
+// ✅ CORRECT
+var list = std.ArrayListUnmanaged(u8){};
+defer list.deinit(allocator);
+
+try list.append(allocator, item);
+```

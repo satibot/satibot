@@ -39,8 +39,9 @@ pub const Context = struct {
             if (msg.tool_calls) |calls| {
                 for (calls) |call| {
                     self.allocator.free(call.id);
-                    self.allocator.free(call.function_name);
-                    self.allocator.free(call.arguments);
+                    self.allocator.free(call.type);
+                    self.allocator.free(call.function.name);
+                    self.allocator.free(call.function.arguments);
                 }
                 self.allocator.free(calls);
             }
@@ -64,8 +65,11 @@ pub const Context = struct {
             for (calls, 0..) |call, i| {
                 new_calls[i] = .{
                     .id = try self.allocator.dupe(u8, call.id),
-                    .function_name = try self.allocator.dupe(u8, call.function_name),
-                    .arguments = try self.allocator.dupe(u8, call.arguments),
+                    .type = try self.allocator.dupe(u8, call.type),
+                    .function = .{
+                        .name = try self.allocator.dupe(u8, call.function.name),
+                        .arguments = try self.allocator.dupe(u8, call.function.arguments),
+                    },
                 };
             }
             new_msg.tool_calls = new_calls;

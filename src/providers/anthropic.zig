@@ -64,12 +64,12 @@ pub const AnthropicProvider = struct {
         self.client.deinit();
     }
 
-    pub fn chat(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
+    pub fn chat(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
         // Convert messages to Anthropic format and build request body
-        const body = try self.buildRequestBody(messages, model, false);
+        const body = try self.buildRequestBody(messages, model, tools, false);
         defer self.allocator.free(body);
 
         const headers = &[_]std.http.Header{
@@ -102,11 +102,11 @@ pub const AnthropicProvider = struct {
         return self.parseResponse(response.body);
     }
 
-    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
+    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
-        const body = try self.buildRequestBody(messages, model, true);
+        const body = try self.buildRequestBody(messages, model, tools, true);
         defer self.allocator.free(body);
 
         const headers = &[_]std.http.Header{
@@ -168,8 +168,9 @@ pub const AnthropicProvider = struct {
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
-                self.allocator.free(call.function_name);
-                self.allocator.free(call.arguments);
+                self.allocator.free(call.type);
+                self.allocator.free(call.function.name);
+                self.allocator.free(call.function.arguments);
             }
             tool_calls.deinit(self.allocator);
         }
@@ -228,8 +229,11 @@ pub const AnthropicProvider = struct {
                             if (std.mem.eql(u8, block.type, "tool_use")) {
                                 try tool_calls.append(self.allocator, .{
                                     .id = try self.allocator.dupe(u8, block.id orelse ""),
-                                    .function_name = try self.allocator.dupe(u8, block.name orelse ""),
-                                    .arguments = try self.allocator.dupe(u8, ""),
+                                    .type = "function",
+                                    .function = .{
+                                        .name = try self.allocator.dupe(u8, block.name orelse ""),
+                                        .arguments = try self.allocator.dupe(u8, ""),
+                                    },
                                 });
                             }
                         }
@@ -250,7 +254,7 @@ pub const AnthropicProvider = struct {
         };
     }
 
-    fn buildRequestBody(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, stream: bool) ![]u8 {
+    fn buildRequestBody(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
         // Anthropic uses a different message format
         // - system message goes in "system" field
         // - messages array contains only user/assistant turns
@@ -309,6 +313,22 @@ pub const AnthropicProvider = struct {
 
         if (system_prompt) |sys| {
             try writer.print("\"system\": \"{s}\",", .{sys});
+        }
+
+        if (tools) |t_list| {
+            if (t_list.len > 0) {
+                try writer.writeAll("\"tools\": [");
+                for (t_list, 0..) |t, i| {
+                    if (i > 0) try writer.writeAll(",");
+                    try writer.writeAll("{");
+                    try writer.print("\"name\": \"{s}\",", .{t.name});
+                    try writer.print("\"description\": \"{s}\",", .{t.description});
+                    try writer.writeAll("\"input_schema\": ");
+                    try writer.writeAll(t.parameters); // Anthropic expects schema as object, but our Tool.parameters is JSON
+                    try writer.writeAll("}");
+                }
+                try writer.writeAll("],");
+            }
         }
 
         try writer.writeAll("\"messages\": [");
@@ -383,8 +403,9 @@ pub const AnthropicProvider = struct {
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
-                self.allocator.free(call.function_name);
-                self.allocator.free(call.arguments);
+                self.allocator.free(call.type);
+                self.allocator.free(call.function.name);
+                self.allocator.free(call.function.arguments);
             }
             tool_calls.deinit(self.allocator);
         }
@@ -402,8 +423,11 @@ pub const AnthropicProvider = struct {
 
                 try tool_calls.append(self.allocator, .{
                     .id = try self.allocator.dupe(u8, block.id orelse ""),
-                    .function_name = try self.allocator.dupe(u8, block.name orelse ""),
-                    .arguments = args,
+                    .type = "function",
+                    .function = .{
+                        .name = try self.allocator.dupe(u8, block.name orelse ""),
+                        .arguments = args,
+                    },
                 });
             }
         }

@@ -21,8 +21,18 @@ pub const LLMMessage = struct {
 /// Contains the function name and JSON arguments to execute.
 pub const ToolCall = struct {
     id: []const u8,
-    function_name: []const u8,
-    arguments: []const u8,
+    type: []const u8 = "function",
+    function: struct {
+        name: []const u8,
+        arguments: []const u8,
+    },
+};
+
+/// Definition of a tool that can be called by an LLM assistant.
+pub const ToolDefinition = struct {
+    name: []const u8,
+    description: []const u8,
+    parameters: []const u8, // JSON schema
 };
 
 /// Response from an LLM chat completion.
@@ -38,8 +48,8 @@ pub const LLMResponse = struct {
         if (self.tool_calls) |calls| {
             for (calls) |call| {
                 self.allocator.free(call.id);
-                self.allocator.free(call.function_name);
-                self.allocator.free(call.arguments);
+                self.allocator.free(call.function.name);
+                self.allocator.free(call.function.arguments);
             }
             self.allocator.free(calls);
         }
