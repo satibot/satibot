@@ -230,3 +230,23 @@ test "Config: minimal configuration" {
     try std.testing.expect(parsed.value.providers.anthropic == null);
     try std.testing.expect(parsed.value.tools.telegram == null);
 }
+
+test "Config: disableRag parsing" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": {
+        \\    "defaults": {
+        \\      "model": "test-model",
+        \\      "disableRag": true
+        \\    }
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.value.agents.defaults.disableRag == true);
+}

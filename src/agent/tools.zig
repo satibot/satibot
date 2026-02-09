@@ -1111,3 +1111,25 @@ test "Tools: JSON argument parsing" {
     try std.testing.expectEqualStrings("test.txt", parsed2.value.path);
     try std.testing.expectEqualStrings("hello", parsed2.value.content);
 }
+
+test "Tools: respect disableRag flag" {
+    const allocator = std.testing.allocator;
+    const ctx = ToolContext{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test", .disableRag = true } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+            },
+        },
+    };
+
+    const upsert_res = try vector_upsert(ctx, "{\"text\": \"hello\"}");
+    defer allocator.free(upsert_res);
+    try std.testing.expect(std.mem.indexOf(u8, upsert_res, "RAG is globally disabled") != null);
+
+    const search_res = try vector_search(ctx, "{\"query\": \"hello\"}");
+    defer allocator.free(search_res);
+    try std.testing.expect(std.mem.indexOf(u8, search_res, "RAG is globally disabled") != null);
+}
