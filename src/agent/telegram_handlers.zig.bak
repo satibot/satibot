@@ -19,7 +19,7 @@
 ///
 const std = @import("std");
 const event_loop = @import("event_loop.zig");
-const xev_event_loop = @import("xev_event_loop.zig");
+const xev_event_loop = @import("../utils/xev_event_loop.zig");
 const XevEventLoop = xev_event_loop.XevEventLoop;
 const Agent = @import("../agent.zig").Agent;
 const Config = @import("../config.zig").Config;

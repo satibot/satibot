@@ -24,7 +24,7 @@ A multi-threaded supervisor that runs background services:
 
 A thread-based event loop for concurrent task processing (Zig 0.15.0 compatible).
 
-### 2.2 `XevEventLoop` (`src/agent/xev_event_loop.zig`)
+### 2.2 `XevEventLoop` (`src/utils/xev_event_loop.zig`)
 
 A high-performance asynchronous event loop based on **libxev**. It handles non-blocking I/O and task scheduling using platform-native APIs (io_uring, kqueue, epoll).
 
@@ -107,36 +107,4 @@ graph TD
     
     Agent --> Context
     Context --> Disk[(JSON Files)]
-```
-
-## Project Structure
-
-```text
-src/
-├── main.zig            # Entry point (CLI, Command dispatch)
-├── agent.zig           # Core Agent logic & Loop
-├── config.zig          # Configuration loading/parsing
-├── http.zig            # Custom HTTP Client (Zig 0.15.2 compatible)
-├── root.zig            # Module exports
-│
-├── agent/
-│   ├── context.zig     # Chat history management
-│   ├── session.zig     # File persistence
-│   ├── tools.zig       # Tool definitions & Registry
-│   ├── cron.zig        # Cron job logic
-│   ├── heartbeat.zig   # Proactive behavior
-│   ├── gateway.zig     # Service orchestration
-│   ├── telegram_bot.zig# Legacy Telegram implementation
-│   ├── xev_telegram_bot.zig# Xev-based Telegram implementation (Current)
-│   ├── telegram_handlers.zig # Telegram-specific event loop handlers
-│   ├── event_loop.zig  # Thread-based event loop (Zig 0.15.0)
-│   ├── xev_event_loop.zig # Libxev-based async event loop
-│   ├── vector_db.zig   # Embeddings & Search
-│   └── graph_db.zig    # Knowledge Graph
-│
-└── providers/
-    ├── base.zig        # Interfaces (LLMMessage, Response)
-    ├── openrouter.zig  # Generic OpenAI/OpenRouter client
-    ├── anthropic.zig   # Anthropic-specific client
-    └── groq.zig        # Whisper & LLM client
 ```

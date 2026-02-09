@@ -17,7 +17,8 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
-const XevEventLoop = @import("xev_event_loop.zig").XevEventLoop;
+const xev_event_loop = @import("../utils/xev_event_loop.zig");
+const XevEventLoop = xev_event_loop.XevEventLoop;
 
 /// Global flag for shutdown signal
 var shutdown_requested = std.atomic.Value(bool).init(false);
@@ -42,7 +43,7 @@ pub const MockContext = struct {
 };
 
 /// Task handler for console messages
-fn mockTaskHandler(allocator: std.mem.Allocator, task: @import("xev_event_loop.zig").Task) anyerror!void {
+fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anyerror!void {
     if (!std.mem.eql(u8, task.source, "console_input")) return;
 
     // Access global or shared context

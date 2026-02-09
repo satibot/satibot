@@ -32,7 +32,7 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
-const XevEventLoop = @import("xev_event_loop.zig").XevEventLoop;
+const XevEventLoop = @import("../utils/xev_event_loop.zig").XevEventLoop;
 const telegram_handlers = @import("telegram_handlers.zig");
 const providers = @import("../root.zig").providers;
 

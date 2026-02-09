@@ -151,27 +151,6 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 
 ---
 
-## 🏗️ Project Structure
-
-```text
-src/
-├── main.zig              # CLI entry point
-├── agent.zig             # Core agent logic
-├── config.zig            # Configuration management
-├── http.zig              # HTTP client
-├── providers/            # LLM provider implementations
-│   ├── base.zig
-│   └── openrouter.zig
-└── agent/                # Agent subsystems
-    ├── context.zig       # Conversation history
-    ├── session.zig       # Session persistence
-    ├── tools.zig         # Tool system
-    ├── vector_db.zig     # Vector database
-    └── graph_db.zig      # Graph database
-```
-
----
-
 ## 🤝 Contributing
 
 We welcome contributions!

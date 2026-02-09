@@ -1,7 +1,7 @@
 /// Telegram-specific handlers for the generic event loop
 const std = @import("std");
 const event_loop = @import("event_loop.zig");
-const xev_event_loop = @import("xev_event_loop.zig");
+const xev_event_loop = @import("../utils/xev_event_loop.zig");
 const Agent = @import("../agent.zig").Agent;
 const Config = @import("../config.zig").Config;
 const http = @import("../http.zig");

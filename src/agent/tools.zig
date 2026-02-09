@@ -5,6 +5,8 @@ const std = @import("std");
 
 const Config = @import("../config.zig").Config;
 const base = @import("../providers/base.zig");
+const vector_db = @import("../db/vector_db.zig");
+const graph_db = @import("../db/graph_db.zig");
 
 /// Context passed to tool functions containing allocator, config, and helper functions.
 pub const ToolContext = struct {
@@ -355,9 +357,6 @@ pub fn discord_send_message(ctx: ToolContext, arguments: []const u8) ![]const u8
 
     return try ctx.allocator.dupe(u8, "Message sent to Discord successfully");
 }
-
-const vector_db = @import("vector_db.zig");
-const graph_db = @import("graph_db.zig");
 
 // Helper to get db paths
 fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
