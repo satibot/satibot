@@ -1,6 +1,8 @@
 const std = @import("std");
 const http = @import("../http.zig");
+const http_async = @import("../http_async.zig");
 const base = @import("base.zig");
+const AsyncEventLoop = @import("../agent/event_loop.zig").AsyncEventLoop;
 
 /// OpenRouter API provider implementation.
 /// OpenRouter provides a unified interface to multiple LLM models.
@@ -42,8 +44,10 @@ const FunctionCallResponse = struct {
 pub const OpenRouterProvider = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
+    async_client: ?http_async.AsyncClient = null,
     api_key: []const u8,
     api_base: []const u8 = "https://openrouter.ai/api/v1",
+    event_loop: ?*AsyncEventLoop = null,
 
     /// Initialize provider with API key.
     pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !OpenRouterProvider {
@@ -54,9 +58,21 @@ pub const OpenRouterProvider = struct {
         };
     }
 
+    /// Initialize provider with API key and event loop for async operations.
+    pub fn initWithEventLoop(allocator: std.mem.Allocator, api_key: []const u8, event_loop: *AsyncEventLoop) !OpenRouterProvider {
+        return .{
+            .allocator = allocator,
+            .client = try http.Client.init(allocator),
+            .async_client = try http_async.AsyncClient.init(allocator),
+            .api_key = api_key,
+            .event_loop = event_loop,
+        };
+    }
+
     /// Clean up provider resources.
     pub fn deinit(self: *OpenRouterProvider) void {
         self.client.deinit();
+        if (self.async_client) |*client| client.deinit();
     }
 
     fn execPost(self: *OpenRouterProvider, url: []const u8, body: []const u8) ![]u8 {
@@ -80,6 +96,166 @@ pub const OpenRouterProvider = struct {
         }
 
         return try self.allocator.dupe(u8, response.body);
+    }
+
+    /// Result of an async chat completion
+    const ChatAsyncResult = struct {
+        request_id: []const u8,
+        success: bool,
+        response: ?base.LLMResponse = null,
+        err_msg: ?[]const u8 = null,
+        
+        pub fn deinit(self: *ChatAsyncResult) void {
+            if (self.response) |resp| resp.deinit();
+            if (self.err_msg) |err| self.allocator.free(err);
+        }
+    };
+
+    /// Async chat completion using event loop
+    pub fn chatAsync(self: *OpenRouterProvider, request_id: []const u8, messages: []const base.LLMMessage, model: []const u8, callback: *const fn (result: ChatAsyncResult) void) !void {
+        if (self.async_client == null or self.event_loop == null) {
+            return error.AsyncNotInitialized;
+        }
+
+        const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
+        
+        const payload = .{
+            .model = model,
+            .messages = messages,
+        };
+
+        const body = try std.json.stringifyAlloc(self.allocator, payload, .{});
+        
+        const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
+        
+        const headers = try self.allocator.alloc(std.http.Header, 5);
+        headers[0] = .{ .name = "Authorization", .value = auth_header };
+        headers[1] = .{ .name = "Content-Type", .value = "application/json" };
+        headers[2] = .{ .name = "User-Agent", .value = "satibot/1.0" };
+        headers[3] = .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" };
+        headers[4] = .{ .name = "X-Title", .value = "SatiBot" };
+
+        const wrapper = struct {
+            provider: *OpenRouterProvider,
+            original_callback: *const fn (result: ChatAsyncResult) void,
+            
+            fn httpResultCallback(wr: *const @This(), result: http_async.AsyncClient.AsyncResult) void {
+                if (result.success) {
+                    // Parse the response and create ChatResult
+                    const parsed = std.json.parseFromSlice(CompletionResponse, wr.provider.allocator, result.response.?.body, .{ .ignore_unknown_fields = true }) catch |err| {
+                        const error_result = ChatAsyncResult{
+                            .request_id = result.request_id,
+                            .success = false,
+                            .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to parse response: {any}", .{err}) catch unreachable,
+                        };
+                        wr.original_callback(error_result);
+                        return;
+                    };
+                    defer parsed.deinit();
+
+                    if (parsed.value.choices.len == 0) {
+                        const error_result = ChatAsyncResult{
+                            .request_id = result.request_id,
+                            .success = false,
+                            .err_msg = std.fmt.allocPrint(wr.provider.allocator, "No choices returned", .{}) catch unreachable,
+                        };
+                        wr.original_callback(error_result);
+                        return;
+                    }
+
+                    const msg = parsed.value.choices[0].message;
+                    
+                    var tool_calls: ?[]base.ToolCall = null;
+                    if (msg.tool_calls) |calls| {
+                        tool_calls = wr.provider.allocator.alloc(base.ToolCall, calls.len) catch {
+                            const error_result = ChatAsyncResult{
+                                .request_id = result.request_id,
+                                .success = false,
+                                .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate tool calls", .{}) catch unreachable,
+                            };
+                            wr.original_callback(error_result);
+                            return;
+                        };
+                        
+                        var allocated: usize = 0;
+                        errdefer {
+                            for (0..allocated) |i| {
+                                wr.provider.allocator.free(tool_calls.?[i].id);
+                                wr.provider.allocator.free(tool_calls.?[i].function_name);
+                                wr.provider.allocator.free(tool_calls.?[i].arguments);
+                            }
+                            wr.provider.allocator.free(tool_calls.?);
+                        }
+                        
+                        for (calls, 0..) |call, i| {
+                            tool_calls.?[i] = .{
+                                .id = wr.provider.allocator.dupe(u8, call.id) catch {
+                                    const error_result = ChatAsyncResult{
+                                        .request_id = result.request_id,
+                                        .success = false,
+                                        .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate tool call ID", .{}) catch unreachable,
+                                    };
+                                    wr.original_callback(error_result);
+                                    return;
+                                },
+                                .function_name = wr.provider.allocator.dupe(u8, call.function.name) catch {
+                                    const error_result = ChatAsyncResult{
+                                        .request_id = result.request_id,
+                                        .success = false,
+                                        .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate function name", .{}) catch unreachable,
+                                    };
+                                    wr.original_callback(error_result);
+                                    return;
+                                },
+                                .arguments = wr.provider.allocator.dupe(u8, call.function.arguments) catch {
+                                    const error_result = ChatAsyncResult{
+                                        .request_id = result.request_id,
+                                        .success = false,
+                                        .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate arguments", .{}) catch unreachable,
+                                    };
+                                    wr.original_callback(error_result);
+                                    return;
+                                },
+                            };
+                            allocated += 1;
+                        }
+                    }
+
+                    const success_result = ChatAsyncResult{
+                        .request_id = result.request_id,
+                        .success = true,
+                        .response = base.LLMResponse{
+                            .content = if (msg.content) |c| wr.provider.allocator.dupe(u8, c) catch {
+                                const error_result = ChatAsyncResult{
+                                    .request_id = result.request_id,
+                                    .success = false,
+                                    .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate content", .{}) catch unreachable,
+                                };
+                                wr.original_callback(error_result);
+                                return;
+                            } else null,
+                            .tool_calls = tool_calls,
+                            .allocator = wr.provider.allocator,
+                        },
+                    };
+                    wr.original_callback(success_result);
+                } else {
+                    const error_result = ChatAsyncResult{
+                        .request_id = result.request_id,
+                        .success = false,
+                        .err_msg = wr.provider.allocator.dupe(u8, result.err_msg.?),
+                    };
+                    wr.original_callback(error_result);
+                }
+            }
+        };
+        
+        const wrapper_instance = wrapper{
+            .provider = self,
+            .original_callback = callback,
+        };
+        
+        try self.async_client.?.postAsync(request_id, url, headers, body, &wrapper_instance.httpResultCallback, self.allocator);
     }
 
     pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
