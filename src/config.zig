@@ -94,7 +94,12 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
         if (err == error.FileNotFound) {
             const default_json =
                 \\{
-                \\  "agents": { "defaults": { "model": "anthropic/claude-opus-4-5" } },
+                \\  "agents": {
+                \\    "defaults": {
+                \\      "model": "anthropic/claude-opus-4-5",
+                \\      "embeddingModel": "local"
+                \\    }
+                \\  },
                 \\  "providers": {},
                 \\  "tools": { "web": { "search": {} } }
                 \\}
@@ -155,7 +160,7 @@ test "Config: full configuration with all providers" {
         \\  "agents": {
         \\    "defaults": {
         \\      "model": "anthropic/claude-3-sonnet",
-        \\      "embeddingModel": "openai/text-embedding-3-small"
+        \\      "embeddingModel": "arcee-ai/trinity-mini:free"
         \\    }
         \\  },
         \\  "providers": {
@@ -181,7 +186,7 @@ test "Config: full configuration with all providers" {
 
     // Test agents config
     try std.testing.expectEqualStrings("anthropic/claude-3-sonnet", parsed.value.agents.defaults.model);
-    try std.testing.expectEqualStrings("openai/text-embedding-3-small", parsed.value.agents.defaults.embeddingModel.?);
+    try std.testing.expectEqualStrings("arcee-ai/trinity-mini:free", parsed.value.agents.defaults.embeddingModel.?);
 
     // Test providers config
     try std.testing.expectEqualStrings("or-key", parsed.value.providers.openrouter.?.apiKey);

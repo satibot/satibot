@@ -202,12 +202,18 @@ pub const Agent = struct {
     }
 
     fn get_embeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
+        const emb_model = config.agents.defaults.embeddingModel orelse "local";
+
+        // Handle local embeddings without API calls
+        if (std.mem.eql(u8, emb_model, "local")) {
+            return @import("db/local_embeddings.zig").LocalEmbedder.generate(allocator, input);
+        }
+
         const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
             return error.NoApiKey;
         };
         var provider = try providers.openrouter.OpenRouterProvider.init(allocator, api_key);
         defer provider.deinit();
-        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
 
         var retry_count: usize = 0;
         const max_retries = 3;
@@ -549,7 +555,7 @@ test "Agent: config integration" {
         \\  "agents": { 
         \\    "defaults": { 
         \\      "model": "anthropic/claude-3-sonnet",
-        \\      "embeddingModel": "openai/text-embedding-3-small"
+        \\      "embeddingModel": "arcee-ai/trinity-mini:free"
         \\    }
         \\  },
         \\  "providers": {
@@ -565,7 +571,7 @@ test "Agent: config integration" {
     defer agent.deinit();
 
     try std.testing.expectEqualStrings("anthropic/claude-3-sonnet", agent.config.agents.defaults.model);
-    try std.testing.expectEqualStrings("openai/text-embedding-3-small", agent.config.agents.defaults.embeddingModel.?);
+    try std.testing.expectEqualStrings("arcee-ai/trinity-mini:free", agent.config.agents.defaults.embeddingModel.?);
     try std.testing.expectEqualStrings("test-key", agent.config.providers.anthropic.?.apiKey);
 }
 

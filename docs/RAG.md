@@ -49,7 +49,7 @@ You can configure the embedding model in `~/.bots/config.json`:
   "agents": {
     "defaults": {
       "model": "anthropic/claude-3-7-sonnet",
-      "embeddingModel": "openai/text-embedding-3-small"
+      "embeddingModel": "arcee-ai/trinity-mini:free"
     }
   }
 }
@@ -57,7 +57,8 @@ You can configure the embedding model in `~/.bots/config.json`:
 
 ## Implementation Details
 
-- **Embeddings**: Calculated via the `OpenRouterProvider` (OpenRouter/OpenAI-compatible).
+- **Embeddings**: Calculated via the `OpenRouterProvider` (remote) or using the built-in `LocalEmbedder` (offline).
+  - To use local embeddings: Set `"embeddingModel": "local"` in your `config.json`. This uses a Hashing Vectorizer and requires no API key.
 - **Architecture**: Tools access the embedding service via the `ToolContext.get_embeddings` function pointer provided by the `Agent` during execution.
 - **Persistence**: Both databases are serialized/deserialized as JSON for easy inspection and debugging.
 

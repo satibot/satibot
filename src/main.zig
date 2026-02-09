@@ -554,17 +554,20 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             top_k = try std.fmt.parseInt(usize, args[4], 10);
         }
 
-        // Get embeddings for query from OpenRouter
-        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
-            std.debug.print("Error: OpenRouter API key not configured\n", .{});
-            return error.NoApiKey;
-        };
+        const emb_model = config.agents.defaults.embeddingModel orelse "local";
+        var resp: satibot.providers.base.EmbeddingResponse = undefined;
 
-        var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
-        defer provider.deinit();
-
-        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
-        var resp = try provider.embeddings(.{ .input = &.{query}, .model = emb_model });
+        if (std.mem.eql(u8, emb_model, "local")) {
+            resp = try satibot.agent.local_embeddings.LocalEmbedder.generate(allocator, &.{query});
+        } else {
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+                std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
+                return error.NoApiKey;
+            };
+            var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+            defer provider.deinit();
+            resp = try provider.embeddings(.{ .input = &.{query}, .model = emb_model });
+        }
         defer resp.deinit();
 
         if (resp.embeddings.len == 0) {
@@ -608,17 +611,20 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
         const text = text_buf[0..pos];
 
-        // Get embeddings for the text
-        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
-            std.debug.print("Error: OpenRouter API key not configured\n", .{});
-            return error.NoApiKey;
-        };
+        const emb_model = config.agents.defaults.embeddingModel orelse "local";
+        var resp: satibot.providers.base.EmbeddingResponse = undefined;
 
-        var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
-        defer provider.deinit();
-
-        const emb_model = config.agents.defaults.embeddingModel orelse "openai/text-embedding-3-small";
-        var resp = try provider.embeddings(.{ .input = &.{text}, .model = emb_model });
+        if (std.mem.eql(u8, emb_model, "local")) {
+            resp = try satibot.agent.local_embeddings.LocalEmbedder.generate(allocator, &.{text});
+        } else {
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+                std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
+                return error.NoApiKey;
+            };
+            var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+            defer provider.deinit();
+            resp = try provider.embeddings(.{ .input = &.{text}, .model = emb_model });
+        }
         defer resp.deinit();
 
         if (resp.embeddings.len == 0) {

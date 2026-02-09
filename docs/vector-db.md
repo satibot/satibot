@@ -41,7 +41,7 @@ satibot vector-db add "my name is John"
 ### How It Works
 
 - Storage: `~/.bots/vector_db.json`
-- Embeddings: Uses OpenRouter API (default: `openai/text-embedding-3-small`)
+- Embeddings: Uses OpenRouter API (default: `arcee-ai/trinity-mini:free`)
 - Configuration: Set `"disableRag": true` in `config.json`'s `agents.defaults` to disable all embedding and RAG operations globally.
 - Search: Cosine similarity on vector embeddings
 - Auto-save: Conversations auto-indexed via `agent.index_conversation()`

@@ -5,6 +5,7 @@ pub const agent = struct {
     pub const tools = @import("agent/tools.zig");
     pub const session = @import("agent/session.zig");
     pub const vector_db = @import("db/vector_db.zig");
+    pub const local_embeddings = @import("db/local_embeddings.zig");
     pub const graph_db = @import("db/graph_db.zig");
     pub const xev_telegram_bot = @import("agent/xev_telegram_bot.zig");
     pub const telegram_bot = @import("agent/xev_telegram_bot.zig");
