@@ -7,7 +7,8 @@ const base = @import("providers/base.zig");
 const session = @import("agent/session.zig");
 
 /// Helper function to print streaming response chunks to stdout.
-fn print_chunk(chunk: []const u8) void {
+fn print_chunk(ctx: ?*anyopaque, chunk: []const u8) void {
+    _ = ctx;
     const stdout = std.fs.File.stdout();
     var buf: [4096]u8 = undefined;
     var writer = stdout.writer(&buf);
@@ -23,6 +24,9 @@ pub const Agent = struct {
     ctx: context.Context,
     registry: tools.ToolRegistry,
     session_id: []const u8,
+    on_chunk: ?base.ChunkCallback = null,
+    chunk_ctx: ?*anyopaque = null,
+    last_chunk: ?[]const u8 = null,
 
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
@@ -194,6 +198,7 @@ pub const Agent = struct {
     pub fn deinit(self: *Agent) void {
         self.ctx.deinit();
         self.registry.deinit();
+        if (self.last_chunk) |chunk| self.allocator.free(chunk);
     }
 
     fn get_embeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
@@ -264,6 +269,17 @@ pub const Agent = struct {
             var retry_count: usize = 0;
             const max_retries = 3;
 
+            const internal_cb = struct {
+                fn call(ctx: ?*anyopaque, chunk: []const u8) void {
+                    const a: *Agent = @ptrCast(@alignCast(ctx orelse return));
+                    if (a.last_chunk) |old| a.allocator.free(old);
+                    a.last_chunk = a.allocator.dupe(u8, chunk) catch null;
+
+                    const cb = a.on_chunk orelse print_chunk;
+                    cb(a.chunk_ctx, chunk);
+                }
+            }.call;
+
             while (retry_count < max_retries) : (retry_count += 1) {
                 // Calculate exponential backoff: 2s, 4s, 8s
                 const backoff_seconds = std.math.shl(u64, 1, retry_count + 1);
@@ -276,7 +292,7 @@ pub const Agent = struct {
                     var provider = try providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (Anthropic): ", .{});
-                    response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {
+                    response = provider.chatStream(self.ctx.get_messages(), model, internal_cb, self) catch |err| {
                         if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                             std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                             std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
@@ -292,7 +308,7 @@ pub const Agent = struct {
                     var provider = try providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
                     defer provider.deinit();
                     std.debug.print("AI (OpenRouter): ", .{});
-                    response = provider.chatStream(self.ctx.get_messages(), model, print_chunk) catch |err| {
+                    response = provider.chatStream(self.ctx.get_messages(), model, internal_cb, self) catch |err| {
                         if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                             std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                             std.Thread.sleep(std.time.ns_per_s * backoff_seconds);

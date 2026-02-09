@@ -82,14 +82,27 @@ pub const AnthropicProvider = struct {
         defer response.deinit();
 
         if (response.status != .ok) {
-            std.debug.print("Anthropic API Error: {d} {s}\n", .{ @intFromEnum(response.status), response.body });
+            const display_err: []const u8 = response.body;
+            const ErrorResponse = struct {
+                @"error": struct {
+                    message: []const u8,
+                },
+            };
+            if (std.json.parseFromSlice(ErrorResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true })) |parsed_err| {
+                defer parsed_err.deinit();
+                const nice_msg = try self.allocator.dupe(u8, parsed_err.value.@"error".message);
+                defer self.allocator.free(nice_msg);
+                std.debug.print("[Anthropic] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), nice_msg });
+            } else |_| {
+                std.debug.print("[Anthropic] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), display_err });
+            }
             return error.ApiRequestFailed;
         }
 
         return self.parseResponse(response.body);
     }
 
-    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, callback: *const fn (chunk: []const u8) void) !base.LLMResponse {
+    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -110,6 +123,34 @@ pub const AnthropicProvider = struct {
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
+            var err_body = std.ArrayListUnmanaged(u8){};
+            defer err_body.deinit(self.allocator);
+            var err_reader = response.reader(&head_buf);
+            var buf: [1024]u8 = undefined;
+            while (true) {
+                const n = try err_reader.read(&buf);
+                if (n == 0) break;
+                try err_body.appendSlice(self.allocator, buf[0..n]);
+            }
+
+            var display_err: []const u8 = err_body.items;
+            const ErrorResponse = struct {
+                @"error": struct {
+                    message: []const u8,
+                },
+            };
+            const parsed_err = std.json.parseFromSlice(ErrorResponse, self.allocator, err_body.items, .{ .ignore_unknown_fields = true }) catch null;
+            defer if (parsed_err) |p| p.deinit();
+
+            if (parsed_err) |p| {
+                display_err = p.value.@"error".message;
+            }
+
+            const final_msg = try std.fmt.allocPrint(self.allocator, "Anthropic API request failed with status {d}: {s}\n", .{ @intFromEnum(response.head.status), display_err });
+            defer self.allocator.free(final_msg);
+
+            std.debug.print("[Anthropic] {s}", .{final_msg});
+            callback(cb_ctx, final_msg);
             return error.ApiRequestFailed;
         }
 
@@ -179,7 +220,7 @@ pub const AnthropicProvider = struct {
                         if (event.delta) |delta| {
                             if (delta.text) |text| {
                                 try full_content.appendSlice(self.allocator, text);
-                                callback(text);
+                                callback(cb_ctx, text);
                             }
                         }
                     } else if (std.mem.eql(u8, event.type, "content_block_start")) {

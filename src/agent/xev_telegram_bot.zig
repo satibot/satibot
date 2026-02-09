@@ -4,6 +4,21 @@
 /// Centralized HTTP handling - All HTTP requests (both Telegram and OpenRouter)
 /// are processed through the event loop's task handler.
 ///
+/// Logic Graph:
+/// ```mermaid
+/// graph TD
+///     Main[Main Thread] --> |tick| Loop[Polling Loop]
+///     Loop --> |addTask| task_q[(Xev Task Queue)]
+///     task_q --> |process| EL[Event Loop Thread]
+///     EL --> |HTTP GET| TG[Telegram API]
+///     TG --> |Updates| EL
+///     EL --> |Parse| Handler[Telegram Handlers]
+///     Handler --> |Update Offset| Offset[Event Loop State]
+///     Handler --> |Process| Agent[AI Agent]
+///     Agent --> |Reply| EL
+///     EL --> |HTTP POST| TG
+/// ```
+///
 /// IMPORTANT: Offset Update Fix
 /// ---------------------------
 /// When using event loop for HTTP requests, we must ensure the polling offset
@@ -13,7 +28,6 @@
 /// 1. Passing event_loop reference to TelegramContext
 /// 2. Tracking max update_id in polling response handler
 /// 3. Calling event_loop.updateOffset() after processing
-
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
@@ -45,7 +59,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
 fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
     const chat_id_str = try std.fmt.allocPrint(event_loop.allocator, "{d}", .{chat_id});
     defer event_loop.allocator.free(chat_id_str);
-    
+
     // Build the API URL for sending messages
     const url = try std.fmt.allocPrint(event_loop.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
     defer event_loop.allocator.free(url);
@@ -60,13 +74,9 @@ fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_
     // Create task data for HTTP request
     const task_data = try std.fmt.allocPrint(event_loop.allocator, "POST:{s}:{s}", .{ url, body });
     defer event_loop.allocator.free(task_data);
-    
+
     // Add HTTP task to event loop
-    try event_loop.addTask(
-        try std.fmt.allocPrint(event_loop.allocator, "tg_send_{d}", .{chat_id}),
-        task_data,
-        "telegram_http"
-    );
+    try event_loop.addTask(try std.fmt.allocPrint(event_loop.allocator, "tg_send_{d}", .{chat_id}), task_data, "telegram_http");
 }
 
 fn setupSignalHandlers() void {
@@ -93,7 +103,7 @@ pub const TelegramBot = struct {
     event_loop: XevEventLoop,
     /// HTTP client for making API requests
     http_client: http.Client,
-    
+
     /// Telegram context for handlers
     tg_ctx: telegram_handlers.TelegramContext,
 
@@ -103,16 +113,16 @@ pub const TelegramBot = struct {
         // Extract telegram config
         const tg_config = config.tools.telegram orelse return error.TelegramConfigNotFound;
         _ = tg_config; // TODO: Use this for Telegram integration
-        
+
         // Initialize xev-based event loop
         const event_loop = try XevEventLoop.init(allocator, config);
-        
+
         // Initialize HTTP client
         const http_client = try http.Client.initWithSettings(allocator, .{
             .request_timeout_ms = 60000,
             .keep_alive = true,
         });
-        
+
         // Create the bot struct first
         var bot = TelegramBot{
             .allocator = allocator,
@@ -121,17 +131,17 @@ pub const TelegramBot = struct {
             .http_client = http_client,
             .tg_ctx = undefined, // Will be initialized below
         };
-        
+
         // Now initialize the context
         bot.tg_ctx = telegram_handlers.TelegramContext.init(allocator, config, &bot.http_client);
         // CRITICAL: Set event_loop reference to enable offset updates
         // Without this, the bot would get stuck polling offset=0 forever
         bot.tg_ctx.event_loop = &bot.event_loop; // Reference after event_loop is moved into bot
-        
+
         // Set up handlers for xev event loop
         bot.event_loop.setTaskHandler(telegram_handlers.createXevTelegramTaskHandler(&bot.tg_ctx));
         bot.event_loop.setEventHandler(telegram_handlers.createXevTelegramEventHandler(&bot.tg_ctx));
-        
+
         return bot;
     }
 
@@ -161,13 +171,9 @@ pub const TelegramBot = struct {
         // Create HTTP task for polling
         const task_data = try std.fmt.allocPrint(self.allocator, "GET:{s}", .{url});
         defer self.allocator.free(task_data);
-        
+
         // Add HTTP task to event loop for polling
-        try self.event_loop.addTask(
-            "telegram_poll",
-            task_data,
-            "telegram_http"
-        );
+        try self.event_loop.addTask("telegram_poll", task_data, "telegram_http");
     }
 
     /// Start the event loop with Telegram polling
@@ -177,9 +183,9 @@ pub const TelegramBot = struct {
             std.debug.print("Error: telegram configuration is required but not found.\n", .{});
             return error.TelegramConfigNotFound;
         };
-        
+
         std.debug.print("🐸 Telegram bot running with xev event loop. Press Ctrl+C to stop.\n", .{});
-        
+
         // Setup signal handlers
         global_event_loop = &self.event_loop;
         const sa = std.posix.Sigaction{
@@ -189,7 +195,7 @@ pub const TelegramBot = struct {
         };
         std.posix.sigaction(std.posix.SIG.INT, &sa, null);
         std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
-        
+
         // Skip startup message to avoid conflicts
         // if (tg_config.chatId) |chat_id| {
         //     std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
@@ -198,22 +204,22 @@ pub const TelegramBot = struct {
         //         std.debug.print("Failed to send startup message: {any}\n", .{err});
         //     };
         // }
-        
+
         // Start event loop in a separate thread
         const event_loop_thread = try std.Thread.spawn(.{}, XevEventLoop.run, .{&self.event_loop});
         defer event_loop_thread.join();
-        
+
         // Main thread handles Telegram polling
         while (!shutdown_requested.load(.seq_cst)) {
             self.tick() catch |err| {
                 std.debug.print("Error in tick: {any}\n", .{err});
                 // Continue running even if there's an error
             };
-            
+
             // Small delay to prevent excessive polling
             std.Thread.sleep(100 * std.time.ns_per_ms);
         }
-        
+
         std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});
     }
 };

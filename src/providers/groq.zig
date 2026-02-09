@@ -169,7 +169,20 @@ pub const GroqProvider = struct {
         defer @constCast(&response).deinit();
 
         if (response.status != .ok) {
-            std.debug.print("[Groq] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), response.body });
+            const display_err: []const u8 = response.body;
+            const ErrorResponse = struct {
+                @"error": struct {
+                    message: []const u8,
+                },
+            };
+            if (std.json.parseFromSlice(ErrorResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true })) |parsed_err| {
+                defer parsed_err.deinit();
+                const nice_msg = try self.allocator.dupe(u8, parsed_err.value.@"error".message);
+                defer self.allocator.free(nice_msg);
+                std.debug.print("[Groq] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), nice_msg });
+            } else |_| {
+                std.debug.print("[Groq] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), display_err });
+            }
             return error.ApiRequestFailed;
         }
 

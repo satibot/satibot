@@ -28,7 +28,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
 fn sendMessageToTelegram(allocator: std.mem.Allocator, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
     const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{chat_id});
     defer allocator.free(chat_id_str);
-    
+
     // Build the API URL for sending messages
     const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
     defer allocator.free(url);
@@ -56,7 +56,7 @@ fn sendMessageToTelegram(allocator: std.mem.Allocator, bot_token: []const u8, ch
     // Send POST request to Telegram API
     const response = try client.post(url, headers, body);
     defer @constCast(&response).deinit();
-    
+
     if (response.status != .ok) {
         std.debug.print("Failed to send message: status {d}\n", .{@intFromEnum(response.status)});
         return error.SendMessageFailed;
@@ -89,7 +89,7 @@ pub const TelegramBot = struct {
     /// HTTP client re-used for all API calls to enable connection
     /// keep-alive, reducing TLS handshake overhead during polling.
     client: http.Client,
-    
+
     /// Telegram context for handlers
     tg_ctx: telegram_handlers.TelegramContext,
 
@@ -100,16 +100,16 @@ pub const TelegramBot = struct {
         // Extract telegram config
         const tg_config = config.tools.telegram orelse return error.TelegramConfigNotFound;
         _ = tg_config; // TODO: Use this for Telegram integration
-        
+
         const client = try http.Client.initWithSettings(allocator, .{
             .request_timeout_ms = 60000, // 60 seconds timeout
             .keep_alive = true, // Reuse connections for efficiency
         });
-        
+
         // Initialize generic event loop
         // TODO: Integrate Telegram bot with new event loop architecture
         var event_loop = try AsyncEventLoop.init(allocator, config);
-        
+
         // Create the bot struct first
         var bot = TelegramBot{
             .allocator = allocator,
@@ -118,14 +118,14 @@ pub const TelegramBot = struct {
             .client = client,
             .tg_ctx = undefined, // Will be initialized below
         };
-        
+
         // Now initialize the context with a pointer to the client in the struct
         bot.tg_ctx = telegram_handlers.TelegramContext.init(allocator, config, &bot.client);
-        
+
         // Set up handlers
         event_loop.setTaskHandler(telegram_handlers.createTelegramTaskHandler(&bot.tg_ctx));
         event_loop.setEventHandler(telegram_handlers.createTelegramEventHandler(&bot.tg_ctx));
-        
+
         return bot;
     }
 
@@ -270,13 +270,9 @@ pub const TelegramBot = struct {
                         // Add message to event loop for async processing
                         const task_data = try std.fmt.allocPrint(self.allocator, "{d}:{d}:{s}", .{ msg.chat.id, msg.message_id, actual_text });
                         defer self.allocator.free(task_data);
-                        
-                        try self.event_loop.addTask(
-                            try std.fmt.allocPrint(self.allocator, "tg_{d}", .{msg.chat.id}),
-                            task_data,
-                            "telegram"
-                        );
-                        
+
+                        try self.event_loop.addTask(try std.fmt.allocPrint(self.allocator, "tg_{d}", .{msg.chat.id}), task_data, "telegram");
+
                         // The event loop will process the message asynchronously
                         // and send the response through the handler
                     }
@@ -333,14 +329,14 @@ pub const TelegramBot = struct {
         const response = try self.client.post(url, headers, body);
         @constCast(&response).deinit();
     }
-    
+
     /// Start the event loop with Telegram polling
     /// This method integrates the event loop with Telegram's long-polling API
     pub fn run(self: *TelegramBot) !void {
         const tg_config = self.config.tools.telegram orelse return;
-        
+
         std.debug.print("� Telegram bot running with async event loop. Press Ctrl+C to stop.\n", .{});
-        
+
         // Setup signal handlers
         global_event_loop = &self.event_loop;
         const sa = std.posix.Sigaction{
@@ -350,7 +346,7 @@ pub const TelegramBot = struct {
         };
         std.posix.sigaction(std.posix.SIG.INT, &sa, null);
         std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
-        
+
         // Send startup message if configured
         if (tg_config.chatId) |chat_id| {
             std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
@@ -359,22 +355,22 @@ pub const TelegramBot = struct {
                 std.debug.print("Failed to send startup message: {any}\n", .{err});
             };
         }
-        
+
         // Start event loop in a separate thread
         const event_loop_thread = try std.Thread.spawn(.{}, AsyncEventLoop.run, .{&self.event_loop});
         defer event_loop_thread.join();
-        
+
         // Main thread handles Telegram polling
         while (!shutdown_requested.load(.seq_cst)) {
             self.tick() catch |err| {
                 std.debug.print("Error in tick: {any}\n", .{err});
                 // Continue running even if there's an error
             };
-            
+
             // Small delay to prevent excessive polling
             std.Thread.sleep(100 * std.time.ns_per_ms);
         }
-        
+
         std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});
     }
 };

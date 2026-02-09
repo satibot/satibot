@@ -91,7 +91,21 @@ pub const OpenRouterProvider = struct {
         defer self.allocator.free(response.body);
 
         if (response.status != .ok) {
-            std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), response.body });
+            const display_err: []const u8 = response.body;
+            const ErrorResponse = struct {
+                @"error": struct {
+                    message: []const u8,
+                },
+            };
+            if (std.json.parseFromSlice(ErrorResponse, self.allocator, response.body, .{ .ignore_unknown_fields = true })) |parsed_err| {
+                defer parsed_err.deinit();
+                // We need to dupe because parsed_err.deinit() will free the message
+                const nice_msg = try self.allocator.dupe(u8, parsed_err.value.@"error".message);
+                defer self.allocator.free(nice_msg);
+                std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), nice_msg });
+            } else |_| {
+                std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), display_err });
+            }
             return error.ApiRequestFailed;
         }
 
@@ -104,7 +118,7 @@ pub const OpenRouterProvider = struct {
         success: bool,
         response: ?base.LLMResponse = null,
         err_msg: ?[]const u8 = null,
-        
+
         pub fn deinit(self: *ChatAsyncResult) void {
             if (self.response) |resp| resp.deinit();
             if (self.err_msg) |err| self.allocator.free(err);
@@ -118,16 +132,16 @@ pub const OpenRouterProvider = struct {
         }
 
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
-        
+
         const payload = .{
             .model = model,
             .messages = messages,
         };
 
         const body = try std.json.stringifyAlloc(self.allocator, payload, .{});
-        
+
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
-        
+
         const headers = try self.allocator.alloc(std.http.Header, 5);
         headers[0] = .{ .name = "Authorization", .value = auth_header };
         headers[1] = .{ .name = "Content-Type", .value = "application/json" };
@@ -138,7 +152,7 @@ pub const OpenRouterProvider = struct {
         const wrapper = struct {
             provider: *OpenRouterProvider,
             original_callback: *const fn (result: ChatAsyncResult) void,
-            
+
             fn httpResultCallback(wr: *const @This(), result: http_async.AsyncClient.AsyncResult) void {
                 if (result.success) {
                     // Parse the response and create ChatResult
@@ -164,7 +178,7 @@ pub const OpenRouterProvider = struct {
                     }
 
                     const msg = parsed.value.choices[0].message;
-                    
+
                     var tool_calls: ?[]base.ToolCall = null;
                     if (msg.tool_calls) |calls| {
                         tool_calls = wr.provider.allocator.alloc(base.ToolCall, calls.len) catch {
@@ -176,7 +190,7 @@ pub const OpenRouterProvider = struct {
                             wr.original_callback(error_result);
                             return;
                         };
-                        
+
                         var allocated: usize = 0;
                         errdefer {
                             for (0..allocated) |i| {
@@ -186,7 +200,7 @@ pub const OpenRouterProvider = struct {
                             }
                             wr.provider.allocator.free(tool_calls.?);
                         }
-                        
+
                         for (calls, 0..) |call, i| {
                             tool_calls.?[i] = .{
                                 .id = wr.provider.allocator.dupe(u8, call.id) catch {
@@ -249,12 +263,12 @@ pub const OpenRouterProvider = struct {
                 }
             }
         };
-        
+
         const wrapper_instance = wrapper{
             .provider = self,
             .original_callback = callback,
         };
-        
+
         try self.async_client.?.postAsync(request_id, url, headers, body, &wrapper_instance.httpResultCallback, self.allocator);
     }
 
@@ -313,7 +327,7 @@ pub const OpenRouterProvider = struct {
         };
     }
 
-    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, callback: *const fn (chunk: []const u8) void) !base.LLMResponse {
+    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -344,6 +358,35 @@ pub const OpenRouterProvider = struct {
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
+            var err_body = std.ArrayListUnmanaged(u8){};
+            defer err_body.deinit(self.allocator);
+            var err_reader = response.reader(&head_buf);
+            var buf: [1024]u8 = undefined;
+            while (true) {
+                const n = try err_reader.read(&buf);
+                if (n == 0) break;
+                try err_body.appendSlice(self.allocator, buf[0..n]);
+            }
+
+            var display_err: []const u8 = err_body.items;
+            const ErrorResponse = struct {
+                @"error": struct {
+                    message: []const u8,
+                },
+            };
+            const parsed_err = std.json.parseFromSlice(ErrorResponse, self.allocator, err_body.items, .{ .ignore_unknown_fields = true }) catch null;
+            defer if (parsed_err) |p| p.deinit();
+
+            if (parsed_err) |p| {
+                display_err = p.value.@"error".message;
+            }
+
+            const final_msg = try std.fmt.allocPrint(self.allocator, "API request failed with status {d}: {s}\n", .{ @intFromEnum(response.head.status), display_err });
+            defer self.allocator.free(final_msg);
+
+            std.debug.print("[OpenRouter] {s}", .{final_msg});
+            // send message to user, example: "API request failed with status 429: Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"
+            callback(cb_ctx, final_msg);
             return error.ApiRequestFailed;
         }
 
@@ -416,7 +459,7 @@ pub const OpenRouterProvider = struct {
                                     const delta = parsed.value.choices[0].delta;
                                     if (delta.content) |content| {
                                         try full_content.appendSlice(self.allocator, content);
-                                        callback(content);
+                                        callback(cb_ctx, content);
                                     }
                                     if (delta.tool_calls) |calls| {
                                         for (calls) |call| {

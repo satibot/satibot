@@ -22,12 +22,15 @@ A multi-threaded supervisor that runs background services:
 
 ### 2.1 `AsyncEventLoop` (`src/agent/event_loop.zig`)
 
-A thread-based event loop for concurrent task processing (Zig 0.15.0 compatible):
+A thread-based event loop for concurrent task processing (Zig 0.15.0 compatible).
 
-- **Thread Pool**: Worker threads for parallel task execution
-- **Task Queue**: Thread-safe queue for immediate processing
-- **Event Scheduler**: Priority queue for timed events
-- **Generic Handlers**: Pluggable task/event handlers for different platforms
+### 2.2 `XevEventLoop` (`src/agent/xev_event_loop.zig`)
+
+A high-performance asynchronous event loop based on **libxev**. It handles non-blocking I/O and task scheduling using platform-native APIs (io_uring, kqueue, epoll).
+
+- **Task Handler**: Centralized processing for background tasks.
+- **HTTP Integration**: HTTP requests are processed asynchronously as event loop tasks.
+- **Offset Management**: Tracks the polling state for Telegram.
 
 ### 3. `ToolRegistry` (`src/agent/tools.zig`)
 
@@ -123,9 +126,11 @@ src/
 │   ├── cron.zig        # Cron job logic
 │   ├── heartbeat.zig   # Proactive behavior
 │   ├── gateway.zig     # Service orchestration
-│   ├── telegram_bot.zig# Telegram implementation
+│   ├── telegram_bot.zig# Legacy Telegram implementation
+│   ├── xev_telegram_bot.zig# Xev-based Telegram implementation (Current)
 │   ├── telegram_handlers.zig # Telegram-specific event loop handlers
 │   ├── event_loop.zig  # Thread-based event loop (Zig 0.15.0)
+│   ├── xev_event_loop.zig # Libxev-based async event loop
 │   ├── vector_db.zig   # Embeddings & Search
 │   └── graph_db.zig    # Knowledge Graph
 │

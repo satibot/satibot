@@ -4,6 +4,10 @@
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 
+/// Callback function for streaming response chunks.
+/// Takes a context pointer and the chunk content.
+pub const ChunkCallback = *const fn (ctx: ?*anyopaque, chunk: []const u8) void;
+
 /// Message in a conversation with an LLM.
 /// Can represent messages from user, assistant, system, or tool results.
 pub const LLMMessage = struct {

@@ -21,6 +21,9 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
+    // Check if we're building only the telegram bot (production mode)
+    const telegram_bot_only = b.option(bool, "telegram-bot-only", "Build only the telegram bot") orelse false;
+
     const build_options = b.addOptions();
     const build_time_timestamp = std.time.timestamp();
     build_options.addOption(i64, "build_time", build_time_timestamp);
@@ -110,7 +113,9 @@ pub fn build(b: *std.Build) void {
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
     // by passing `--prefix` or `-p`.
-    b.installArtifact(exe);
+    if (!telegram_bot_only) {
+        b.installArtifact(exe);
+    }
 
     // Async Telegram Bot executable (Zig 0.15.2+ incompatible)
     // const async_telegram_exe = b.addExecutable(.{
@@ -148,7 +153,9 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    b.installArtifact(threaded_telegram_exe);
+    if (!telegram_bot_only) {
+        b.installArtifact(threaded_telegram_exe);
+    }
 
     // Xev-based Telegram Bot executable
     const xev_telegram_exe = b.addExecutable(.{
@@ -171,6 +178,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    // Always install xev-telegram-bot (it's the production target)
     b.installArtifact(xev_telegram_exe);
 
     // Create a run step for the xev-telegram-bot
@@ -193,9 +201,11 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    
+
     // Add the test-llm-xev executable to the install step
-    b.installArtifact(test_llm_xev_exe);
+    if (!telegram_bot_only) {
+        b.installArtifact(test_llm_xev_exe);
+    }
 
     // Create a run step for test-llm-xev
     const run_test_llm_xev_cmd = b.addRunArtifact(test_llm_xev_exe);
@@ -220,6 +230,35 @@ pub fn build(b: *std.Build) void {
     const run_threaded_telegram_step = b.step("run-threaded-telegram", "Run the threaded telegram bot");
     const run_threaded_telegram_cmd = b.addRunArtifact(threaded_telegram_exe);
     run_threaded_telegram_step.dependOn(&run_threaded_telegram_cmd.step);
+
+    // Xev-based Mock Bot executable
+    const xev_mock_exe = b.addExecutable(.{
+        .name = "xev-mock-bot",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/xev_mock_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("xev") },
+            },
+        }),
+    });
+    b.installArtifact(xev_mock_exe);
+
+    // Run step for xev mock bot
+    const run_xev_mock_step = b.step("run-mock-bot", "Run the xev mock bot (console-based)");
+    const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
+    run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
+    run_xev_mock_cmd.step.dependOn(b.getInstallStep());
 
     // Run step for xev telegram bot
     const run_xev_telegram_step = b.step("run-xev-telegram", "Run the xev telegram bot");
@@ -268,6 +307,32 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+
+    // Test step for the mock bot specifically
+    const mock_bot_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/agent/xev_mock_bot.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{}).module("xev") },
+            },
+        }),
+    });
+    const run_mock_bot_tests = b.addRunArtifact(mock_bot_tests);
+    const test_mock_bot_step = b.step("test-mock-bot", "Run unit tests for the xev mock bot");
+    test_mock_bot_step.dependOn(&run_mock_bot_tests.step);
+
+    // Build step for xev-telegram-bot only (production)
+    const xev_telegram_bot_step = b.step("xev-telegram-bot", "Build xev telegram bot only");
+    xev_telegram_bot_step.dependOn(&xev_telegram_exe.step);
+    // Also depend on the install step to ensure the binary is copied to zig-out/bin
+    xev_telegram_bot_step.dependOn(b.getInstallStep());
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //
