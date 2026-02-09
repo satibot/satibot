@@ -540,6 +540,10 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         std.debug.print("  DB path: {s}\n", .{db_path});
     } else if (std.mem.eql(u8, subcmd, "search")) {
         // Handle search command - find similar entries
+        if (config.agents.defaults.disableRag) {
+            std.debug.print("Error: RAG is globally disabled in config.json\n", .{});
+            return;
+        }
         if (args.len < 4) {
             std.debug.print("Usage: satibot vector-db search <query> [top_k]\n", .{});
             return;
@@ -578,6 +582,10 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
     } else if (std.mem.eql(u8, subcmd, "add")) {
         // Handle add command - add new text entry to vector DB
+        if (config.agents.defaults.disableRag) {
+            std.debug.print("Error: RAG is globally disabled in config.json\n", .{});
+            return;
+        }
         if (args.len < 4) {
             std.debug.print("Usage: satibot vector-db add <text>\n", .{});
             return;

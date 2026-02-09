@@ -372,6 +372,9 @@ fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
 }
 
 pub fn vector_upsert(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    if (ctx.config.agents.defaults.disableRag) {
+        return try ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
+    }
     const parsed = try std.json.parseFromSlice(struct { text: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
@@ -396,6 +399,9 @@ pub fn vector_upsert(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 }
 
 pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    if (ctx.config.agents.defaults.disableRag) {
+        return try ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
+    }
     const parsed = try std.json.parseFromSlice(struct { query: []const u8, top_k: ?usize = 3 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 

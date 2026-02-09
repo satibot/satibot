@@ -21,6 +21,7 @@ pub const AgentsConfig = struct {
 pub const DefaultAgentConfig = struct {
     model: []const u8,
     embeddingModel: ?[]const u8 = null,
+    disableRag: bool = false,
 };
 
 /// Configuration for LLM provider API credentials.

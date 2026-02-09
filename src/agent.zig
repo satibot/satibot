@@ -379,6 +379,9 @@ pub const Agent = struct {
     }
 
     pub fn index_conversation(self: *Agent) !void {
+        if (self.config.agents.defaults.disableRag) {
+            return;
+        }
         const messages = self.ctx.get_messages();
         var full_text = std.ArrayListUnmanaged(u8){};
         defer full_text.deinit(self.allocator);
