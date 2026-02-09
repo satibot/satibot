@@ -258,7 +258,7 @@ pub fn build(b: *std.Build) void {
     const run_xev_mock_step = b.step("run-mock-bot", "Run the xev mock bot (console-based)");
     const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
     run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
-    run_xev_mock_cmd.step.dependOn(b.getInstallStep());
+    // run_xev_mock_cmd.step.dependOn(b.getInstallStep());
 
     // Run step for xev telegram bot
     const run_xev_telegram_step = b.step("run-xev-telegram", "Run the xev telegram bot");
@@ -270,10 +270,10 @@ pub fn build(b: *std.Build) void {
 
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
-    run_cmd.step.dependOn(b.getInstallStep());
+    // run_cmd.step.dependOn(b.getInstallStep());
     // run_async_telegram_cmd.step.dependOn(b.getInstallStep());
-    run_threaded_telegram_cmd.step.dependOn(b.getInstallStep());
-    run_xev_telegram_cmd.step.dependOn(b.getInstallStep());
+    // run_threaded_telegram_cmd.step.dependOn(b.getInstallStep());
+    // run_xev_telegram_cmd.step.dependOn(b.getInstallStep());
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`

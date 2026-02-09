@@ -182,7 +182,7 @@ pub fn list_marketplace_skills(ctx: ToolContext, arguments: []const u8) ![]const
     const url = "https://api.github.com/repos/futantan/agent-skills.md/contents/skills";
     const headers = &[_]std.http.Header{
         .{ .name = "Accept", .value = "application/vnd.github+json" },
-        .{ .name = "User-Agent", .value = "satibot" },
+        .{ .name = "User-Agent", .value = "satibot/1.0" },
     };
 
     var response = client.get(url, headers) catch |err| {

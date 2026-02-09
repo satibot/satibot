@@ -86,12 +86,10 @@ pub const AsyncOpenRouterProvider = struct {
     fn execPostAsync(self: *AsyncOpenRouterProvider, request_id: []const u8, url: []const u8, body: []const u8, callback: *const fn (result: AsyncResult) void) !void {
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
         
-        const headers = try self.allocator.alloc(std.http.Header, 5);
+        const headers = try self.allocator.alloc(std.http.Header, 3);
         headers[0] = .{ .name = "Authorization", .value = auth_header };
         headers[1] = .{ .name = "Content-Type", .value = "application/json" };
         headers[2] = .{ .name = "User-Agent", .value = "satibot/1.0" };
-        headers[3] = .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" };
-        headers[4] = .{ .name = "X-Title", .value = "SatiBot" };
 
         // Add HTTP request task to event loop
         const task_data = try std.json.stringifyAlloc(self.allocator, .{
@@ -294,8 +292,6 @@ pub const AsyncOpenRouterProvider = struct {
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Content-Type", .value = "application/json" },
             .{ .name = "User-Agent", .value = "satibot/1.0" },
-            .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" },
-            .{ .name = "X-Title", .value = "SatiBot" },
         };
 
         const response = try self.client.post(url, headers, body);

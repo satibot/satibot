@@ -83,8 +83,6 @@ pub const OpenRouterProvider = struct {
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Content-Type", .value = "application/json" },
             .{ .name = "User-Agent", .value = "satibot/1.0" },
-            .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" },
-            .{ .name = "X-Title", .value = "SatiBot" },
         };
 
         const response = try self.client.post(url, headers, body);
@@ -142,12 +140,10 @@ pub const OpenRouterProvider = struct {
 
         const auth_header = try std.fmt.allocPrint(self.allocator, "Bearer {s}", .{self.api_key});
 
-        const headers = try self.allocator.alloc(std.http.Header, 5);
+        const headers = try self.allocator.alloc(std.http.Header, 3);
         headers[0] = .{ .name = "Authorization", .value = auth_header };
         headers[1] = .{ .name = "Content-Type", .value = "application/json" };
         headers[2] = .{ .name = "User-Agent", .value = "satibot/1.0" };
-        headers[3] = .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" };
-        headers[4] = .{ .name = "X-Title", .value = "SatiBot" };
 
         const wrapper = struct {
             provider: *OpenRouterProvider,
@@ -347,8 +343,6 @@ pub const OpenRouterProvider = struct {
             .{ .name = "Authorization", .value = auth_header },
             .{ .name = "Content-Type", .value = "application/json" },
             .{ .name = "User-Agent", .value = "satibot/1.0" },
-            .{ .name = "HTTP-Referer", .value = "https://github.com/satibot/satibot" },
-            .{ .name = "X-Title", .value = "SatiBot" },
         };
 
         var req = try self.client.postStream(url, headers, body);
