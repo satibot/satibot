@@ -467,7 +467,7 @@ test "Anthropic: parseResponse" {
     try std.testing.expect(response.tool_calls != null);
     try std.testing.expectEqual(@as(usize, 1), response.tool_calls.?.len);
     try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
-    try std.testing.expectEqualStrings("test_tool", response.tool_calls.?[0].function_name);
+    try std.testing.expectEqualStrings("test_tool", response.tool_calls.?[0].function.name);
 }
 
 test "Anthropic: parseResponse with text only" {
@@ -518,9 +518,9 @@ test "Anthropic: parseResponse with multiple tool calls" {
     try std.testing.expect(response.tool_calls != null);
     try std.testing.expectEqual(@as(usize, 2), response.tool_calls.?.len);
     try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
-    try std.testing.expectEqualStrings("tool_a", response.tool_calls.?[0].function_name);
+    try std.testing.expectEqualStrings("tool_a", response.tool_calls.?[0].function.name);
     try std.testing.expectEqualStrings("tool_2", response.tool_calls.?[1].id);
-    try std.testing.expectEqualStrings("tool_b", response.tool_calls.?[1].function_name);
+    try std.testing.expectEqualStrings("tool_b", response.tool_calls.?[1].function.name);
 }
 
 test "Anthropic: parseResponse with empty content" {
@@ -553,7 +553,7 @@ test "Anthropic: buildRequestBody with simple message" {
         .{ .role = "user", .content = "Hello!" },
     };
 
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", false);
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, false);
     defer allocator.free(body);
 
     // Verify body contains expected JSON structure
@@ -573,7 +573,7 @@ test "Anthropic: buildRequestBody with system message" {
         .{ .role = "user", .content = "Hi!" },
     };
 
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", false);
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, false);
     defer allocator.free(body);
 
     try std.testing.expect(std.mem.indexOf(u8, body, "\"system\": \"You are a helpful assistant.\"") != null);
@@ -591,7 +591,7 @@ test "Anthropic: buildRequestBody with streaming enabled" {
         .{ .role = "user", .content = "Hello!" },
     };
 
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", true);
+    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, true);
     defer allocator.free(body);
 
     try std.testing.expect(std.mem.indexOf(u8, body, "\"stream\": true") != null);

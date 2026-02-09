@@ -115,7 +115,7 @@ test "LLMMessage: creation" {
 
 test "LLMMessage: with tool calls" {
     const tool_calls = &[_]ToolCall{
-        .{ .id = "call_1", .function_name = "test_func", .arguments = "{\"arg\": \"value\"}" },
+        .{ .id = "call_1", .function = .{ .name = "test_func", .arguments = "{\"arg\": \"value\"}" } },
     };
 
     const msg = LLMMessage{
@@ -147,13 +147,15 @@ test "LLMMessage: tool result message" {
 test "ToolCall: struct fields" {
     const call = ToolCall{
         .id = "call_abc",
-        .function_name = "my_function",
-        .arguments = "{\"key\": \"value\"}",
+        .function = .{
+            .name = "my_function",
+            .arguments = "{\"key\": \"value\"}",
+        },
     };
 
     try std.testing.expectEqualStrings("call_abc", call.id);
-    try std.testing.expectEqualStrings("my_function", call.function_name);
-    try std.testing.expectEqualStrings("{\"key\": \"value\"}", call.arguments);
+    try std.testing.expectEqualStrings("my_function", call.function.name);
+    try std.testing.expectEqualStrings("{\"key\": \"value\"}", call.function.arguments);
 }
 
 test "LLMResponse: creation with content only" {
@@ -175,13 +177,17 @@ test "LLMResponse: creation with tool calls only" {
     const calls = try allocator.alloc(ToolCall, 2);
     calls[0] = .{
         .id = try allocator.dupe(u8, "call_1"),
-        .function_name = try allocator.dupe(u8, "func1"),
-        .arguments = try allocator.dupe(u8, "{}"),
+        .function = .{
+            .name = try allocator.dupe(u8, "func1"),
+            .arguments = try allocator.dupe(u8, "{}"),
+        },
     };
     calls[1] = .{
         .id = try allocator.dupe(u8, "call_2"),
-        .function_name = try allocator.dupe(u8, "func2"),
-        .arguments = try allocator.dupe(u8, "{\"a\": 1}"),
+        .function = .{
+            .name = try allocator.dupe(u8, "func2"),
+            .arguments = try allocator.dupe(u8, "{\"a\": 1}"),
+        },
     };
 
     var resp = LLMResponse{
@@ -204,8 +210,10 @@ test "LLMResponse: creation with both content and tool calls" {
     const calls = try allocator.alloc(ToolCall, 1);
     calls[0] = .{
         .id = try allocator.dupe(u8, "call_1"),
-        .function_name = try allocator.dupe(u8, "func1"),
-        .arguments = try allocator.dupe(u8, "{}"),
+        .function = .{
+            .name = try allocator.dupe(u8, "func1"),
+            .arguments = try allocator.dupe(u8, "{}"),
+        },
     };
 
     var resp = LLMResponse{

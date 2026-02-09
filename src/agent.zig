@@ -80,12 +80,16 @@ pub const Agent = struct {
             .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
             .execute = tools.write_file,
         }) catch {};
-        self.registry.register(.{
-            .name = "web_search",
-            .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-            .execute = tools.web_search,
-        }) catch {};
+        if (self.config.tools.web.search.apiKey) |key| {
+            if (key.len > 0) {
+                self.registry.register(.{
+                    .name = "web_search",
+                    .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
+                    .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+                    .execute = tools.web_search,
+                }) catch {};
+            }
+        }
         self.registry.register(.{
             .name = "list_marketplace",
             .description = "List all available skills in the agent-skills.md marketplace",
@@ -200,15 +204,17 @@ pub const Agent = struct {
             if (std.mem.eql(u8, msg.role, "system")) return;
         }
 
-        const system_prompt =
-            \\You are satibot, a helpful AI assistant.
-            \\You have access to a local Vector Database where you can store and retrieve information from past conversations.
-            \\Use 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.
-            \\Use 'vector_upsert' to remember important facts or details the user shares.
-            \\Use 'web_search' for current events or information you don't have.
-            \\You can also read, write, and list files in the current directory if needed.
-        ;
-        try self.ctx.add_message(.{ .role = "system", .content = system_prompt });
+        var prompt_builder = std.ArrayListUnmanaged(u8){};
+        defer prompt_builder.deinit(self.allocator);
+        try prompt_builder.appendSlice(self.allocator, "You are satibot, a helpful AI assistant.\nYou have access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+
+        if (self.config.tools.web.search.apiKey) |key| {
+            if (key.len > 0) {
+                try prompt_builder.appendSlice(self.allocator, "Use 'web_search' for current events or information you don't have.\n");
+            }
+        }
+
+        try self.ctx.add_message(.{ .role = "system", .content = prompt_builder.items });
     }
 
     pub fn deinit(self: *Agent) void {
@@ -482,7 +488,7 @@ test "Agent: init and tool registration" {
         \\{
         \\  "agents": { "defaults": { "model": "test-model" } },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -503,7 +509,7 @@ test "Agent: message context management" {
         \\{
         \\  "agents": { "defaults": { "model": "test-model" } },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -536,7 +542,7 @@ test "Agent: tool registry operations" {
         \\{
         \\  "agents": { "defaults": { "model": "test-model" } },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -591,7 +597,7 @@ test "Agent: session management" {
         \\{
         \\  "agents": { "defaults": { "model": "test-model" } },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -617,7 +623,7 @@ test "Agent: config integration" {
         \\  "providers": {
         \\    "anthropic": { "apiKey": "test-key" }
         \\  },
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -637,7 +643,7 @@ test "Agent: conversation indexing" {
         \\{
         \\  "agents": { "defaults": { "model": "test-model" } },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
@@ -667,7 +673,7 @@ test "Agent: respect disableRag flag" {
         \\    } 
         \\  },
         \\  "providers": {},
-        \\  "tools": { "web": { "search": {} } }
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
         \\}
     ;
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });

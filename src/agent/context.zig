@@ -108,8 +108,10 @@ test "Context: tool calls" {
     const tool_calls = &[_]base.ToolCall{
         .{
             .id = "call_1",
-            .function_name = "test_tool",
-            .arguments = "{}",
+            .function = .{
+                .name = "test_tool",
+                .arguments = "{}",
+            },
         },
     };
 
@@ -177,9 +179,9 @@ test "Context: multiple tool calls" {
     defer ctx.deinit();
 
     const tool_calls = &[_]base.ToolCall{
-        .{ .id = "call_1", .function_name = "search_web", .arguments = "{\"query\": \"zig\"}" },
-        .{ .id = "call_2", .function_name = "read_file", .arguments = "{\"path\": \"test.zig\"}" },
-        .{ .id = "call_3", .function_name = "write_file", .arguments = "{\"path\": \"out.txt\", \"content\": \"hello\"}" },
+        .{ .id = "call_1", .function = .{ .name = "search_web", .arguments = "{\"query\": \"zig\"}" } },
+        .{ .id = "call_2", .function = .{ .name = "read_file", .arguments = "{\"path\": \"test.zig\"}" } },
+        .{ .id = "call_3", .function = .{ .name = "write_file", .arguments = "{\"path\": \"out.txt\", \"content\": \"hello\"}" } },
     };
 
     try ctx.add_message(.{
@@ -193,14 +195,14 @@ test "Context: multiple tool calls" {
     try std.testing.expectEqual(@as(usize, 3), messages[0].tool_calls.?.len);
 
     try std.testing.expectEqualStrings("call_1", messages[0].tool_calls.?[0].id);
-    try std.testing.expectEqualStrings("search_web", messages[0].tool_calls.?[0].function_name);
-    try std.testing.expectEqualStrings("{\"query\": \"zig\"}", messages[0].tool_calls.?[0].arguments);
+    try std.testing.expectEqualStrings("search_web", messages[0].tool_calls.?[0].function.name);
+    try std.testing.expectEqualStrings("{\"query\": \"zig\"}", messages[0].tool_calls.?[0].function.arguments);
 
     try std.testing.expectEqualStrings("call_2", messages[0].tool_calls.?[1].id);
-    try std.testing.expectEqualStrings("read_file", messages[0].tool_calls.?[1].function_name);
+    try std.testing.expectEqualStrings("read_file", messages[0].tool_calls.?[1].function.name);
 
     try std.testing.expectEqualStrings("call_3", messages[0].tool_calls.?[2].id);
-    try std.testing.expectEqualStrings("write_file", messages[0].tool_calls.?[2].function_name);
+    try std.testing.expectEqualStrings("write_file", messages[0].tool_calls.?[2].function.name);
 }
 
 test "Context: empty context" {
@@ -218,7 +220,7 @@ test "Context: message with all fields" {
     defer ctx.deinit();
 
     const tool_calls = &[_]base.ToolCall{
-        .{ .id = "call_abc", .function_name = "test_func", .arguments = "{\"arg\": \"value\"}" },
+        .{ .id = "call_abc", .function = .{ .name = "test_func", .arguments = "{\"arg\": \"value\"}" } },
     };
 
     try ctx.add_message(.{
