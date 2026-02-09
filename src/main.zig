@@ -395,7 +395,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
 
     // Send test request
     std.debug.print("Sending request to OpenRouter...\n", .{});
-    var response = try provider.chat(messages, config.agents.defaults.model);
+    var response = try provider.chat(messages, config.agents.defaults.model, null);
     defer response.deinit();
 
     std.debug.print("Response: {s}\n", .{response.content orelse "(no content)"});

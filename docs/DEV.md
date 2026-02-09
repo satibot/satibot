@@ -135,21 +135,6 @@ zig build test-mock-bot
 zig build test-llm-xev
 ```
 
-## Structure
-
-- `src/main.zig`: CLI entry point
-- `src/agent.zig`: Agent logic
-- `src/config.zig`: Configuration
-- `src/http.zig`: HTTP client
-- `src/providers/base.zig`: Provider interface
-- `src/providers/openrouter.zig`: OpenRouter provider
-- `src/root.zig`: Library exports
-- `src/agent/context.zig`: Conversation history management
-- `src/agent/session.zig`: Session persistence
-- `src/agent/tools.zig`: Tool system and registry
-- `src/agent/vector_db.zig`: Local vector database for semantic search
-- `src/agent/graph_db.zig`: Local graph database for relationship mapping
-
 ## Architecture
 
 SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.

@@ -10,7 +10,7 @@
 - [x] Basic project structure and build system
 - [x] Configuration loading (`~/.bots/config.json`)
 - [x] Zig 0.15.2 Standard Library Migration
-- [x] Core Agent loop
+- [ ] Core Agent loop
 - [x] **HTTP Client & LLM Provider**
   - [x] Create `src/http.zig` for basic HTTP requests (likely using `std.http.Client`)
   - [x] Implement `src/providers/base.zig` interface
@@ -38,7 +38,7 @@
 
 - [x] **Agent Loop Implementation**
   - [x] Update `src/agent.zig` to use the real Provider
-  - [x] Implement the ReAct loop:
+  - [ ] Implement the ReAct loop:
     1. Send history to LLM
     2. Parse tool calls from response (JSON)
     3. Execute tools
@@ -80,6 +80,6 @@
 ## Phase 8: RAG & Knowledge
 
 - [x] Implement VectorDB (Basic)
-- [x] Implement GraphDB (Basic)
+- [ ] Implement GraphDB (Basic)
 - [x] Add auto-indexing of conversations
 - [x] Support RAG lookup tools

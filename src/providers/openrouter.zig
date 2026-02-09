@@ -197,8 +197,8 @@ pub const OpenRouterProvider = struct {
                         errdefer {
                             for (0..allocated) |i| {
                                 wr.provider.allocator.free(tool_calls.?[i].id);
-                                wr.provider.allocator.free(tool_calls.?[i].function_name);
-                                wr.provider.allocator.free(tool_calls.?[i].arguments);
+                                wr.provider.allocator.free(tool_calls.?[i].function.name);
+                                wr.provider.allocator.free(tool_calls.?[i].function.arguments);
                             }
                             wr.provider.allocator.free(tool_calls.?);
                         }
@@ -214,23 +214,25 @@ pub const OpenRouterProvider = struct {
                                     wr.original_callback(error_result);
                                     return;
                                 },
-                                .function_name = wr.provider.allocator.dupe(u8, call.function.name) catch {
-                                    const error_result = ChatAsyncResult{
-                                        .request_id = result.request_id,
-                                        .success = false,
-                                        .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate function name", .{}) catch unreachable,
-                                    };
-                                    wr.original_callback(error_result);
-                                    return;
-                                },
-                                .arguments = wr.provider.allocator.dupe(u8, call.function.arguments) catch {
-                                    const error_result = ChatAsyncResult{
-                                        .request_id = result.request_id,
-                                        .success = false,
-                                        .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate arguments", .{}) catch unreachable,
-                                    };
-                                    wr.original_callback(error_result);
-                                    return;
+                                .function = .{
+                                    .name = wr.provider.allocator.dupe(u8, call.function.name) catch {
+                                        const error_result = ChatAsyncResult{
+                                            .request_id = result.request_id,
+                                            .success = false,
+                                            .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate function name", .{}) catch unreachable,
+                                        };
+                                        wr.original_callback(error_result);
+                                        return;
+                                    },
+                                    .arguments = wr.provider.allocator.dupe(u8, call.function.arguments) catch {
+                                        const error_result = ChatAsyncResult{
+                                            .request_id = result.request_id,
+                                            .success = false,
+                                            .err_msg = std.fmt.allocPrint(wr.provider.allocator, "Failed to allocate arguments", .{}) catch unreachable,
+                                        };
+                                        wr.original_callback(error_result);
+                                        return;
+                                    },
                                 },
                             };
                             allocated += 1;
@@ -302,8 +304,8 @@ pub const OpenRouterProvider = struct {
             errdefer {
                 for (0..allocated) |i| {
                     self.allocator.free(tool_calls.?[i].id);
-                    self.allocator.free(tool_calls.?[i].function_name);
-                    self.allocator.free(tool_calls.?[i].arguments);
+                    self.allocator.free(tool_calls.?[i].function.name);
+                    self.allocator.free(tool_calls.?[i].function.arguments);
                 }
                 self.allocator.free(tool_calls.?);
             }

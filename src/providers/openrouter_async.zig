@@ -192,8 +192,8 @@ pub const AsyncOpenRouterProvider = struct {
                         errdefer {
                             for (0..allocated) |i| {
                                 self.allocator.free(tool_calls.?[i].id);
-                                self.allocator.free(tool_calls.?[i].function_name);
-                                self.allocator.free(tool_calls.?[i].arguments);
+                                self.allocator.free(tool_calls.?[i].function.name);
+                                self.allocator.free(tool_calls.?[i].function.arguments);
                             }
                             self.allocator.free(tool_calls.?);
                         }
@@ -209,23 +209,25 @@ pub const AsyncOpenRouterProvider = struct {
                                     callback(error_result);
                                     return;
                                 },
-                                .function_name = self.allocator.dupe(u8, call.function.name) catch |err| {
-                                    const error_result = ChatResult{
-                                        .request_id = result.request_id,
-                                        .success = false,
-                                        .error = try std.fmt.allocPrint(self.allocator, "Failed to allocate function name: {any}", .{err}),
-                                    };
-                                    callback(error_result);
-                                    return;
-                                },
-                                .arguments = self.allocator.dupe(u8, call.function.arguments) catch |err| {
-                                    const error_result = ChatResult{
-                                        .request_id = result.request_id,
-                                        .success = false,
-                                        .error = try std.fmt.allocPrint(self.allocator, "Failed to allocate arguments: {any}", .{err}),
-                                    };
-                                    callback(error_result);
-                                    return;
+                                .function = .{
+                                    .name = self.allocator.dupe(u8, call.function.name) catch |err| {
+                                        const error_result = ChatResult{
+                                            .request_id = result.request_id,
+                                            .success = false,
+                                            .error = try std.fmt.allocPrint(self.allocator, "Failed to allocate function name: {any}", .{err}),
+                                        };
+                                        callback(error_result);
+                                        return;
+                                    },
+                                    .arguments = self.allocator.dupe(u8, call.function.arguments) catch |err| {
+                                        const error_result = ChatResult{
+                                            .request_id = result.request_id,
+                                            .success = false,
+                                            .error = try std.fmt.allocPrint(self.allocator, "Failed to allocate arguments: {any}", .{err}),
+                                        };
+                                        callback(error_result);
+                                        return;
+                                    },
                                 },
                             };
                             allocated += 1;
@@ -320,16 +322,19 @@ pub const AsyncOpenRouterProvider = struct {
             errdefer {
                 for (0..allocated) |i| {
                     self.allocator.free(tool_calls.?[i].id);
-                    self.allocator.free(tool_calls.?[i].function_name);
-                    self.allocator.free(tool_calls.?[i].arguments);
+                    self.allocator.free(tool_calls.?[i].function.name);
+                    self.allocator.free(tool_calls.?[i].function.arguments);
                 }
                 self.allocator.free(tool_calls.?);
             }
             for (calls, 0..) |call, i| {
                 tool_calls.?[i] = .{
                     .id = try self.allocator.dupe(u8, call.id),
-                    .function_name = try self.allocator.dupe(u8, call.function.name),
-                    .arguments = try self.allocator.dupe(u8, call.function.arguments),
+                    .type = "function",
+                    .function = .{
+                        .name = try self.allocator.dupe(u8, call.function.name),
+                        .arguments = try self.allocator.dupe(u8, call.function.arguments),
+                    },
                 };
                 allocated += 1;
             }

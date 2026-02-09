@@ -284,7 +284,7 @@ The bot uses **JSON-based memory** stored in `~/.bots/sessions/` directory:
 
 ### Memory Components
 
-#### Session Module (`src/agent/session.zig`)
+#### Session Module
 
 - **Purpose**: Persistent conversation storage
 - **Functions**:
@@ -292,7 +292,7 @@ The bot uses **JSON-based memory** stored in `~/.bots/sessions/` directory:
   - `load()`: Deserializes JSON back to memory structures
   - `saveToPath()`/`load_internal()`: Low-level file operations
 
-#### Context Module (`src/agent/context.zig`)
+#### Context Module
 
 - **Purpose**: In-memory conversation management
 - **Structure**: `ArrayListUnmanaged(LLMMessage)` for efficient message storage

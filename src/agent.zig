@@ -4,7 +4,7 @@ const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");
 const providers = @import("root.zig").providers;
 const base = @import("providers/base.zig");
-const session = @import("agent/session.zig");
+const session = @import("db/session.zig");
 
 /// Helper function to print streaming response chunks to stdout.
 fn print_chunk(ctx: ?*anyopaque, chunk: []const u8) void {

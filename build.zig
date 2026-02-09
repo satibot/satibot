@@ -132,31 +132,6 @@ pub fn build(b: *std.Build) void {
     // }).module("tls"));
     // b.installArtifact(async_telegram_exe);
 
-    // Threaded Telegram Bot executable (Zig 0.15.2+ compatible)
-    const threaded_telegram_exe = b.addExecutable(.{
-        .name = "threaded-telegram-bot",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/threaded_telegram_main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "satibot", .module = mod },
-                .{ .name = "build_options", .module = build_options.createModule() },
-                .{ .name = "tls", .module = b.dependency("tls", .{
-                    .target = target,
-                    .optimize = optimize,
-                }).module("tls") },
-                .{ .name = "xev", .module = b.dependency("xev", .{
-                    .target = target,
-                    .optimize = optimize,
-                }).module("xev") },
-            },
-        }),
-    });
-    if (!telegram_bot_only) {
-        b.installArtifact(threaded_telegram_exe);
-    }
-
     // Xev-based Telegram Bot executable
     const xev_telegram_exe = b.addExecutable(.{
         .name = "xev-telegram-bot",
@@ -225,11 +200,6 @@ pub fn build(b: *std.Build) void {
     // the user runs `zig build run`, so we create a dependency link.
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
-
-    // Run step for threaded telegram bot
-    const run_threaded_telegram_step = b.step("run-threaded-telegram", "Run the threaded telegram bot");
-    const run_threaded_telegram_cmd = b.addRunArtifact(threaded_telegram_exe);
-    run_threaded_telegram_step.dependOn(&run_threaded_telegram_cmd.step);
 
     // Xev-based Mock Bot executable
     const xev_mock_exe = b.addExecutable(.{
