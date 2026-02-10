@@ -5,6 +5,13 @@ const base = @import("base.zig");
 const Config = @import("../config.zig").Config;
 const XevEventLoop = @import("../utils/xev_event_loop.zig").XevEventLoop;
 
+/// Custom error types for better retry handling
+pub const OpenRouterError = error{
+    ServiceUnavailable,
+    ModelNotSupported,
+    ApiRequestFailed,
+};
+
 /// OpenRouter API provider implementation.
 /// OpenRouter provides a unified interface to multiple LLM models.
 /// Compatible with OpenAI's API format.
@@ -338,8 +345,42 @@ pub const OpenRouterProvider = struct {
         if (response.head.status != .ok) {
             const err_msg = try parseErrorStream(self.allocator, response.head.status, response.reader(&head_buf)); // separated logic
             defer self.allocator.free(err_msg);
-            callback(cb_ctx, err_msg);
-            return error.ApiRequestFailed;
+
+            // Return specific error types for better retry handling
+            switch (response.head.status) {
+                .service_unavailable => {
+                    std.debug.print("[OpenRouter] Service temporarily unavailable (503): {s}\n", .{err_msg});
+                    callback(cb_ctx, err_msg);
+                    return OpenRouterError.ServiceUnavailable;
+                },
+                .not_found => {
+                    // Check if this is a tool-related error
+                    if (std.mem.indexOf(u8, err_msg, "tool use") != null or std.mem.indexOf(u8, err_msg, "No endpoints found") != null) {
+                        std.debug.print("[OpenRouter] Model doesn't support tools (404): {s}\n", .{err_msg});
+                        const full_error_msg = try std.fmt.allocPrint(self.allocator, "{s} (Model doesn't support tools - try 'openai/gpt-3.5-turbo' or 'anthropic/claude-3-haiku')", .{err_msg});
+                        defer self.allocator.free(full_error_msg);
+                        callback(cb_ctx, full_error_msg);
+                        return OpenRouterError.ModelNotSupported;
+                    }
+                    std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.head.status), err_msg });
+                    callback(cb_ctx, err_msg);
+                    return OpenRouterError.ApiRequestFailed;
+                },
+                else => {
+                    // Provide more context for common HTTP errors
+                    const error_detail = switch (response.head.status) {
+                        .too_many_requests => " (Rate Limit Exceeded)",
+                        .unauthorized => " (Invalid API Key)",
+                        .payment_required => " (Payment Required/Insufficient Credits)",
+                        else => "",
+                    };
+                    const full_error_msg = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ err_msg, error_detail });
+                    defer self.allocator.free(full_error_msg);
+                    std.debug.print("[OpenRouter] API request failed with status {d}{s}: {s}\n", .{ @intFromEnum(response.head.status), error_detail, err_msg });
+                    callback(cb_ctx, full_error_msg);
+                    return OpenRouterError.ApiRequestFailed;
+                },
+            }
         }
 
         // Logic for rate limits and body parsing... I'll keep some IO here but refactor complex parsing logic if possible
@@ -401,8 +442,34 @@ pub const OpenRouterProvider = struct {
         if (response.status != .ok) {
             const err_msg = try parseErrorBody(self.allocator, response.body);
             defer self.allocator.free(err_msg);
-            std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), err_msg });
-            return error.ApiRequestFailed;
+
+            // Return specific error types for better retry handling
+            switch (response.status) {
+                .service_unavailable => {
+                    std.debug.print("[OpenRouter] Service temporarily unavailable (503): {s}\n", .{err_msg});
+                    return OpenRouterError.ServiceUnavailable;
+                },
+                .not_found => {
+                    // Check if this is a tool-related error
+                    if (std.mem.indexOf(u8, err_msg, "tool use") != null or std.mem.indexOf(u8, err_msg, "No endpoints found") != null) {
+                        std.debug.print("[OpenRouter] Model doesn't support tools (404): {s}\n", .{err_msg});
+                        return OpenRouterError.ModelNotSupported;
+                    }
+                    std.debug.print("[OpenRouter] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), err_msg });
+                    return OpenRouterError.ApiRequestFailed;
+                },
+                else => {
+                    // Provide more context for common HTTP errors
+                    const error_detail = switch (response.status) {
+                        .too_many_requests => " (Rate Limit Exceeded)",
+                        .unauthorized => " (Invalid API Key)",
+                        .payment_required => " (Payment Required/Insufficient Credits)",
+                        else => "",
+                    };
+                    std.debug.print("[OpenRouter] API request failed with status {d}{s}: {s}\n", .{ @intFromEnum(response.status), error_detail, err_msg });
+                    return OpenRouterError.ApiRequestFailed;
+                },
+            }
         }
 
         if (response.rate_limit_remaining) |remaining| {

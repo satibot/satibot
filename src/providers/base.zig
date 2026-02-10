@@ -149,16 +149,16 @@ test "LLMMessage: tool result message" {
 pub const ProviderInterface = struct {
     /// Context for provider operations
     ctx: *anyopaque,
-    
+
     /// Function pointer to get the API key for the provider
     getApiKey: *const fn (ctx: *anyopaque, config: Config) ?[]const u8,
-    
+
     /// Function pointer to initialize the provider
     initProvider: *const fn (allocator: std.mem.Allocator, api_key: []const u8) anyerror!*anyopaque,
-    
+
     /// Function pointer to deinitialize the provider
     deinitProvider: *const fn (provider: *anyopaque) void,
-    
+
     /// Function pointer to call chatStream
     chatStream: *const fn (
         provider: *anyopaque,
@@ -168,7 +168,7 @@ pub const ProviderInterface = struct {
         chunk_callback: ChunkCallback,
         callback_ctx: ?*anyopaque,
     ) anyerror!LLMResponse,
-    
+
     /// Function pointer to get the provider name
     getProviderName: *const fn () []const u8,
 };
@@ -189,19 +189,19 @@ pub fn executeWithRetry(
         std.debug.print("Error: API key not set for {s}\n", .{provider_interface.getProviderName()});
         return error.NoApiKey;
     };
-    
+
     const provider = try provider_interface.initProvider(allocator, api_key);
     defer provider_interface.deinitProvider(provider);
-    
+
     std.debug.print("AI ({s}): ", .{provider_interface.getProviderName()});
-    
+
     var retry_count: usize = 0;
     const max_retries = 3;
-    
+
     while (retry_count < max_retries) : (retry_count += 1) {
         // Calculate exponential backoff: 2s, 4s, 8s
         const backoff_seconds = std.math.shl(u64, 1, retry_count + 1);
-        
+
         const response = provider_interface.chatStream(
             provider,
             messages,
@@ -210,20 +210,39 @@ pub fn executeWithRetry(
             chunk_callback,
             callback_ctx,
         ) catch |err| {
+            // Handle specific OpenRouter errors
+            if (@import("../providers/openrouter.zig").OpenRouterError == @TypeOf(err)) {
+                switch (err) {
+                    @import("../providers/openrouter.zig").OpenRouterError.ServiceUnavailable => {
+                        std.debug.print("\n⚠️ Service unavailable (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
+                        std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                        continue;
+                    },
+                    @import("../providers/openrouter.zig").OpenRouterError.ModelNotSupported => {
+                        std.debug.print("\n❌ Model doesn't support tools. Please use a model that supports function calling.\n", .{});
+                        return err;
+                    },
+                    @import("../providers/openrouter.zig").OpenRouterError.ApiRequestFailed => {
+                        std.debug.print("\n⚠️ API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
+                        std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                        continue;
+                    },
+                }
+            }
+
+            // Retry on network errors or temporary service issues
             if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
-                std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{
-                    err, model, backoff_seconds, retry_count + 1, max_retries
-                });
+                std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                 std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
                 continue;
             }
             return err;
         };
-        
+
         return response;
     }
-    
-    std.debug.print("\n❌ Failed after {d} retries. Last error was network-related.\n", .{max_retries});
+
+    std.debug.print("\n❌ Failed after {d} retries. The service may be experiencing high load or temporary issues. Please try again later.\n", .{max_retries});
     return error.NetworkRetryFailed;
 }
 

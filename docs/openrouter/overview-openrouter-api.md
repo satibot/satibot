@@ -24,7 +24,8 @@ export OPENROUTER_API_KEY=your_key_here
 
 ## OpenAPI Specification
 
-* **YAML**: [https://openrouter.ai/openapi.yaml](https://openrouter.ai/openapi.yaml)
+- **YAML**: [https://openrouter.ai/openapi.yaml](https://openrouter.ai/openapi.yaml)
+
 - **JSON**: [https://openrouter.ai/openapi.json](https://openrouter.ai/openapi.json)
 
 ---
@@ -127,6 +128,7 @@ OpenRouter returns standard HTTP status codes. When an error occurs, the body co
 | **408** | 408 | **Request Timeout**: The upstream provider took too long. |
 | **429** | 429 | **Rate Limit**: Too many requests. Check `X-RateLimit` headers. |
 | **502** | 502 | **Bad Gateway**: The selected upstream provider is down. |
+| **503** | 503 | **Service Unavailable**: OpenRouter is temporarily unavailable. |
 
 **Error Body Example:**
 
