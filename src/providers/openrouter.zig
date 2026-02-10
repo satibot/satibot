@@ -2,6 +2,7 @@ const std = @import("std");
 const http = @import("../http.zig");
 const http_async = @import("../http_async.zig");
 const base = @import("base.zig");
+const Config = @import("../config.zig").Config;
 const AsyncEventLoop = @import("../agent/event_loop.zig").AsyncEventLoop;
 
 /// OpenRouter API provider implementation.
@@ -629,4 +630,55 @@ test "OpenRouter pure: parseChatResponse" {
     defer resp.deinit();
 
     try std.testing.expectEqualStrings("Hello there!", resp.content.?);
+}
+
+/// Get API key for OpenRouter provider
+fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
+    _ = ctx;
+    return if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY");
+}
+
+/// Initialize OpenRouter provider
+fn initProvider(allocator: std.mem.Allocator, api_key: []const u8) !*anyopaque {
+    const provider = try allocator.create(OpenRouterProvider);
+    provider.* = try OpenRouterProvider.init(allocator, api_key);
+    return provider;
+}
+
+/// Deinitialize OpenRouter provider
+fn deinitProvider(provider: *anyopaque) void {
+    const openrouter_provider: *OpenRouterProvider = @ptrCast(@alignCast(provider));
+    const allocator = openrouter_provider.allocator;
+    openrouter_provider.deinit();
+    allocator.destroy(openrouter_provider);
+}
+
+/// Chat stream implementation for OpenRouter provider
+fn chatStream(
+    provider: *anyopaque,
+    messages: []const base.LLMMessage,
+    model: []const u8,
+    tools: []const base.ToolDefinition,
+    chunk_callback: base.ChunkCallback,
+    callback_ctx: ?*anyopaque,
+) !base.LLMResponse {
+    const openrouter_provider: *OpenRouterProvider = @ptrCast(@alignCast(provider));
+    return openrouter_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
+}
+
+/// Get provider name
+fn getProviderName() []const u8 {
+    return "OpenRouter";
+}
+
+/// Create a ProviderInterface for OpenRouter
+pub fn createInterface() base.ProviderInterface {
+    return base.ProviderInterface{
+        .ctx = undefined,
+        .getApiKey = getApiKey,
+        .initProvider = initProvider,
+        .deinitProvider = deinitProvider,
+        .chatStream = chatStream,
+        .getProviderName = getProviderName,
+    };
 }

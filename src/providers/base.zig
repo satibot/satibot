@@ -144,6 +144,89 @@ test "LLMMessage: tool result message" {
     try std.testing.expect(msg.tool_calls == null);
 }
 
+/// Common interface for all LLM providers.
+/// Provides a unified way to interact with different providers (Anthropic, OpenRouter, etc.).
+pub const ProviderInterface = struct {
+    /// Context for provider operations
+    ctx: *anyopaque,
+    
+    /// Function pointer to get the API key for the provider
+    getApiKey: *const fn (ctx: *anyopaque, config: Config) ?[]const u8,
+    
+    /// Function pointer to initialize the provider
+    initProvider: *const fn (allocator: std.mem.Allocator, api_key: []const u8) anyerror!*anyopaque,
+    
+    /// Function pointer to deinitialize the provider
+    deinitProvider: *const fn (provider: *anyopaque) void,
+    
+    /// Function pointer to call chatStream
+    chatStream: *const fn (
+        provider: *anyopaque,
+        messages: []const LLMMessage,
+        model: []const u8,
+        tools: []const ToolDefinition,
+        chunk_callback: ChunkCallback,
+        callback_ctx: ?*anyopaque,
+    ) anyerror!LLMResponse,
+    
+    /// Function pointer to get the provider name
+    getProviderName: *const fn () []const u8,
+};
+
+/// Helper function to execute a chat completion with retry logic.
+/// This encapsulates the common retry pattern used across all providers.
+pub fn executeWithRetry(
+    provider_interface: ProviderInterface,
+    allocator: std.mem.Allocator,
+    config: Config,
+    messages: []const LLMMessage,
+    model: []const u8,
+    tools: []const ToolDefinition,
+    chunk_callback: ChunkCallback,
+    callback_ctx: ?*anyopaque,
+) !LLMResponse {
+    const api_key = provider_interface.getApiKey(provider_interface.ctx, config) orelse {
+        std.debug.print("Error: API key not set for {s}\n", .{provider_interface.getProviderName()});
+        return error.NoApiKey;
+    };
+    
+    const provider = try provider_interface.initProvider(allocator, api_key);
+    defer provider_interface.deinitProvider(provider);
+    
+    std.debug.print("AI ({s}): ", .{provider_interface.getProviderName()});
+    
+    var retry_count: usize = 0;
+    const max_retries = 3;
+    
+    while (retry_count < max_retries) : (retry_count += 1) {
+        // Calculate exponential backoff: 2s, 4s, 8s
+        const backoff_seconds = std.math.shl(u64, 1, retry_count + 1);
+        
+        const response = provider_interface.chatStream(
+            provider,
+            messages,
+            model,
+            tools,
+            chunk_callback,
+            callback_ctx,
+        ) catch |err| {
+            if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
+                std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{
+                    err, model, backoff_seconds, retry_count + 1, max_retries
+                });
+                std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                continue;
+            }
+            return err;
+        };
+        
+        return response;
+    }
+    
+    std.debug.print("\n❌ Failed after {d} retries. Last error was network-related.\n", .{max_retries});
+    return error.NetworkRetryFailed;
+}
+
 test "ToolCall: struct fields" {
     const call = ToolCall{
         .id = "call_abc",

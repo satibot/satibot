@@ -2,9 +2,89 @@
 const std = @import("std");
 const event_loop = @import("event_loop.zig");
 const xev_event_loop = @import("../utils/xev_event_loop.zig");
-const Agent = @import("../agent.zig").Agent;
+const messages = @import("messages.zig");
 const Config = @import("../config.zig").Config;
 const http = @import("../http.zig");
+
+/// Session history cache - simple HashMap for performance
+const SessionCache = struct {
+    allocator: std.mem.Allocator,
+    sessions: std.StringHashMap(messages.SessionHistory),
+    last_used: std.StringHashMap(i64),
+    max_idle_time_ms: u64 = 30 * 60 * 1000, // 30 minutes
+
+    pub fn init(allocator: std.mem.Allocator) SessionCache {
+        return .{
+            .allocator = allocator,
+            .sessions = std.StringHashMap(messages.SessionHistory).init(allocator),
+            .last_used = std.StringHashMap(i64).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *SessionCache) void {
+        // Free all session histories
+        var it = self.sessions.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.deinit();
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.sessions.deinit();
+
+        // Free last_used keys
+        var time_it = self.last_used.iterator();
+        while (time_it.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+        }
+        self.last_used.deinit();
+    }
+
+    pub fn getOrCreateSession(self: *SessionCache, session_id: []const u8) !*messages.SessionHistory {
+        const now = std.time.timestamp();
+
+        if (self.sessions.getPtr(session_id)) |history| {
+            // Update last used timestamp
+            if (self.last_used.getPtr(session_id)) |time_ptr| {
+                time_ptr.* = now;
+            }
+            return history;
+        }
+
+        // Create new session
+        const session_id_dupe = try self.allocator.dupe(u8, session_id);
+        errdefer self.allocator.free(session_id_dupe);
+
+        const history = messages.SessionHistory.init(self.allocator);
+        try self.sessions.put(session_id_dupe, history);
+        try self.last_used.put(session_id_dupe, now);
+
+        return self.sessions.getPtr(session_id_dupe).?;
+    }
+
+    pub fn cleanup(self: *SessionCache) void {
+        const now = std.time.timestamp();
+        const max_idle_seconds = @divFloor(self.max_idle_time_ms, 1000);
+
+        var keys_to_remove = std.ArrayList([]const u8).initCapacity(self.allocator, 0) catch unreachable;
+        defer keys_to_remove.deinit(self.allocator);
+
+        var it = self.last_used.iterator();
+        while (it.next()) |entry| {
+            if (now - entry.value_ptr.* > max_idle_seconds) {
+                keys_to_remove.append(self.allocator, entry.key_ptr.*) catch {};
+            }
+        }
+
+        for (keys_to_remove.items) |session_id| {
+            if (self.sessions.fetchRemove(session_id)) |removed| {
+                @constCast(&removed.value).deinit();
+            }
+            if (self.last_used.fetchRemove(session_id)) |_| {
+                self.allocator.free(session_id);
+                std.debug.print("Cleaned up idle session: {s}\n", .{session_id});
+            }
+        }
+    }
+};
 
 /// Telegram task data
 pub const TelegramTaskData = struct {
@@ -27,6 +107,7 @@ pub const TelegramContext = struct {
     config: Config,
     client: *const http.Client,
     event_loop: ?*xev_event_loop.XevEventLoop = null,
+    session_cache: ?SessionCache = null,
 
     pub fn init(allocator: std.mem.Allocator, config: Config, client: *const http.Client) TelegramContext {
         return .{
@@ -34,6 +115,20 @@ pub const TelegramContext = struct {
             .config = config,
             .client = client,
         };
+    }
+
+    /// Initialize the session cache
+    pub fn initSessionCache(self: *TelegramContext) void {
+        if (self.session_cache == null) {
+            self.session_cache = SessionCache.init(self.allocator);
+            std.debug.print("Session cache initialized\n", .{});
+        }
+    }
+
+    pub fn deinit(self: *TelegramContext) void {
+        if (self.session_cache) |*cache| {
+            cache.deinit();
+        }
     }
 };
 
@@ -103,24 +198,17 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     };
     std.debug.print("Got Telegram config\n", .{});
 
-    // Use a temporary allocator since we're in a worker thread
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-    std.debug.print("Created temporary allocator\n", .{});
+    // Initialize session cache if not already done
+    ctx.initSessionCache();
 
-    // Create or get agent for this chat
+    // Use context allocator
+    const allocator = ctx.allocator;
+    std.debug.print("Using context allocator\n", .{});
+
+    // Create session ID for this chat
     const session_id = try std.fmt.allocPrint(allocator, "tg_{d}", .{tg_data.chat_id});
     defer allocator.free(session_id);
     std.debug.print("Created session_id: {s}\n", .{session_id});
-
-    var agent = Agent.init(allocator, ctx.config, session_id);
-    defer agent.deinit();
-    std.debug.print("Initialized agent\n", .{});
-
-    // Check if agent has proper context
-    std.debug.print("Agent context: {}\n", .{agent.ctx});
-    std.debug.print("Agent allocator: {any}\n", .{agent.allocator});
 
     // Send "typing" indicator
     const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{tg_data.chat_id});
@@ -131,62 +219,38 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     };
     std.debug.print("Sent typing action\n", .{});
 
-    // Process message with agent
-    std.debug.print("Calling agent.run()...\n", .{});
-    agent.run(tg_data.text) catch |err| {
+    // Process message using functional approach
+    std.debug.print("Calling messages.processMessage()...\n", .{});
+    const result = messages.processMessage(allocator, ctx.config, session_id, tg_data.text) catch |err| {
         std.debug.print("Error processing message: {any}\n", .{err});
 
-        // Use last_chunk if it contains an error message from the provider
-        const error_msg = if (agent.last_chunk) |chunk|
-            try allocator.dupe(u8, chunk)
-        else
-            try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
-
+        const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
         defer allocator.free(error_msg);
         try sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, allocator);
         return;
     };
-    std.debug.print("agent.run() completed successfully\n", .{});
+    defer @constCast(&result.history).deinit();
 
-    // Get response from agent's messages
-    const messages = agent.ctx.get_messages();
-    std.debug.print("Agent has {d} messages\n", .{messages.len});
+    std.debug.print("processMessage() completed successfully\n", .{});
 
-    // Print all messages for debugging
-    for (messages, 0..) |msg, i| {
-        std.debug.print("Message {d}: role={s}, content={any}\n", .{ i, msg.role, msg.content });
-    }
-
-    if (messages.len > 0) {
-        const last_msg = messages[messages.len - 1];
-        std.debug.print("Last message role: {s}, content: {any}\n", .{ last_msg.role, last_msg.content });
-
-        if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-            std.debug.print("Sending response to Telegram...\n", .{});
-            sendMessage(ctx.client, tg_config.botToken, chat_id_str, last_msg.content.?, allocator) catch |err| {
-                std.debug.print("Failed to send message: {any}\n", .{err});
-            };
-            std.debug.print("Response sent successfully\n", .{});
-        } else {
-            std.debug.print("No assistant response found\n", .{});
-            // Send a default response if no assistant message
-            const default_msg = "I received your message but couldn't generate a response. Please try again.";
-            sendMessage(ctx.client, tg_config.botToken, chat_id_str, default_msg, allocator) catch |err| {
-                std.debug.print("Failed to send default message: {any}\n", .{err});
-            };
-        }
-    } else {
-        std.debug.print("No messages in agent context\n", .{});
-        // Send a default response if no messages
-        const default_msg = "I'm having trouble processing messages right now. Please try again.";
-        sendMessage(ctx.client, tg_config.botToken, chat_id_str, default_msg, allocator) catch |err| {
-            std.debug.print("Failed to send default message: {any}\n", .{err});
+    // Send response or error message
+    if (result.response) |response| {
+        std.debug.print("Sending response to Telegram...\n", .{});
+        sendMessage(ctx.client, tg_config.botToken, chat_id_str, response, allocator) catch |err| {
+            std.debug.print("Failed to send message: {any}\n", .{err});
         };
+        std.debug.print("Response sent successfully\n", .{});
+    } else if (result.error_msg) |error_msg| {
+        std.debug.print("Sending error message to Telegram...\n", .{});
+        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, allocator) catch |err| {
+            std.debug.print("Failed to send error message: {any}\n", .{err});
+        };
+        std.debug.print("Error message sent successfully\n", .{});
     }
 
     // Save session state to Vector/Graph DB for long-term memory.
     // This enables RAG (Retrieval-Augmented Generation) functionality.
-    agent.index_conversation() catch {};
+    messages.indexConversation(@constCast(&result.history), session_id) catch {};
 }
 
 /// Global task handler that uses the global context
@@ -542,15 +606,30 @@ pub fn handleXevTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loo
     _ = allocator;
     if (event.payload) |payload| {
         std.debug.print("Processing Xev Telegram event: {s}\n", .{payload});
-
-        // Parse event data
-        // TODO: Implement specific event handling based on event type
-        // Examples:
-        // - Scheduled messages
-        // - Reminders
-        // - Daily reports
-        // - Bot maintenance tasks
     }
+
+    // Check if this is a session cache cleanup event
+    if (std.mem.eql(u8, event.id, "session_cache_cleanup")) {
+        if (global_telegram_context) |ctx| {
+            if (ctx.session_cache) |*cache| {
+                cache.cleanup();
+                // Schedule next cleanup
+                if (ctx.event_loop) |el| {
+                    const cleanup_interval_ms = 30 * 60 * 1000; // 30 minutes
+                    el.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms) catch {};
+                }
+            }
+        }
+        return;
+    }
+
+    // Parse event data
+    // TODO: Implement specific event handling based on event type
+    // Examples:
+    // - Scheduled messages
+    // - Reminders
+    // - Daily reports
+    // - Bot maintenance tasks
 }
 
 /// Send message to Telegram

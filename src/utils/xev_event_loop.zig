@@ -133,9 +133,9 @@ pub const XevEventLoop = struct {
             .id = try self.allocator.dupe(u8, id),
             .type = event_type,
             .payload = event_payload,
-            .expires = expires,
+            .expires = @intCast(expires),
         };
-        
+
         self.event_mutex.lock();
         defer self.event_mutex.unlock();
         

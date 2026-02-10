@@ -124,18 +124,6 @@ std.debug.print("{s} {d}\n", .{"Hello"});
 std.debug.print("{s} {d}\n", .{"Hello", 42});
 ```
 
-### Real-World Example from SatiBot
-
-When fixing the xev_telegram_bot.zig file, we encountered this error:
-
-```zig
-// Original code (compilation error)
-std.debug.print("Send POST request to Telegram API\n");
-
-// Fixed code (compiles successfully)
-std.debug.print("Send POST request to Telegram API\n", .{});
-```
-
 ### Best Practices
 
 1. **Always include `\n`** at the end of debug messages for proper formatting

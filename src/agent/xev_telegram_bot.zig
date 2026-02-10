@@ -30,7 +30,6 @@
 /// 3. Calling event_loop.updateOffset() after processing
 const std = @import("std");
 const Config = @import("../config.zig").Config;
-const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
 const XevEventLoop = @import("../utils/xev_event_loop.zig").XevEventLoop;
 const telegram_handlers = @import("telegram_handlers.zig");
@@ -137,6 +136,13 @@ pub const TelegramBot = struct {
         // CRITICAL: Set event_loop reference to enable offset updates
         // Without this, the bot would get stuck polling offset=0 forever
         bot.tg_ctx.event_loop = &bot.event_loop; // Reference after event_loop is moved into bot
+        
+        // Initialize session cache for better performance
+        bot.tg_ctx.initSessionCache();
+        
+        // Schedule periodic session cache cleanup
+        const cleanup_interval_ms = 1800000; // 30 minutes in milliseconds
+        try bot.event_loop.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms);
 
         // Set up handlers for xev event loop
         bot.event_loop.setTaskHandler(telegram_handlers.createXevTelegramTaskHandler(&bot.tg_ctx));
@@ -148,6 +154,8 @@ pub const TelegramBot = struct {
     /// Clean up resources used by the TelegramBot
     /// Must be called when the bot is shut down
     pub fn deinit(self: *TelegramBot) void {
+        // Clean up agent pool first
+        self.tg_ctx.deinit();
         self.http_client.deinit();
         self.event_loop.deinit();
     }

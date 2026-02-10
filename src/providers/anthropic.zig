@@ -1,6 +1,7 @@
 const std = @import("std");
 const http = @import("../http.zig");
 const base = @import("base.zig");
+const Config = @import("../config.zig").Config;
 
 /// Anthropic Claude API provider implementation.
 /// Supports both regular and streaming chat completions with tool calling.
@@ -657,4 +658,55 @@ test "Anthropic: init and deinit" {
     try std.testing.expectEqual(allocator, provider.allocator);
     try std.testing.expectEqualStrings("my-api-key", provider.api_key);
     try std.testing.expectEqualStrings("https://api.anthropic.com/v1", provider.api_base);
+}
+
+/// Get API key for Anthropic provider
+fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
+    _ = ctx;
+    return if (config.providers.anthropic) |p| p.apiKey else std.posix.getenv("ANTHROPIC_API_KEY");
+}
+
+/// Initialize Anthropic provider
+fn initProvider(allocator: std.mem.Allocator, api_key: []const u8) !*anyopaque {
+    const provider = try allocator.create(AnthropicProvider);
+    provider.* = try AnthropicProvider.init(allocator, api_key);
+    return provider;
+}
+
+/// Deinitialize Anthropic provider
+fn deinitProvider(provider: *anyopaque) void {
+    const anthropic_provider: *AnthropicProvider = @ptrCast(@alignCast(provider));
+    const allocator = anthropic_provider.allocator;
+    anthropic_provider.deinit();
+    allocator.destroy(anthropic_provider);
+}
+
+/// Chat stream implementation for Anthropic provider
+fn chatStream(
+    provider: *anyopaque,
+    messages: []const base.LLMMessage,
+    model: []const u8,
+    tools: []const base.ToolDefinition,
+    chunk_callback: base.ChunkCallback,
+    callback_ctx: ?*anyopaque,
+) !base.LLMResponse {
+    const anthropic_provider: *AnthropicProvider = @ptrCast(@alignCast(provider));
+    return anthropic_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
+}
+
+/// Get provider name
+fn getProviderName() []const u8 {
+    return "Anthropic";
+}
+
+/// Create a ProviderInterface for Anthropic
+pub fn createInterface() base.ProviderInterface {
+    return base.ProviderInterface{
+        .ctx = undefined,
+        .getApiKey = getApiKey,
+        .initProvider = initProvider,
+        .deinitProvider = deinitProvider,
+        .chatStream = chatStream,
+        .getProviderName = getProviderName,
+    };
 }

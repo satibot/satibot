@@ -111,6 +111,19 @@ Full setup guides in our [Documentation](#-documentation).
 - **VectorDB**: Semantic search across conversations
 - **GraphDB**: Relationship mapping for complex knowledge
 - **RAG**: Retrieval-Augmented Generation for accurate responses
+- **Session Cache**: In-memory session history with automatic cleanup (30 minutes idle timeout)
+
+### 🔄 Functional Architecture
+
+satibot uses a pure functional approach for message processing:
+
+- **No State Mutation**: All operations are pure functions that take input and return output
+- **Immutable Data**: Session history is treated as immutable data structures
+- **Predictable Behavior**: Same input always produces the same output
+- **Easy Testing**: Pure functions are simple to test and debug
+- **Memory Efficient**: Automatic cleanup prevents memory leaks
+
+The session cache temporarily holds conversation history in memory for performance, automatically cleaning up inactive sessions after 30 minutes to prevent memory accumulation.
 
 ### 🔧 Skills & Tools
 
@@ -139,15 +152,16 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 
 ## 📚 Documentation
 
-| Guide | Description |
-|-------|-------------|
-| [**Features**](docs/FEATURES.md) | Deep dive into Gateway, Voice, Cron systems |
-| [**Configuration**](docs/CONFIGURATION.md) | Complete config guide for providers & tools |
-| [**Architecture**](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & internals |
-| [**Telegram Guide**](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
-| [**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md) | WhatsApp Business API setup |
-| [**RAG Guide**](docs/RAG.md) | Understanding the memory system |
-| [**Release Guide**](docs/RELEASE_GUIDE.md) | Cross-platform builds and GitHub releases |
+|Guide|Description|
+|----|------------|
+|[**Features**](docs/FEATURES.md)|Deep dive into Gateway, Voice, Cron systems|
+|[**Configuration**](docs/CONFIGURATION.md)|Complete config guide for providers & tools|
+|[**Architecture**](docs/ARCHITECTURE.md)|Technical guide to Agent Loop & Functional Architecture|
+|[**Functional Design**](docs/FUNCTIONAL_DESIGN.md)|Pure functional approach and session cache|
+|[**Telegram Guide**](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
+|[**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
+|[**RAG Guide**](docs/RAG.md)|Understanding the memory system|
+|[**Release Guide**](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
 
 ---
 

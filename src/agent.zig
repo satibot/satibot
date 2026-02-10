@@ -281,9 +281,6 @@ pub const Agent = struct {
 
         const model = self.config.agents.defaults.model;
 
-        // Determine provider
-        const use_anthropic = std.mem.indexOf(u8, model, "claude") != null;
-
         var iterations: usize = 0;
         const max_iterations = 10;
 
@@ -388,8 +385,6 @@ pub const Agent = struct {
             std.debug.print("=== END DEBUG ===\n\n", .{});
 
             var response: base.LLMResponse = undefined;
-            var retry_count: usize = 0;
-            const max_retries = 3;
 
             const internal_cb = struct {
                 fn call(ctx: ?*anyopaque, chunk: []const u8) void {
@@ -402,48 +397,32 @@ pub const Agent = struct {
                 }
             }.call;
 
-            while (retry_count < max_retries) : (retry_count += 1) {
-                // Calculate exponential backoff: 2s, 4s, 8s
-                const backoff_seconds = std.math.shl(u64, 1, retry_count + 1);
-
-                if (use_anthropic) {
-                    const api_key = if (self.config.providers.anthropic) |p| p.apiKey else std.posix.getenv("ANTHROPIC_API_KEY") orelse {
-                        std.debug.print("Error: ANTHROPIC_API_KEY or config.providers.anthropic.apiKey not set\n", .{});
-                        return error.NoApiKey;
-                    };
-                    var provider = try providers.anthropic.AnthropicProvider.init(self.allocator, api_key);
-                    defer provider.deinit();
-                    std.debug.print("AI (Anthropic): ", .{});
-                    response = provider.chatStream(filtered_messages.items, model, provider_tools.items, internal_cb, self) catch |err| {
-                        if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
-                            std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
-                            std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
-                            continue;
-                        }
-                        return err;
-                    };
-                } else {
-                    const api_key = if (self.config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
-                        std.debug.print("Error: OPENROUTER_API_KEY or config.providers.openrouter.apiKey not set\n", .{});
-                        return error.NoApiKey;
-                    };
-                    var provider = try providers.openrouter.OpenRouterProvider.init(self.allocator, api_key);
-                    defer provider.deinit();
-                    std.debug.print("AI (OpenRouter): ", .{});
-                    response = provider.chatStream(filtered_messages.items, model, provider_tools.items, internal_cb, self) catch |err| {
-                        if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
-                            std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
-                            std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
-                            continue;
-                        }
-                        return err;
-                    };
+            // Get provider interface using callback based on model
+            const getProviderInterface = struct {
+                fn call(model_name: []const u8) base.ProviderInterface {
+                    if (std.mem.indexOf(u8, model_name, "claude") != null) {
+                        return providers.anthropic.createInterface();
+                    } else {
+                        return providers.openrouter.createInterface();
+                    }
                 }
-                break;
-            } else {
-                std.debug.print("\n❌ Failed after {d} retries. Last error was network-related.\n", .{max_retries});
-                return error.NetworkRetryFailed;
-            }
+            }.call;
+            
+            const provider_interface = getProviderInterface(model);
+            
+            response = base.executeWithRetry(
+                provider_interface,
+                self.allocator,
+                self.config,
+                filtered_messages.items,
+                model,
+                provider_tools.items,
+                internal_cb,
+                self,
+            ) catch |err| {
+                return err;
+            };
+            
             std.debug.print("\n", .{});
             defer response.deinit();
 
