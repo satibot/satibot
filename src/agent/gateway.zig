@@ -2,7 +2,7 @@
 /// Runs the main event loop managing Telegram bot, cron jobs, and heartbeat checks.
 const std = @import("std");
 const Config = @import("../config.zig").Config;
-const TelegramBot = @import("telegram_bot.zig").TelegramBot;
+const TelegramBot = @import("../chat_apps/telegram/telegram.zig").TelegramBot;
 const CronStore = @import("cron.zig").CronStore;
 const HeartbeatService = @import("heartbeat.zig").HeartbeatService;
 const Agent = @import("../agent.zig").Agent;

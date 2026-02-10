@@ -3,7 +3,7 @@ const http = @import("../http.zig");
 const http_async = @import("../http_async.zig");
 const base = @import("base.zig");
 const Config = @import("../config.zig").Config;
-const AsyncEventLoop = @import("../agent/event_loop.zig").AsyncEventLoop;
+const XevEventLoop = @import("../utils/xev_event_loop.zig").XevEventLoop;
 
 /// OpenRouter API provider implementation.
 /// OpenRouter provides a unified interface to multiple LLM models.
@@ -48,7 +48,7 @@ pub const OpenRouterProvider = struct {
     async_client: ?http_async.AsyncClient = null,
     api_key: []const u8,
     api_base: []const u8 = "https://openrouter.ai/api/v1",
-    event_loop: ?*AsyncEventLoop = null,
+    event_loop: ?*XevEventLoop = null,
 
     /// Initialize provider with API key.
     pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !OpenRouterProvider {
@@ -60,7 +60,7 @@ pub const OpenRouterProvider = struct {
     }
 
     /// Initialize provider with API key and event loop for async operations.
-    pub fn initWithEventLoop(allocator: std.mem.Allocator, api_key: []const u8, event_loop: *AsyncEventLoop) !OpenRouterProvider {
+    pub fn initWithEventLoop(allocator: std.mem.Allocator, api_key: []const u8, event_loop: *XevEventLoop) !OpenRouterProvider {
         return .{
             .allocator = allocator,
             .client = try http.Client.init(allocator),

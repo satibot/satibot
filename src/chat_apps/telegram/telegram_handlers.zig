@@ -1,6 +1,6 @@
 /// Telegram-specific handlers for the generic event loop
 const std = @import("std");
-const event_loop = @import("../../agent/event_loop.zig");
+const xev = @import("xev");
 const xev_event_loop = @import("../../utils/xev_event_loop.zig");
 const messages = @import("../../agent/messages.zig");
 const Config = @import("../../config.zig").Config;
@@ -132,29 +132,8 @@ pub const TelegramContext = struct {
     }
 };
 
-/// Parse task data to extract Telegram-specific information
-fn parseTelegramTask(allocator: std.mem.Allocator, task: event_loop.Task) !TelegramTaskData {
-    // Parse the task data which should contain JSON or structured data
-    // For now, we'll use a simple format: "chat_id:message_id:text"
-    var it = std.mem.splitScalar(u8, task.data, ':');
-    const chat_id_str = it.next() orelse return error.InvalidTaskData;
-    const message_id_str = it.next() orelse return error.InvalidTaskData;
-    const text = it.rest();
-
-    const chat_id = try std.fmt.parseInt(i64, chat_id_str, 10);
-    const message_id = try std.fmt.parseInt(i64, message_id_str, 10);
-
-    return TelegramTaskData{
-        .chat_id = chat_id,
-        .message_id = message_id,
-        .text = try allocator.dupe(u8, text),
-        .voice_duration = null, // TODO: Extract from task source if needed
-        .update_id = 0, // TODO: Extract from task if needed
-    };
-}
-
 /// Parse task data from xev event loop
-fn parseXevTelegramTask(allocator: std.mem.Allocator, task: xev_event_loop.Task) !TelegramTaskData {
+fn parseTelegramTask(allocator: std.mem.Allocator, task: xev_event_loop.Task) !TelegramTaskData {
     // Parse the task data which should contain JSON or structured data
     // For now, we'll use a simple format: "chat_id:message_id:text"
     var it = std.mem.splitScalar(u8, task.data, ':');
@@ -178,7 +157,7 @@ fn parseXevTelegramTask(allocator: std.mem.Allocator, task: xev_event_loop.Task)
 var global_telegram_context: ?*TelegramContext = null;
 
 /// Handle incoming Telegram messages
-pub fn handleTelegramTask(ctx: *TelegramContext, task: event_loop.Task) !void {
+pub fn handleTelegramTask(ctx: *TelegramContext, task: xev_event_loop.Task) !void {
     std.debug.print("handleTelegramTask: Starting task processing\n", .{});
 
     const tg_data = try parseTelegramTask(ctx.allocator, task);
@@ -251,18 +230,6 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     // Save session state to Vector/Graph DB for long-term memory.
     // This enables RAG (Retrieval-Augmented Generation) functionality.
     messages.indexConversation(@constCast(&result.history), session_id) catch {};
-}
-
-/// Global task handler that uses the global context
-fn globalTaskHandler(allocator: std.mem.Allocator, task: event_loop.Task) !void {
-    std.debug.print("globalTaskHandler: Received task from {s}\n", .{task.source});
-    const ctx = global_telegram_context orelse {
-        std.debug.print("Error: Global telegram context not set\n", .{});
-        return error.ContextNotSet;
-    };
-    _ = allocator;
-    try handleTelegramTask(ctx, task);
-    std.debug.print("globalTaskHandler: Task processing completed\n", .{});
 }
 
 /// Handle HTTP requests for Telegram API
@@ -423,7 +390,7 @@ fn handlePostRequest(ctx: *TelegramContext, url: []const u8, body: []const u8) !
 }
 
 /// Global task handler for xev event loop
-fn globalXevTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) !void {
+fn globalTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) !void {
     std.debug.print("globalXevTaskHandler: Received task from {s}, data: {s}\n", .{ task.source, task.data });
     const ctx = global_telegram_context orelse {
         std.debug.print("Error: Global telegram context not set\n", .{});
@@ -438,7 +405,7 @@ fn globalXevTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task)
         return;
     }
 
-    const tg_data = try parseXevTelegramTask(ctx.allocator, task);
+    const tg_data = try parseTelegramTask(ctx.allocator, task);
     defer ctx.allocator.free(tg_data.text);
 
     std.debug.print("globalXevTaskHandler: Parsed task - chat_id: {d}, text: {s}\n", .{ tg_data.chat_id, tg_data.text });
@@ -586,23 +553,7 @@ fn handleGetRequestDirect(ctx: *TelegramContext, url: []const u8, allocator: std
 }
 
 /// Handle Telegram-specific events (e.g., scheduled messages, reminders)
-pub fn handleTelegramEvent(allocator: std.mem.Allocator, event: event_loop.Event) !void {
-    _ = allocator;
-    if (event.payload) |payload| {
-        std.debug.print("Processing Telegram event: {s}\n", .{payload});
-
-        // Parse event data
-        // TODO: Implement specific event handling based on event type
-        // Examples:
-        // - Scheduled messages
-        // - Reminders
-        // - Daily reports
-        // - Bot maintenance tasks
-    }
-}
-
-/// Handle Telegram-specific events for xev event loop
-pub fn handleXevTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loop.Event) !void {
+pub fn handleTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loop.Event) !void {
     _ = allocator;
     if (event.payload) |payload| {
         std.debug.print("Processing Xev Telegram event: {s}\n", .{payload});
@@ -664,33 +615,17 @@ fn sendChatAction(client: *const http.Client, bot_token: []const u8, chat_id: []
 }
 
 /// Create a task handler wrapper that captures Telegram context
-pub fn createTelegramTaskHandler(ctx: *TelegramContext) event_loop.TaskHandler {
+pub fn createTelegramTaskHandler(ctx: *TelegramContext) xev_event_loop.TaskHandler {
     global_telegram_context = ctx;
     return globalTaskHandler;
 }
 
-/// Create a task handler wrapper for xev event loop
-pub fn createXevTelegramTaskHandler(ctx: *TelegramContext) xev_event_loop.TaskHandler {
-    global_telegram_context = ctx;
-    return globalXevTaskHandler;
-}
-
 /// Create an event handler wrapper that captures Telegram context
-pub fn createTelegramEventHandler(ctx: *TelegramContext) event_loop.EventHandler {
-    _ = ctx;
-    return struct {
-        fn handler(allocator: std.mem.Allocator, event: event_loop.Event) !void {
-            try handleTelegramEvent(allocator, event);
-        }
-    }.handler;
-}
-
-/// Create an event handler wrapper for xev event loop
-pub fn createXevTelegramEventHandler(ctx: *TelegramContext) xev_event_loop.EventHandler {
+pub fn createTelegramEventHandler(ctx: *TelegramContext) xev_event_loop.EventHandler {
     _ = ctx;
     return struct {
         fn handler(allocator: std.mem.Allocator, event: xev_event_loop.Event) !void {
-            try handleXevTelegramEvent(allocator, event);
+            try handleTelegramEvent(allocator, event);
         }
     }.handler;
 }

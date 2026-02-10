@@ -145,8 +145,8 @@ pub const TelegramBot = struct {
         try bot.event_loop.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms);
 
         // Set up handlers for xev event loop
-        bot.event_loop.setTaskHandler(telegram_handlers.createXevTelegramTaskHandler(&bot.tg_ctx));
-        bot.event_loop.setEventHandler(telegram_handlers.createXevTelegramEventHandler(&bot.tg_ctx));
+        bot.event_loop.setTaskHandler(telegram_handlers.createTelegramTaskHandler(&bot.tg_ctx));
+        bot.event_loop.setEventHandler(telegram_handlers.createTelegramEventHandler(&bot.tg_ctx));
 
         return bot;
     }
