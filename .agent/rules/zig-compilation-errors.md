@@ -329,30 +329,6 @@ pub const MyStruct = struct {
 };
 ```
 
-### Event Loop Integration Pattern
-
-When integrating polling with an event loop:
-
-```zig
-// WRONG: Event loop runs without polling
-pub fn run(self: *Bot) !void {
-    self.event_loop.run(); // Blocks forever, no polling
-}
-
-// CORRECT: Separate threads for event loop and polling
-pub fn run(self: *Bot) !void {
-    // Start event loop in background thread
-    const event_loop_thread = try std.Thread.spawn(.{}, EventLoop.run, .{&self.event_loop});
-    defer event_loop_thread.join();
-    
-    // Main thread handles polling
-    while (!shutdown_requested.load(.seq_cst)) {
-        self.tick() catch {};
-        std.Thread.sleep(100 * std.time.ns_per_ms);
-    }
-}
-```
-
 ### Duplicate Function Names
 
 ```zig
@@ -525,12 +501,12 @@ self.atomic_value.fetchAdd(1, .seq_cst);
 Types used across modules must be public:
 
 ```zig
-// In event_loop.zig
+// In xev_event_loop.zig
 pub const Task = struct { ... };
 pub const Event = struct { ... };
 
 // In other files
-fn handler(task: event_loop.Task) void { ... }
+fn handler(task: xev_event_loop.Task) void { ... }
 ```
 
 ### Function Pointer Context Capture

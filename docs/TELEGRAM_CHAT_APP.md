@@ -84,7 +84,7 @@ The `XevEventLoop` processes the `telegram_poll` task:
 - For each message, it either:
   - Processes it directly in the current handler.
   - Adds a new task to the event loop for message processing.
-- **CRITICAL**: The `update_id` of the last message is used to update the polling offset via `event_loop.updateOffset()`.
+- **CRITICAL**: The `update_id` of the last message is used to update the polling offset for the next request.
 
 ### 4. Message Processing
 
@@ -103,13 +103,13 @@ When a message is processed:
 
 ## Key Components
 
-| Component | Description |
-|-----------|-------------|
-| `TelegramBot` | The main struct managing the bot lifecycle and polling. |
-| `XevEventLoop` | The core engine that executes tasks and manages timers/IO. |
-| `TelegramContext` | Holds shared state for handlers, including the polling offset. |
-| `telegram_handlers` | Logic for parsing Telegram updates and dispatching to `Agent`. |
-| `Agent` | The AI controller that handles conversation history and LLM interaction. |
+| Component         | Description                                                              |
+|-------------------|--------------------------------------------------------------------------|
+| `TelegramBot`     | The main struct managing the bot lifecycle and polling.                  |
+| `XevEventLoop`    | The core engine that executes tasks and manages timers/IO.               |
+| `TelegramContext` | Holds shared state for handlers, including the polling offset.           |
+| `telegram_handlers` | Logic for parsing Telegram updates and dispatching to `Agent`.       |
+| `Agent`           | The AI controller that handles conversation history and LLM interaction. |
 
 ## Sequence Diagram
 

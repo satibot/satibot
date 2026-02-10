@@ -12,7 +12,7 @@ This version includes significant changes from previous versions:
 - **Signal Handling**: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
 - **Division**: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
 
-See [THREAD_BASED_EVENT_LOOP.md](THREAD_BASED_EVENT_LOOP.md) for details on the new architecture.
+The event loop has been migrated to use XevEventLoop (see `src/utils/xev_event_loop.zig`).
 
 ### Prerequisites
 

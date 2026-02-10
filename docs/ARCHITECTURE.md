@@ -20,11 +20,7 @@ A multi-threaded supervisor that runs background services:
 - **Cron Thread**: Ticks every second to check for scheduled jobs.
 - **Heartbeat Thread**: Ticks periodically to process the heartbeat file.
 
-### 2.1 `AsyncEventLoop` (`src/agent/event_loop.zig`)
-
-A thread-based event loop for concurrent task processing (Zig 0.15.0 compatible).
-
-### 2.2 `XevEventLoop` (`src/utils/xev_event_loop.zig`)
+#### `XevEventLoop` (`src/utils/xev_event_loop.zig`)
 
 A high-performance asynchronous event loop based on **libxev**. It handles non-blocking I/O and task scheduling using platform-native APIs (io_uring, kqueue, epoll).
 

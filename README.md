@@ -23,7 +23,7 @@ View more in [Features](docs/FEATURES.md).
 - **Memory**: ~512MB RAM for basic operation
 - **OS**: Linux, macOS, or Windows (with WSL)
 
-> **Note**: This project uses Zig 0.15.0's thread-based concurrency. See [MIGRATION_GUIDE.md](docs/MIGRATION_GUIDE.md) if upgrading from an older version.
+> **Note**: This project uses Zig 0.15.0's thread-based concurrency with XevEventLoop.
 
 ---
 
