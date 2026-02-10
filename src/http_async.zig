@@ -3,7 +3,6 @@ const tls = @import("tls");
 
 /// Async HTTP client module for making non-blocking HTTPS requests.
 /// Integrates with the event loop for efficient I/O operations.
-
 /// Async HTTP response containing status code and body content.
 pub const AsyncResponse = struct {
     status: std.http.Status,
@@ -46,7 +45,7 @@ pub const AsyncClient = struct {
         body: []const u8,
         callback: *const fn (result: AsyncResult) void,
         allocator: std.mem.Allocator,
-        
+
         // Internal state
         tcp_stream: ?std.net.Stream = null,
         tls_state: ?*TlsState = null,
@@ -55,7 +54,7 @@ pub const AsyncClient = struct {
         content_length: ?u64 = null,
         chunked: bool = false,
         response_body: std.ArrayList(u8),
-        
+
         const TlsState = struct {
             input_buf: [tls.input_buffer_len]u8,
             output_buf: [tls.output_buffer_len]u8,
@@ -71,7 +70,7 @@ pub const AsyncClient = struct {
         success: bool,
         response: ?AsyncResponse = null,
         err_msg: ?[]const u8 = null,
-        
+
         pub fn deinit(self: *AsyncResult) void {
             if (self.response) |resp| {
                 resp.deinit();
@@ -93,15 +92,15 @@ pub const AsyncClient = struct {
             .body = try allocator.dupe(u8, body),
             .callback = callback,
             .allocator = allocator,
-            .response_body = std.ArrayList(u8).init(allocator),
+            .response_body = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable,
         };
-        
+
         // In a real implementation, we would:
         // 1. Add the request to an async I/O queue
         // 2. Use non-blocking connect
         // 3. Register with the event loop for readiness notifications
         // 4. Process the request in chunks when ready
-        
+
         // For now, we'll simulate the async behavior
         // This would be handled by the event loop in a real implementation
         // For demonstration, we'll process it synchronously but call the callback
@@ -125,26 +124,26 @@ pub const AsyncClient = struct {
 
         // Connect
         request.tcp_stream = try std.net.tcpConnectToHost(request.allocator, host, port);
-        
+
         const is_https = std.mem.eql(u8, uri.scheme, "https");
-        
+
         if (is_https) {
             try self.upgradeToTls(request, host);
         }
-        
+
         // Send request
         try sendRequest(request, uri);
-        
+
         // Receive response
         const response = try receiveResponse(request);
-        
+
         // Create success result
         const result = AsyncResult{
             .request_id = request.id,
             .success = true,
             .response = response,
         };
-        
+
         request.callback(result);
         cleanupRequest(request);
     }
@@ -170,9 +169,9 @@ pub const AsyncClient = struct {
 
     /// Send HTTP request
     fn sendRequest(request: *AsyncRequest, uri: std.Uri) !void {
-        var buffer = std.ArrayList(u8).init(request.allocator);
-        defer buffer.deinit();
-        const w = buffer.writer();
+        var buffer = std.ArrayList(u8).initCapacity(request.allocator, 4096) catch unreachable;
+        defer buffer.deinit(request.allocator);
+        const w = buffer.writer(request.allocator);
 
         const path = if (uri.path.percent_encoded.len == 0) "/" else uri.path.percent_encoded;
         try w.print("{s} {s}", .{ @tagName(request.method), path });
@@ -198,7 +197,7 @@ pub const AsyncClient = struct {
             var writer = request.tcp_stream.?.writer(&out_buf);
             try writer.interface.writeAll(buffer.items);
         }
-        
+
         request.request_sent = true;
     }
 
@@ -206,41 +205,41 @@ pub const AsyncClient = struct {
     fn receiveResponse(request: *AsyncRequest) !AsyncResponse {
         // Read headers
         var headers_received = false;
-        var header_data = std.ArrayList(u8).init(request.allocator);
-        defer header_data.deinit();
+        var header_data = std.ArrayList(u8).initCapacity(request.allocator, 1024) catch unreachable;
+        defer header_data.deinit(request.allocator);
 
         while (!headers_received) {
             var byte: [1]u8 = undefined;
             const n = try readRaw(request, &byte);
             if (n == 0) return error.ConnectionClosed;
-            
-            try header_data.append(byte[0]);
-            
+
+            try header_data.append(request.allocator, byte[0]);
+
             // Check for end of headers
             if (header_data.items.len >= 4) {
-                const last_four = header_data.items[header_data.items.len - 4..];
+                const last_four = header_data.items[header_data.items.len - 4 ..];
                 if (std.mem.eql(u8, last_four, "\r\n\r\n")) {
                     headers_received = true;
                 }
             }
         }
-        
+
         // Parse headers
         var it = std.mem.splitSequence(u8, header_data.items, "\r\n");
         const status_line = it.next() orelse return error.InvalidResponse;
-        
+
         var status_it = std.mem.tokenizeScalar(u8, status_line, ' ');
         _ = status_it.next(); // HTTP/1.1
         const status_code_str = status_it.next() orelse return error.InvalidResponse;
         const status_code = try std.fmt.parseInt(u16, status_code_str, 10);
-        
+
         // Parse content-length and transfer-encoding
         while (it.next()) |line| {
             if (line.len == 0) break;
             var line_it = std.mem.splitScalar(u8, line, ':');
             const name = std.mem.trim(u8, line_it.first(), " ");
             const value = std.mem.trim(u8, line_it.rest(), " ");
-            
+
             if (std.ascii.eqlIgnoreCase(name, "content-length")) {
                 request.content_length = try std.fmt.parseInt(u64, value, 10);
             } else if (std.ascii.eqlIgnoreCase(name, "transfer-encoding")) {
@@ -249,17 +248,17 @@ pub const AsyncClient = struct {
                 }
             }
         }
-        
+
         // Read body
         if (request.chunked) {
             try readChunkedBody(request);
         } else if (request.content_length) |len| {
             try readFixedBody(request, len);
         }
-        
+
         return AsyncResponse{
             .status = @enumFromInt(status_code),
-            .body = try request.response_body.toOwnedSlice(),
+            .body = try request.response_body.toOwnedSlice(request.allocator),
             .allocator = request.allocator,
         };
     }
@@ -281,25 +280,26 @@ pub const AsyncClient = struct {
     fn readChunkedBody(request: *AsyncRequest) !void {
         while (true) {
             // Read chunk size line
-            var size_line = std.ArrayList(u8).init(request.allocator);
-            defer size_line.deinit();
-            
+            var size_line = std.ArrayList(u8).initCapacity(request.allocator, 32) catch unreachable;
+            defer size_line.deinit(request.allocator);
+
             while (true) {
                 var byte: [1]u8 = undefined;
                 const n = try readRaw(request, &byte);
                 if (n == 0) return error.ConnectionClosed;
-                
-                try size_line.append(byte[0]);
-                
-                if (size_line.items.len >= 2 and 
-                    std.mem.eql(u8, size_line.items[size_line.items.len - 2..], "\r\n")) {
+
+                try size_line.append(request.allocator, byte[0]);
+
+                if (size_line.items.len >= 2 and
+                    std.mem.eql(u8, size_line.items[size_line.items.len - 2 ..], "\r\n"))
+                {
                     break;
                 }
             }
-            
+
             const size_str = std.mem.trim(u8, size_line.items, "\r\n");
             if (size_str.len == 0) break;
-            
+
             const chunk_size = try std.fmt.parseInt(usize, size_str, 16);
             if (chunk_size == 0) {
                 // Read trailing \r\n
@@ -307,20 +307,20 @@ pub const AsyncClient = struct {
                 _ = try readRaw(request, &trailer);
                 break;
             }
-            
+
             // Read chunk data
             var chunk_buf: [4096]u8 = undefined;
             var remaining = chunk_size;
-            
+
             while (remaining > 0) {
                 const to_read = @min(remaining, chunk_buf.len);
                 const n = try readRaw(request, chunk_buf[0..to_read]);
                 if (n == 0) return error.ConnectionClosed;
-                
-                try request.response_body.appendSlice(chunk_buf[0..n]);
+
+                try request.response_body.appendSlice(request.allocator, chunk_buf[0..n]);
                 remaining -= n;
             }
-            
+
             // Read trailing \r\n
             var trailer: [2]u8 = undefined;
             _ = try readRaw(request, &trailer);
@@ -331,13 +331,13 @@ pub const AsyncClient = struct {
     fn readFixedBody(request: *AsyncRequest, length: u64) !void {
         var buf: [4096]u8 = undefined;
         var remaining = length;
-        
+
         while (remaining > 0) {
             const to_read = @min(remaining, buf.len);
             const n = try readRaw(request, buf[0..to_read]);
             if (n == 0) return error.ConnectionClosed;
-            
-            try request.response_body.appendSlice(buf[0..n]);
+
+            try request.response_body.appendSlice(request.allocator, buf[0..n]);
             remaining -= n;
         }
     }
@@ -349,8 +349,8 @@ pub const AsyncClient = struct {
         request.allocator.free(request.url);
         request.allocator.free(request.headers);
         request.allocator.free(request.body);
-        request.response_body.deinit();
-        
+        request.response_body.deinit(request.allocator);
+
         // Close connection
         if (request.tls_state) |state| {
             state.conn.close() catch {};
@@ -359,7 +359,7 @@ pub const AsyncClient = struct {
         if (request.tcp_stream) |stream| {
             stream.close();
         }
-        
+
         // Free the request structure
         request.allocator.destroy(request);
     }
