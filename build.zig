@@ -225,7 +225,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(xev_mock_exe);
 
     // Run step for xev mock bot
-    const run_xev_mock_step = b.step("run-mock-bot", "Run the xev mock bot (console-based)");
+    const run_xev_mock_step = b.step("run-console", "Run the xev mock bot (console-based)");
     const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
     run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
     // run_xev_mock_cmd.step.dependOn(b.getInstallStep());
@@ -281,7 +281,7 @@ pub fn build(b: *std.Build) void {
     // Test step for the mock bot specifically
     const mock_bot_tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/agent/xev_mock_bot.zig"),
+            .root_source_file = b.path("src/agent/console.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

@@ -117,7 +117,7 @@ zig build run -- telegram
 # Run as a Telegram Bot (Xev/Asynchronous)
 zig build run-xev-telegram
 # Run as a Mock Bot (Console-based, uses Xev loop)
-zig build run-mock-bot
+zig build run-console
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
 # RAG is enabled by default to remember conversations. 

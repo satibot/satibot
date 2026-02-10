@@ -1,6 +1,6 @@
 const std = @import("std");
 const satibot = @import("root.zig");
-const xev_mock_bot = @import("agent/xev_mock_bot.zig");
+const console = @import("agent/console.zig");
 
 pub fn main() !void {
     // Initialize allocator
@@ -14,7 +14,7 @@ pub fn main() !void {
     const config = parsed_config.value;
 
     // Initialize and run the mock bot
-    var bot = try xev_mock_bot.MockBot.init(allocator, config);
+    var bot = try console.MockBot.init(allocator, config);
     defer bot.deinit();
 
     try bot.run();

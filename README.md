@@ -74,6 +74,9 @@ Create `~/.bots/config.json`:
 # Chat directly
 zig build run -- agent -m "Hello, satibot!"
 
+# Console-based interactive bot
+zig build run -- console
+
 # Start the gateway (Telegram + Cron + Heartbeat)
 zig build run -- gateway
 
@@ -177,6 +180,9 @@ zig build run -- agent -m "Your message"
 
 # Run with a specific session ID to persist history
 zig build run -- agent -m "Follow-up message" -s my-session
+
+# Run console-based interactive bot
+zig build run -- console
 
 # Run as a Telegram Bot (long polling)
 zig build run -- telegram

@@ -149,7 +149,7 @@ For local development and testing without a Telegram connection, you can use the
 ### Running the Mock Bot
 
 ```bash
-zig build run-mock-bot
+zig build run-console
 ```
 
 ### Running Mock Bot Tests
