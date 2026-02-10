@@ -116,5 +116,5 @@ You should see:
 Once connected, these commands are available in Telegram:
 
 - `/help` - Show available commands
-- `/new` - Clear conversation session memory
+- `/new` - Start a new conversation session
 - Any other message - Chat with the AI assistant

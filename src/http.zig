@@ -303,11 +303,7 @@ pub const Request = struct {
         if (self.tls_state) |state| {
             return try state.conn.read(buf);
         } else {
-            var in_buf: [4096]u8 = undefined;
-            var reader_struct = self.tcp.reader(&in_buf);
-            const rdr = reader_struct.interface();
-            var bufs = [1][]u8{buf};
-            return try rdr.readVec(&bufs);
+            return try self.tcp.read(buf);
         }
     }
 

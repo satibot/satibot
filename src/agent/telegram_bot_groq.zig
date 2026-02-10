@@ -245,7 +245,7 @@ pub const TelegramBot = struct {
                             const help_text =
                                 \\🐸 SatiBot Commands:
                                 \\
-                                \/new - Clear conversation session memory
+                                \/new - Start a new conversation session
                                 \/help - Show this help message
                                 \\
                                 \\Send any message to chat with the AI assistant.
@@ -254,30 +254,28 @@ pub const TelegramBot = struct {
                             continue;
                         }
 
-                        // Handle magic command /new to wipe memory.
-                        // Helpful for restarting conversations without restarting the bot.
+                        // Handle magic command /new to start a new session.
+                        // Creates a new session ID with timestamp so old history is preserved but not loaded.
+                        var new_session_id: ?[]const u8 = null;
+                        defer if (new_session_id) |ns| self.allocator.free(ns);
+
                         if (std.mem.startsWith(u8, final_text, "/new")) {
-                            // Get user's home directory for session storage
-                            const home = std.posix.getenv("HOME") orelse "/tmp";
-                            // Construct path to session file for this chat
-                            const session_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(self.allocator, "{s}.json", .{session_id}) });
-                            defer self.allocator.free(session_path);
-                            // Delete the session file to clear conversation history
-                            std.fs.deleteFileAbsolute(session_path) catch {};
+                            // Generate a new session ID with timestamp to start fresh
+                            const ts = std.time.milliTimestamp();
+                            new_session_id = try std.fmt.allocPrint(self.allocator, "{s}_{d}", .{ session_id, ts });
 
                             if (final_text.len <= 4) {
-                                // User just sent "/new" without additional text
-                                try self.send_message(tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
+                                try self.send_message(tg_config.botToken, chat_id_str, "🆕 New session started! Send me a new message.");
                                 continue;
                             }
-                            // If user sent "/new some prompt", clear session but process
-                            // the prompt after the "/new" command.
+                            // If user sent "/new some prompt", start new session and process the prompt
                             actual_text = std.mem.trimLeft(u8, final_text[4..], " ");
                         }
 
                         // Spin up a fresh Agent instance for this interaction.
                         // The Agent loads the session state from disk based on session_id.
-                        var agent = Agent.init(self.allocator, self.config, session_id);
+                        const active_session = new_session_id orelse session_id;
+                        var agent = Agent.init(self.allocator, self.config, active_session);
                         defer agent.deinit();
 
                         // Send initial "typing" action to show the user we're processing.
@@ -648,6 +646,40 @@ test "TelegramBot command detection - /new" {
 
     const new_with_prompt = "/new what is zig?";
     try std.testing.expect(std.mem.startsWith(u8, new_with_prompt, "/new"));
+}
+
+test "TelegramBot /new generates timestamp-based session ID" {
+    const allocator = std.testing.allocator;
+    
+    // Test that /new creates a new session ID with timestamp
+    const base_session_id = "tg_123456789";
+    const ts1 = std.time.milliTimestamp();
+    const new_session_id1 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts1 });
+    defer allocator.free(new_session_id1);
+    
+    // Verify new session ID contains timestamp
+    try std.testing.expect(std.mem.indexOf(u8, new_session_id1, base_session_id) != null);
+    try std.testing.expect(std.mem.indexOf(u8, new_session_id1, "_") != null);
+    
+    // Test with different timestamp
+    const ts2 = ts1 + 1000;
+    const new_session_id2 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts2 });
+    defer allocator.free(new_session_id2);
+    
+    // Verify they are different
+    try std.testing.expect(!std.mem.eql(u8, new_session_id1, new_session_id2));
+}
+
+test "TelegramBot /new with prompt extracts prompt correctly" {
+    const allocator = std.testing.allocator;
+    
+    const new_with_prompt = "/new what is zig?";
+    const expected_prompt = "what is zig?";
+    
+    // Extract prompt after /new (simulate the logic)
+    const actual_prompt = std.mem.trimLeft(u8, new_with_prompt[4..], " ");
+    
+    try std.testing.expectEqualStrings(expected_prompt, actual_prompt);
 }
 
 test "TelegramBot message JSON serialization" {

@@ -72,75 +72,77 @@ var tools_initialized = false;
 
 /// Get or initialize the global tool registry
 fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
+    _ = config; // Currently unused since only vector tools are registered
     if (!tools_initialized) {
         const registry = try allocator.create(tools.ToolRegistry);
         registry.* = tools.ToolRegistry.init(allocator);
 
         // Register all default tools
-        try registry.register(.{
-            .name = "list_files",
-            .description = "List files in the current directory",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.list_files,
-        });
-        try registry.register(.{
-            .name = "read_file",
-            .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
-            .execute = tools.read_file,
-        });
-        try registry.register(.{
-            .name = "write_file",
-            .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
-            .execute = tools.write_file,
-        });
-        if (config.tools.web.search.apiKey) |key| {
-            if (key.len > 0) {
-                try registry.register(.{
-                    .name = "web_search",
-                    .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
-                    .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-                    .execute = tools.web_search,
-                });
-            }
-        }
-        try registry.register(.{
-            .name = "list_marketplace",
-            .description = "List all available skills in the agent-skills.md marketplace",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.list_marketplace_skills,
-        });
-        try registry.register(.{
-            .name = "search_marketplace",
-            .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-            .execute = tools.search_marketplace_skills,
-        });
-        try registry.register(.{
-            .name = "install_skill",
-            .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
-            .execute = tools.install_skill,
-        });
-        try registry.register(.{
-            .name = "telegram_send_message",
-            .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.telegram_send_message,
-        });
-        try registry.register(.{
-            .name = "discord_send_message",
-            .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
-            .execute = tools.discord_send_message,
-        });
-        try registry.register(.{
-            .name = "whatsapp_send_message",
-            .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.whatsapp_send_message,
-        });
+        // Only register vector tools - all other tools are commented out
+        // try registry.register(.{
+        //     .name = "list_files",
+        //     .description = "List files in the current directory",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.list_files,
+        // });
+        // try registry.register(.{
+        //     .name = "read_file",
+        //     .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
+        //     .execute = tools.read_file,
+        // });
+        // try registry.register(.{
+        //     .name = "write_file",
+        //     .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
+        //     .execute = tools.write_file,
+        // });
+        // if (config.tools.web.search.apiKey) |key| {
+        //     if (key.len > 0) {
+        //         try registry.register(.{
+        //             .name = "web_search",
+        //             .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
+        //             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+        //             .execute = tools.web_search,
+        //         });
+        //     }
+        // }
+        // try registry.register(.{
+        //     .name = "list_marketplace",
+        //     .description = "List all available skills in the agent-skills.md marketplace",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.list_marketplace_skills,
+        // });
+        // try registry.register(.{
+        //     .name = "search_marketplace",
+        //     .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+        //     .execute = tools.search_marketplace_skills,
+        // });
+        // try registry.register(.{
+        //     .name = "install_skill",
+        //     .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
+        //     .execute = tools.install_skill,
+        // });
+        // try registry.register(.{
+        //     .name = "telegram_send_message",
+        //     .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+        //     .execute = tools.telegram_send_message,
+        // });
+        // try registry.register(.{
+        //     .name = "discord_send_message",
+        //     .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
+        //     .execute = tools.discord_send_message,
+        // });
+        // try registry.register(.{
+        //     .name = "whatsapp_send_message",
+        //     .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+        //     .execute = tools.whatsapp_send_message,
+        // });
         try registry.register(.{
             .name = "vector_upsert",
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
@@ -153,54 +155,55 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
             .execute = tools.vector_search,
         });
-        try registry.register(.{
-            .name = "graph_upsert_node",
-            .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
-            .execute = tools.graph_upsert_node,
-        });
-        try registry.register(.{
-            .name = "graph_upsert_edge",
-            .description = "Add an edge to the graph database. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"label\": \"knows\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"label\"]}",
-            .execute = tools.graph_upsert_edge,
-        });
-        try registry.register(.{
-            .name = "graph_query",
-            .description = "Query the graph database. Arguments: {\"cypher\": \"MATCH (n) RETURN n\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"cypher\": {\"type\": \"string\"}}, \"required\": [\"cypher\"]}",
-            .execute = tools.graph_query,
-        });
-        try registry.register(.{
-            .name = "cron_add",
-            .description = "Add a scheduled cron job. Arguments: {\"cron_expr\": \"0 9 * * *\", \"task\": \"Morning report\", \"label\": \"daily\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"cron_expr\": {\"type\": \"string\"}, \"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"cron_expr\", \"task\"]}",
-            .execute = tools.cron_add,
-        });
-        try registry.register(.{
-            .name = "cron_list",
-            .description = "List all scheduled cron jobs",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.cron_list,
-        });
-        try registry.register(.{
-            .name = "cron_remove",
-            .description = "Remove a scheduled cron job by ID",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
-            .execute = tools.cron_remove,
-        });
-        try registry.register(.{
-            .name = "subagent_spawn",
-            .description = "Spawn a background subagent to handle a specific task.",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
-            .execute = tools.subagent_spawn,
-        });
-        try registry.register(.{
-            .name = "run_command",
-            .description = "Execute a shell command. Use with caution.",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
-            .execute = tools.run_command,
-        });
+        // Graph and cron tools are commented out
+        // try registry.register(.{
+        //     .name = "graph_upsert_node",
+        //     .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
+        //     .execute = tools.graph_upsert_node,
+        // });
+        // try registry.register(.{
+        //     .name = "graph_upsert_edge",
+        //     .description = "Add an edge to the graph database. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"label\": \"knows\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"label\"]}",
+        //     .execute = tools.graph_upsert_edge,
+        // });
+        // try registry.register(.{
+        //     .name = "graph_query",
+        //     .description = "Query the graph database. Arguments: {\"cypher\": \"MATCH (n) RETURN n\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"cypher\": {\"type\": \"string\"}}, \"required\": [\"cypher\"]}",
+        //     .execute = tools.graph_query,
+        // });
+        // try registry.register(.{
+        //     .name = "cron_add",
+        //     .description = "Add a scheduled cron job. Arguments: {\"cron_expr\": \"0 9 * * *\", \"task\": \"Morning report\", \"label\": \"daily\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"cron_expr\": {\"type\": \"string\"}, \"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"cron_expr\", \"task\"]}",
+        //     .execute = tools.cron_add,
+        // });
+        // try registry.register(.{
+        //     .name = "cron_list",
+        //     .description = "List all scheduled cron jobs",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.cron_list,
+        // });
+        // try registry.register(.{
+        //     .name = "cron_remove",
+        //     .description = "Remove a scheduled cron job by ID",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
+        //     .execute = tools.cron_remove,
+        // });
+        // try registry.register(.{
+        //     .name = "subagent_spawn",
+        //     .description = "Spawn a background subagent to handle a specific task.",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
+        //     .execute = tools.subagent_spawn,
+        // });
+        // try registry.register(.{
+        //     .name = "run_command",
+        //     .description = "Execute a shell command. Use with caution.",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
+        //     .execute = tools.run_command,
+        // });
 
         global_tools = registry.*;
         tools_initialized = true;

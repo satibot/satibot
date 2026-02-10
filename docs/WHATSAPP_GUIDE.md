@@ -131,7 +131,7 @@ zig build run -- whatsapp
 Once connected, these commands are available in WhatsApp:
 
 - `/help` - Show available commands
-- `/new` - Clear conversation session memory
+- `/new` - Start a new conversation session
 - Any other message - Chat with the AI assistant
 
 ---

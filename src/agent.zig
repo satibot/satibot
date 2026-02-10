@@ -63,71 +63,71 @@ pub const Agent = struct {
             allocator.free(history);
         } else |_| {}
 
-        // Register default tools
-        self.registry.register(.{
-            .name = "list_files",
-            .description = "List files in the current directory",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.list_files,
-        }) catch {};
-        self.registry.register(.{
-            .name = "read_file",
-            .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
-            .execute = tools.read_file,
-        }) catch {};
-        self.registry.register(.{
-            .name = "write_file",
-            .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
-            .execute = tools.write_file,
-        }) catch {};
-        if (self.config.tools.web.search.apiKey) |key| {
-            if (key.len > 0) {
-                self.registry.register(.{
-                    .name = "web_search",
-                    .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
-                    .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-                    .execute = tools.web_search,
-                }) catch {};
-            }
-        }
-        self.registry.register(.{
-            .name = "list_marketplace",
-            .description = "List all available skills in the agent-skills.md marketplace",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.list_marketplace_skills,
-        }) catch {};
-        self.registry.register(.{
-            .name = "search_marketplace",
-            .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-            .execute = tools.search_marketplace_skills,
-        }) catch {};
-        self.registry.register(.{
-            .name = "install_skill",
-            .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
-            .execute = tools.install_skill,
-        }) catch {};
-        self.registry.register(.{
-            .name = "telegram_send_message",
-            .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.telegram_send_message,
-        }) catch {};
-        self.registry.register(.{
-            .name = "discord_send_message",
-            .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
-            .execute = tools.discord_send_message,
-        }) catch {};
-        self.registry.register(.{
-            .name = "whatsapp_send_message",
-            .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.whatsapp_send_message,
-        }) catch {};
+        // Register default tools - only vector tools are active
+        // self.registry.register(.{
+        //     .name = "list_files",
+        //     .description = "List files in the current directory",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.list_files,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "read_file",
+        //     .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
+        //     .execute = tools.read_file,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "write_file",
+        //     .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
+        //     .execute = tools.write_file,
+        // }) catch {};
+        // if (self.config.tools.web.search.apiKey) |key| {
+        //     if (key.len > 0) {
+        //         self.registry.register(.{
+        //             .name = "web_search",
+        //             .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
+        //             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+        //             .execute = tools.web_search,
+        //         }) catch {};
+        //     }
+        // }
+        // self.registry.register(.{
+        //     .name = "list_marketplace",
+        //     .description = "List all available skills in the agent-skills.md marketplace",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.list_marketplace_skills,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "search_marketplace",
+        //     .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+        //     .execute = tools.search_marketplace_skills,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "install_skill",
+        //     .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
+        //     .execute = tools.install_skill,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "telegram_send_message",
+        //     .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+        //     .execute = tools.telegram_send_message,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "discord_send_message",
+        //     .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
+        //     .execute = tools.discord_send_message,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "whatsapp_send_message",
+        //     .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+        //     .execute = tools.whatsapp_send_message,
+        // }) catch {};
         self.registry.register(.{
             .name = "vector_upsert",
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
@@ -140,60 +140,61 @@ pub const Agent = struct {
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
             .execute = tools.vector_search,
         }) catch {};
-        self.registry.register(.{
-            .name = "graph_upsert_node",
-            .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
-            .execute = tools.graph_upsert_node,
-        }) catch {};
-        self.registry.register(.{
-            .name = "graph_upsert_edge",
-            .description = "Add an edge (relation) between two nodes in the graph. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"relation\": \"knows\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
-            .execute = tools.graph_upsert_edge,
-        }) catch {};
-        self.registry.register(.{
-            .name = "graph_query",
-            .description = "Query relations for a specific node in the graph. Arguments: {\"start_node\": \"node_id\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
-            .execute = tools.graph_query,
-        }) catch {};
-        self.registry.register(.{
-            .name = "rag_search",
-            .description = "Perform a RAG (Retrieval-Augmented Generation) search. Arguments: {\"query\": \"what is...\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
-            .execute = tools.rag_search,
-        }) catch {};
-        self.registry.register(.{
-            .name = "cron_add",
-            .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
-            .execute = tools.cron_add,
-        }) catch {};
-        self.registry.register(.{
-            .name = "cron_list",
-            .description = "List all scheduled cron jobs",
-            .parameters = "{\"type\": \"object\", \"properties\": {}}",
-            .execute = tools.cron_list,
-        }) catch {};
-        self.registry.register(.{
-            .name = "cron_remove",
-            .description = "Remove a scheduled cron job by ID",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
-            .execute = tools.cron_remove,
-        }) catch {};
-        self.registry.register(.{
-            .name = "subagent_spawn",
-            .description = "Spawn a background subagent to handle a specific task.",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
-            .execute = tools.subagent_spawn,
-        }) catch {};
-        self.registry.register(.{
-            .name = "run_command",
-            .description = "Execute a shell command. Use with caution.",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
-            .execute = tools.run_command,
-        }) catch {};
+        // Graph, RAG, cron, subagent, and run_command tools are commented out
+        // self.registry.register(.{
+        //     .name = "graph_upsert_node",
+        //     .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
+        //     .execute = tools.graph_upsert_node,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "graph_upsert_edge",
+        //     .description = "Add an edge (relation) between two nodes in the graph. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"relation\": \"knows\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
+        //     .execute = tools.graph_upsert_edge,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "graph_query",
+        //     .description = "Query relations for a specific node in the graph. Arguments: {\"start_node\": \"node_id\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
+        //     .execute = tools.graph_query,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "rag_search",
+        //     .description = "Perform a RAG (Retrieval-Augmented Generation) search. Arguments: {\"query\": \"what is...\"}",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
+        //     .execute = tools.rag_search,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "cron_add",
+        //     .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
+        //     .execute = tools.cron_add,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "cron_list",
+        //     .description = "List all scheduled cron jobs",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
+        //     .execute = tools.cron_list,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "cron_remove",
+        //     .description = "Remove a scheduled cron job by ID",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
+        //     .execute = tools.cron_remove,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "subagent_spawn",
+        //     .description = "Spawn a background subagent to handle a specific task.",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
+        //     .execute = tools.subagent_spawn,
+        // }) catch {};
+        // self.registry.register(.{
+        //     .name = "run_command",
+        //     .description = "Execute a shell command. Use with caution.",
+        //     .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
+        //     .execute = tools.run_command,
+        // }) catch {};
 
         return self;
     }
@@ -313,18 +314,6 @@ pub const Agent = struct {
             });
         }
 
-        // Filter messages to avoid invalid assistant entries
-        var filtered_messages = std.ArrayListUnmanaged(base.LLMMessage){};
-        defer filtered_messages.deinit(self.allocator);
-        for (self.ctx.get_messages()) |msg| {
-            if (std.mem.eql(u8, msg.role, "assistant")) {
-                if (msg.content == null and (msg.tool_calls == null or msg.tool_calls.?.len == 0)) {
-                    continue; // Skip invalid assistant message
-                }
-            }
-            try filtered_messages.append(self.allocator, msg);
-        }
-
         while (iterations < max_iterations) : (iterations += 1) {
             // Check for shutdown signal
             if (self.shutdown_flag) |flag| {
@@ -336,18 +325,34 @@ pub const Agent = struct {
 
             std.debug.print("\n--- Iteration {d} ---\n", .{iterations + 1});
 
+            // Declare loop_warning BEFORE filtered_messages so its defer runs AFTER
+            // filtered_messages.deinit (Zig defers run in reverse declaration order),
+            // keeping the string alive while filtered_messages holds a pointer to it.
+            var loop_warning: ?[]const u8 = null;
+            defer if (loop_warning) |lw| self.allocator.free(lw);
+
+            // Rebuild filtered_messages each iteration so tool results are included
+            var filtered_messages = std.ArrayListUnmanaged(base.LLMMessage){};
+            defer filtered_messages.deinit(self.allocator);
+            for (self.ctx.get_messages()) |msg| {
+                if (std.mem.eql(u8, msg.role, "assistant")) {
+                    if (msg.content == null and (msg.tool_calls == null or msg.tool_calls.?.len == 0)) {
+                        continue; // Skip invalid assistant message
+                    }
+                }
+                try filtered_messages.append(self.allocator, msg);
+            }
+
             // When iteration > 2, inject context from iteration 1 to help prevent loops
-            // This gives the LLM visibility into earlier reasoning
             if (iterations > 1 and iteration_results.items.len > 0) {
                 if (iteration_results.items[0]) |first_result| {
-                    const loop_warning = try std.fmt.allocPrint(
+                    loop_warning = try std.fmt.allocPrint(
                         self.allocator,
                         "Note: You are on iteration {d}. Your first iteration response was: \"{s}\". Please review if you're making progress or stuck in a loop.",
                         .{ iterations + 1, first_result },
                     );
-                    defer self.allocator.free(loop_warning);
 
-                    // Add as a temporary system message to filtered_messages
+                    // Add as a temporary system message
                     try filtered_messages.append(self.allocator, .{
                         .role = "system",
                         .content = loop_warning,
@@ -360,12 +365,30 @@ pub const Agent = struct {
             for (filtered_messages.items, 0..) |msg, idx| {
                 std.debug.print("Message {d}: role={s}\n", .{ idx, msg.role });
                 if (msg.content) |content| {
-                    // Truncate long content for readability
-                    const max_len = 500;
-                    if (content.len > max_len) {
-                        std.debug.print("  content: {s}... (truncated, total length: {d})\n", .{ content[0..max_len], content.len });
+                    // Only print content if it's valid and reasonably sized
+                    if (content.len > 0 and content.len < 10000) {
+                        // Simple check for obviously binary content
+                        var is_binary = false;
+                        const check_len = @min(100, content.len);
+                        for (content[0..check_len]) |byte| {
+                            if (byte == 0) { // null byte indicates binary data
+                                is_binary = true;
+                                break;
+                            }
+                        }
+
+                        if (!is_binary) {
+                            const max_len = @min(500, content.len);
+                            if (content.len > max_len) {
+                                std.debug.print("  content: {s}... (truncated, total length: {d})\n", .{ content[0..max_len], content.len });
+                            } else {
+                                std.debug.print("  content: {s}\n", .{content});
+                            }
+                        } else {
+                            std.debug.print("  content: [binary data - {d} bytes]\n", .{content.len});
+                        }
                     } else {
-                        std.debug.print("  content: {s}\n", .{content});
+                        std.debug.print("  content: [invalid content - {d} bytes]\n", .{content.len});
                     }
                 }
                 if (msg.tool_calls) |calls| {
@@ -407,9 +430,9 @@ pub const Agent = struct {
                     }
                 }
             }.call;
-            
+
             const provider_interface = getProviderInterface(model);
-            
+
             response = base.executeWithRetry(
                 provider_interface,
                 self.allocator,
@@ -422,7 +445,7 @@ pub const Agent = struct {
             ) catch |err| {
                 return err;
             };
-            
+
             std.debug.print("\n", .{});
             defer response.deinit();
 

@@ -86,29 +86,32 @@ pub const WhatsAppBot = struct {
         // Handle magic command /help to show available commands
         if (std.mem.startsWith(u8, text, "/help")) {
             const help_text =
-                \\🐸 SatiBot WhatsApp Commands:\n\\n\\/new - Clear conversation session memory\n\\/help - Show this help message\n\\n\\Send any message to chat with the AI assistant.
+                \\🐸 SatiBot WhatsApp Commands:\n\\n\\/new - Start a new conversation session\n\\/help - Show this help message\n\\n\\Send any message to chat with the AI assistant.
             ;
             try self.send_message(wa_config, from, help_text);
             return;
         }
 
-        // Handle magic command /new to wipe memory
+        // Handle magic command /new to start a new session.
+        // Creates a new session ID with timestamp so old history is preserved but not loaded.
+        var new_session_id: ?[]const u8 = null;
+        defer if (new_session_id) |ns| self.allocator.free(ns);
+
         if (std.mem.startsWith(u8, text, "/new")) {
-            const home = std.posix.getenv("HOME") orelse "/tmp";
-            const session_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(self.allocator, "{s}.json", .{session_id}) });
-            defer self.allocator.free(session_path);
-            std.fs.deleteFileAbsolute(session_path) catch {};
+            const ts = std.time.milliTimestamp();
+            new_session_id = try std.fmt.allocPrint(self.allocator, "{s}_{d}", .{ session_id, ts });
 
             if (text.len <= 4) {
-                try self.send_message(wa_config, from, "🆕 Session cleared! Send me a new message.");
+                try self.send_message(wa_config, from, "🆕 New session started! Send me a new message.");
                 return;
             }
-            // If user sent "/new some prompt", clear session but process the prompt
+            // If user sent "/new some prompt", start new session and process the prompt
             actual_text = std.mem.trimLeft(u8, text[4..], " ");
         }
 
         // Spin up a fresh Agent instance for this interaction
-        var agent = Agent.init(self.allocator, self.config, session_id);
+        const active_session = new_session_id orelse session_id;
+        var agent = Agent.init(self.allocator, self.config, active_session);
         defer agent.deinit();
 
         // Run the agent loop (LLM inference + Tool execution)
@@ -344,6 +347,38 @@ test "WhatsAppBot command detection - /new" {
 
     const new_with_prompt = "/new what is zig?";
     try std.testing.expect(std.mem.startsWith(u8, new_with_prompt, "/new"));
+}
+
+test "WhatsAppBot /new generates timestamp-based session ID" {
+    const allocator = std.testing.allocator;
+
+    // Test that /new creates a new session ID with timestamp
+    const base_session_id = "wa_+1234567890";
+    const ts1 = std.time.milliTimestamp();
+    const new_session_id1 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts1 });
+    defer allocator.free(new_session_id1);
+
+    // Verify new session ID contains timestamp
+    try std.testing.expect(std.mem.indexOf(u8, new_session_id1, base_session_id) != null);
+    try std.testing.expect(std.mem.indexOf(u8, new_session_id1, "_") != null);
+
+    // Test with different timestamp
+    const ts2 = ts1 + 1000;
+    const new_session_id2 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts2 });
+    defer allocator.free(new_session_id2);
+
+    // Verify they are different
+    try std.testing.expect(!std.mem.eql(u8, new_session_id1, new_session_id2));
+}
+
+test "WhatsAppBot /new with prompt extracts prompt correctly" {
+    const new_with_prompt = "/new what is zig?";
+    const expected_prompt = "what is zig?";
+
+    // Extract prompt after /new (simulate the logic)
+    const actual_prompt = std.mem.trimLeft(u8, new_with_prompt[4..], " ");
+
+    try std.testing.expectEqualStrings(expected_prompt, actual_prompt);
 }
 
 test "WhatsAppBot message JSON serialization" {

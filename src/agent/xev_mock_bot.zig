@@ -53,11 +53,35 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
         return;
     };
 
-    std.debug.print("\n[Processing Message]: {s}\n", .{task.data});
+    var actual_text = task.data;
 
-    // Mock chat ID for session persistence
-    const mock_chat_id = 99999;
-    const session_id = try std.fmt.allocPrint(allocator, "mock_tg_{d}", .{mock_chat_id});
+    // Handle magic command /new to start a new session (increment counter so next session ID is different)
+    if (std.mem.startsWith(u8, actual_text, "/new")) {
+        mock_session_counter += 1;
+        if (actual_text.len <= 4) {
+            std.debug.print("\n-----<Starting new session! Send me a new message.>-----\n", .{});
+            return;
+        }
+        // If user sent "/new some prompt", start new session and process the prompt
+        actual_text = std.mem.trimLeft(u8, actual_text[4..], " ");
+    }
+
+    // Handle /help command
+    if (std.mem.startsWith(u8, actual_text, "/help")) {
+        const help_text =
+            \\🐸 SatiBot Console Commands:
+            \\ /help - Show this help message
+            \\
+            \\Send any message to chat with the AI assistant.
+        ;
+        std.debug.print("\n{s}\n", .{help_text});
+        return;
+    }
+
+    std.debug.print("\n[Processing Message]: {s}\n", .{actual_text});
+
+    // Use counter in session ID so /new creates a fresh session without loading old history
+    const session_id = try std.fmt.allocPrint(allocator, "mock_tg_99999_{d}", .{mock_session_counter});
     defer allocator.free(session_id);
 
     // Run agent logic with shutdown flag support
@@ -65,7 +89,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     agent.shutdown_flag = &shutdown_requested;
     defer agent.deinit();
 
-    agent.run(task.data) catch |err| {
+    agent.run(actual_text) catch |err| {
         if (err == error.Interrupted) {
             std.debug.print("\n🛑 Agent task cancelled\n", .{});
             return;
@@ -85,6 +109,9 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     // Index for RAG
     agent.index_conversation() catch {};
 }
+
+/// Session counter to generate unique session IDs when /new is used
+var mock_session_counter: u32 = 0;
 
 var global_mock_context: ?*MockContext = null;
 
@@ -184,5 +211,54 @@ test "MockBot logic test" {
     try bot.event_loop.addTask("test_id", "Hello", "console_input");
 
     // In UT we don't start the full run loop but can verify initial state
+    try std.testing.expect(bot.event_loop.task_queue.items.len == 1);
+}
+
+test "MockBot /new command increments session counter" {
+    const allocator = std.testing.allocator;
+
+    // Reset global counter for test
+    mock_session_counter = 0;
+
+    // Load config
+    const config = try @import("../config.zig").load(allocator);
+    defer config.deinit();
+
+    const bot = try MockBot.init(allocator, config.value);
+    defer bot.deinit();
+
+    // Test /new command increments counter
+    try bot.event_loop.addTask("test1", "/new", "console_input");
+    try bot.event_loop.addTask("test2", "Hello after new", "console_input");
+
+    // Verify session counter was incremented
+    try std.testing.expect(mock_session_counter == 1);
+
+    // Test another /new increments again
+    try bot.event_loop.addTask("test3", "/new", "console_input");
+    try std.testing.expect(mock_session_counter == 2);
+}
+
+test "MockBot /new with prompt processes prompt after incrementing counter" {
+    const allocator = std.testing.allocator;
+
+    // Reset global counter for test
+    mock_session_counter = 0;
+
+    // Load config
+    const config = try @import("../config.zig").load(allocator);
+    defer config.deinit();
+
+    const bot = try MockBot.init(allocator, config.value);
+    defer bot.deinit();
+
+    // Test /new with prompt
+    try bot.event_loop.addTask("test1", "/new what is zig?", "console_input");
+
+    // Verify counter was incremented
+    try std.testing.expect(mock_session_counter == 1);
+
+    // The task should still be processed (we can't easily test the actual processing
+    // without running the full event loop, but we can verify the task was added)
     try std.testing.expect(bot.event_loop.task_queue.items.len == 1);
 }
