@@ -82,7 +82,8 @@ Key principles:
 
 Avoid Object-Oriented Programming (OOP) patterns where state is hidden within objects (structs with many methods that mutate self). Instead:
 
-- **Favor Pure Functions**: Use functions that take data as input and return new or modified data as output.
-- **Avoid "Instances"**: Minimize the use of long-lived stateful objects. Only use "init" patterns for resource management (e.g., allocators, network connections).
-- **Separate Data and Logic**: Keep data structures simple and process them with external, stateless functions.
-- **Stateless Handlers**: Design task and event handlers to be stateless transformations of input data.
+- Favor Pure Functions: Use functions that take data as input and return new or modified data as output.
+- Avoid "Instances": Minimize the use of long-lived stateful objects. Only use "init" patterns for resource management (e.g., allocators, network connections).
+- Separate Data and Logic: Keep data structures simple and process them with external, stateless functions.
+- Separate IO from Logic: Isolate Input/Output operations (network, disk) from core logic. Core logic should be pure and testable without mocks.
+- Stateless Handlers: Design task and event handlers to be stateless transformations of input data.
