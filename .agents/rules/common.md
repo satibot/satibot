@@ -87,3 +87,57 @@ Avoid Object-Oriented Programming (OOP) patterns where state is hidden within ob
 - Separate Data and Logic: Keep data structures simple and process them with external, stateless functions.
 - Separate IO from Logic: Isolate Input/Output operations (network, disk) from core logic. Core logic should be pure and testable without mocks.
 - Stateless Handlers: Design task and event handlers to be stateless transformations of input data.
+
+## Optimize Debug Print Statements
+
+When writing help text, usage information, or multi-line output, prefer using a single string literal with multiline syntax over multiple `std.debug.print` calls.
+
+**Why:** Multiple `std.debug.print` calls create unnecessary function call overhead and make the code more verbose and harder to maintain.
+
+**Rule:** For multi-line output, use a single string literal with `\\` escape sequences and one `std.debug.print` call.
+
+**Good:**
+
+```zig
+fn usage() !void {
+    const help_text =
+        \\🐸 satibot - AI Chatbot Framework
+        \\
+        \\USAGE:
+        \\  satibot <command> [options] [args...]
+        \\  satibot help <command>    Show detailed help for a command
+        \\
+        \\COMMANDS:
+        \\  help          Show this help message
+        \\  agent         Run AI agent in interactive or single message mode
+        \\  console       Run console-based interactive bot
+        \\
+        \\For more information, visit: https://github.com/satibot/satibot
+    ;
+
+    std.debug.print("{s}\n", .{help_text});
+}
+```
+
+**Avoid:**
+
+```zig
+fn usage() !void {
+    std.debug.print("🐸 satibot - AI Chatbot Framework\n\n", .{});
+    std.debug.print("USAGE:\n", .{});
+    std.debug.print("  satibot <command> [options] [args...]\n", .{});
+    std.debug.print("  satibot help <command>    Show detailed help for a command\n\n", .{});
+    std.debug.print("COMMANDS:\n", .{});
+    std.debug.print("  help          Show this help message\n", .{});
+    std.debug.print("  agent         Run AI agent in interactive or single message mode\n", .{});
+    std.debug.print("  console       Run console-based interactive bot\n", .{});
+    std.debug.print("\nFor more information, visit: https://github.com/satibot/satibot\n", .{});
+}
+```
+
+**Benefits:**
+
+- Performance: Reduced function call overhead
+- Cleaner code: More readable and maintainable
+- Memory efficiency: Single string allocation
+- Better formatting: Easier to edit and preserve formatting
