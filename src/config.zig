@@ -236,6 +236,72 @@ test "Config: minimal configuration" {
     try std.testing.expect(parsed.value.tools.telegram == null);
 }
 
+/// Save configuration to the default location (~/.bots/config.json).
+/// Returns error.HomeNotFound if HOME environment variable is not set.
+pub fn save(allocator: std.mem.Allocator, config: Config) !void {
+    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const path = try std.fs.path.join(allocator, &.{ home, ".bots", "config.json" });
+    defer allocator.free(path);
+
+    return saveToPath(allocator, config, path);
+}
+
+/// Save configuration to a specific file path.
+/// Creates the directory if it doesn't exist.
+pub fn saveToPath(allocator: std.mem.Allocator, config: Config, path: []const u8) !void {
+    // Create directory if it doesn't exist
+    const dir = std.fs.path.dirname(path) orelse return error.InvalidPath;
+    try std.fs.cwd().makePath(dir);
+
+    // Serialize config to JSON
+    var out = std.io.Writer.Allocating.init(allocator);
+    defer out.deinit();
+    try std.json.Stringify.value(config, .{ .whitespace = .indent_2 }, &out.writer);
+
+    // Write to file
+    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(out.written());
+}
+
+test "Config: save and reload" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_config = Config{
+        .agents = .{
+            .defaults = .{
+                .model = "test-model-saved",
+                .embeddingModel = "local",
+                .disableRag = false,
+            },
+        },
+        .providers = .{
+            .openrouter = .{ .apiKey = "or-key-saved" },
+        },
+        .tools = .{
+            .web = .{ .search = .{ .apiKey = "search-key-saved" } },
+        },
+    };
+
+    // Create config file first
+    try tmp.dir.writeFile(.{ .sub_path = "config.json", .data = "{}" });
+    const path = try tmp.dir.realpathAlloc(allocator, "config.json");
+    defer allocator.free(path);
+
+    // Save config
+    try saveToPath(allocator, original_config, path);
+
+    // Reload config
+    const parsed = try loadFromPath(allocator, path);
+    defer parsed.deinit();
+
+    try std.testing.expectEqualStrings("test-model-saved", parsed.value.agents.defaults.model);
+    try std.testing.expectEqualStrings("or-key-saved", parsed.value.providers.openrouter.?.apiKey);
+    try std.testing.expectEqualStrings("search-key-saved", parsed.value.tools.web.search.apiKey.?);
+}
+
 test "Config: disableRag parsing" {
     const allocator = std.testing.allocator;
     const config_json =

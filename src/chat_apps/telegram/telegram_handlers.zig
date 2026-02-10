@@ -156,6 +156,60 @@ fn parseTelegramTask(allocator: std.mem.Allocator, task: xev_event_loop.Task) !T
 /// Global Telegram context for handlers
 var global_telegram_context: ?*TelegramContext = null;
 
+/// Handle /openrouter command to update model configuration
+fn handleOpenrouterCommand(ctx: *TelegramContext, tg_data: TelegramTaskData) !void {
+    // Extract model name from command
+    const command = tg_data.text["/openrouter ".len..];
+    const model_name = std.mem.trim(u8, command, " \t\r\n");
+
+    if (model_name.len == 0) {
+        const error_msg = try std.fmt.allocPrint(ctx.allocator, "❌ Usage: `/openrouter <model-name>`\nExample: `/openrouter z-ai/glm-4.5-air:free`", .{});
+        defer ctx.allocator.free(error_msg);
+
+        const chat_id_str = try std.fmt.allocPrint(ctx.allocator, "{d}", .{tg_data.chat_id});
+        defer ctx.allocator.free(chat_id_str);
+
+        const tg_config = ctx.config.tools.telegram orelse return;
+        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, ctx.allocator) catch {};
+        return;
+    }
+
+    // Load current config from file
+    const ConfigModule = @import("../../config.zig");
+    var loaded_config = try ConfigModule.load(ctx.allocator);
+    defer loaded_config.deinit();
+
+    // Update model in config
+    const old_model = loaded_config.value.agents.defaults.model;
+    loaded_config.value.agents.defaults.model = try ctx.allocator.dupe(u8, model_name);
+
+    // Save config to file
+    ConfigModule.save(ctx.allocator, loaded_config.value) catch |err| {
+        std.debug.print("Failed to save config: {any}\n", .{err});
+        const error_msg = try std.fmt.allocPrint(ctx.allocator, "❌ Failed to save configuration: {any}", .{err});
+        defer ctx.allocator.free(error_msg);
+
+        const chat_id_str = try std.fmt.allocPrint(ctx.allocator, "{d}", .{tg_data.chat_id});
+        defer ctx.allocator.free(chat_id_str);
+
+        const tg_config = ctx.config.tools.telegram orelse return;
+        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, ctx.allocator) catch {};
+        return;
+    };
+
+    // Send confirmation message
+    const success_msg = try std.fmt.allocPrint(ctx.allocator, "✅ Model updated successfully!\n\nOld model: `{s}`\nNew model: `{s}`\n\nNote: Bot restart may be required for changes to take effect.", .{ old_model, model_name });
+    defer ctx.allocator.free(success_msg);
+
+    const chat_id_str = try std.fmt.allocPrint(ctx.allocator, "{d}", .{tg_data.chat_id});
+    defer ctx.allocator.free(chat_id_str);
+
+    const tg_config = ctx.config.tools.telegram orelse return;
+    sendMessage(ctx.client, tg_config.botToken, chat_id_str, success_msg, ctx.allocator) catch {};
+
+    std.debug.print("Updated model from '{s}' to '{s}'\n", .{ old_model, model_name });
+}
+
 /// Handle incoming Telegram messages
 pub fn handleTelegramTask(ctx: *TelegramContext, task: xev_event_loop.Task) !void {
     std.debug.print("handleTelegramTask: Starting task processing\n", .{});
@@ -169,6 +223,12 @@ pub fn handleTelegramTask(ctx: *TelegramContext, task: xev_event_loop.Task) !voi
 /// Handle Telegram task data (shared between event loop implementations)
 pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) !void {
     std.debug.print("Processing Telegram message from chat {d}: {s}\n", .{ tg_data.chat_id, tg_data.text });
+
+    // Check for /openrouter command to update model
+    if (std.mem.startsWith(u8, tg_data.text, "/openrouter ")) {
+        try handleOpenrouterCommand(ctx, tg_data);
+        return;
+    }
 
     // Get Telegram config
     const tg_config = ctx.config.tools.telegram orelse {
