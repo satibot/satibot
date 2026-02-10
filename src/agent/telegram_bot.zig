@@ -3,7 +3,7 @@ const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
 const AsyncEventLoop = @import("event_loop.zig").AsyncEventLoop;
-const telegram_handlers = @import("telegram_handlers.zig");
+const telegram_handlers = @import("../chat_apps/telegram/telegram_handlers.zig");
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received

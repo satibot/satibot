@@ -427,7 +427,7 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Telegram bot started. Press Ctrl+C to stop.\n", .{});
 
     // Run Telegram bot (blocking call)
-    try satibot.agent.telegram_bot.runBot(allocator, config);
+    try satibot.agent.chat_apps.telegram.runBot(allocator, config);
 }
 
 /// Run WhatsApp bot server

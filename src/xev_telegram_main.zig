@@ -1,6 +1,6 @@
 const std = @import("std");
 const satibot = @import("root.zig");
-const xev_telegram_bot = @import("agent/xev_telegram_bot.zig");
+const telegram = @import("chat_apps/telegram/telegram.zig");
 
 pub fn main() !void {
     // Initialize allocator
@@ -14,5 +14,5 @@ pub fn main() !void {
     const config = parsed_config.value;
 
     // Run the xev-based Telegram bot
-    try xev_telegram_bot.runBot(allocator, config);
+    try telegram.runBot(allocator, config);
 }

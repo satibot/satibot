@@ -149,7 +149,7 @@ SatiBot now supports a high-performance asynchronous event loop based on **libxe
 - **Task Parallelism**: Concurrent processing of LLM requests across multiple worker threads.
 - **Scalability**: Better handling of high-traffic sessions and concurrent users.
 
-For details on the event loop implementation, see [XEV_TELEGRAM_BOT.md](XEV_TELEGRAM_BOT.md).
+For details on the event loop implementation, see [TELEGRAM_CHAT_APP.md](TELEGRAM_CHAT_APP.md).
 
 ## Configuration
 

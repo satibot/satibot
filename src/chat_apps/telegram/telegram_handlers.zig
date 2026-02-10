@@ -1,10 +1,10 @@
 /// Telegram-specific handlers for the generic event loop
 const std = @import("std");
-const event_loop = @import("event_loop.zig");
-const xev_event_loop = @import("../utils/xev_event_loop.zig");
-const messages = @import("messages.zig");
-const Config = @import("../config.zig").Config;
-const http = @import("../http.zig");
+const event_loop = @import("../../agent/event_loop.zig");
+const xev_event_loop = @import("../../utils/xev_event_loop.zig");
+const messages = @import("../../agent/messages.zig");
+const Config = @import("../../config.zig").Config;
+const http = @import("../../http.zig");
 
 /// Session history cache - simple HashMap for performance
 const SessionCache = struct {

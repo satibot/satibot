@@ -29,11 +29,11 @@
 /// 2. Tracking max update_id in polling response handler
 /// 3. Calling event_loop.updateOffset() after processing
 const std = @import("std");
-const Config = @import("../config.zig").Config;
-const http = @import("../http.zig");
-const XevEventLoop = @import("../utils/xev_event_loop.zig").XevEventLoop;
+const Config = @import("../../config.zig").Config;
+const http = @import("../../http.zig");
+const XevEventLoop = @import("../../utils/xev_event_loop.zig").XevEventLoop;
 const telegram_handlers = @import("telegram_handlers.zig");
-const providers = @import("../root.zig").providers;
+const providers = @import("../../root.zig").providers;
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received
@@ -136,10 +136,10 @@ pub const TelegramBot = struct {
         // CRITICAL: Set event_loop reference to enable offset updates
         // Without this, the bot would get stuck polling offset=0 forever
         bot.tg_ctx.event_loop = &bot.event_loop; // Reference after event_loop is moved into bot
-        
+
         // Initialize session cache for better performance
         bot.tg_ctx.initSessionCache();
-        
+
         // Schedule periodic session cache cleanup
         const cleanup_interval_ms = 1800000; // 30 minutes in milliseconds
         try bot.event_loop.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms);

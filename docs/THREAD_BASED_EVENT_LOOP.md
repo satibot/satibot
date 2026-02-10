@@ -22,7 +22,7 @@ The thread-based event loop replaces the async/await pattern (removed in Zig 0.1
    - Atomic shutdown flag for graceful termination
    - Generic offset tracking for polling APIs
 
-2. **Platform Handlers** (e.g., `src/agent/telegram_handlers.zig`)
+2. **Platform Handlers** (e.g., `src/chat_apps/telegram/telegram_handlers.zig`)
    - Platform-specific task and event handlers
    - Encapsulates platform logic in reusable modules
    - Clean separation between generic event loop and platform code
@@ -144,14 +144,14 @@ fn myTaskHandler(allocator: std.mem.Allocator, task: event_loop.Task) !void {
 
 ## Comparison with Async/Await (Zig < 0.15.0)
 
-| Aspect              | Async/Await (Old)   | Thread-Based (New) |
-|---------------------|---------------------|--------------------|
-| Concurrency Model   | Coroutines         | OS Threads         |
-| Memory Usage        | Lower per task      | Higher per thread  |
-| CPU Utilization     | Single core         | Multi-core         |
-| Complexity          | Frame management    | Mutex/Condition    |
-| Zig Version         | < 0.15.0           | ≥ 0.15.0           |
-| Debugging           | Harder             | Easier             |
+| Aspect              | Async/Await (Old) | Thread-Based (New) |
+|---------------------|-------------------|--------------------|
+| Concurrency Model   | Coroutines        | OS Threads         |
+| Memory Usage        | Lower per task    | Higher per thread  |
+| CPU Utilization     | Single core       | Multi-core         |
+| Complexity          | Frame management  | Mutex/Condition    |
+| Zig Version         | < 0.15.0          | ≥ 0.15.0           |
+| Debugging           | Harder            | Easier             |
 
 ## Implementation Details
 
