@@ -23,6 +23,8 @@ pub const Agent = struct {
     on_chunk: ?base.ChunkCallback = null,
     chunk_ctx: ?*anyopaque = null,
     last_chunk: ?[]const u8 = null,
+    /// Optional shutdown flag to check during long-running operations
+    shutdown_flag: ?*const std.atomic.Value(bool) = null,
 
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
@@ -292,6 +294,16 @@ pub const Agent = struct {
             .spawn_subagent = spawn_subagent,
         };
 
+        // Track iteration results to prevent loops
+        // Store assistant response content from each iteration
+        var iteration_results = std.ArrayListUnmanaged(?[]const u8){};
+        defer {
+            for (iteration_results.items) |result| {
+                if (result) |r| self.allocator.free(r);
+            }
+            iteration_results.deinit(self.allocator);
+        }
+
         // Collect tools for the provider
         var provider_tools = std.ArrayListUnmanaged(base.ToolDefinition){};
         defer provider_tools.deinit(self.allocator);
@@ -317,7 +329,63 @@ pub const Agent = struct {
         }
 
         while (iterations < max_iterations) : (iterations += 1) {
+            // Check for shutdown signal
+            if (self.shutdown_flag) |flag| {
+                if (flag.load(.seq_cst)) {
+                    std.debug.print("\n🛑 Agent interrupted by shutdown signal\n", .{});
+                    return error.Interrupted;
+                }
+            }
+
             std.debug.print("\n--- Iteration {d} ---\n", .{iterations + 1});
+
+            // When iteration > 2, inject context from iteration 1 to help prevent loops
+            // This gives the LLM visibility into earlier reasoning
+            if (iterations > 1 and iteration_results.items.len > 0) {
+                if (iteration_results.items[0]) |first_result| {
+                    const loop_warning = try std.fmt.allocPrint(
+                        self.allocator,
+                        "Note: You are on iteration {d}. Your first iteration response was: \"{s}\". Please review if you're making progress or stuck in a loop.",
+                        .{ iterations + 1, first_result },
+                    );
+                    defer self.allocator.free(loop_warning);
+
+                    // Add as a temporary system message to filtered_messages
+                    try filtered_messages.append(self.allocator, .{
+                        .role = "system",
+                        .content = loop_warning,
+                    });
+                }
+            }
+
+            // Debug: Print what we're sending to the LLM
+            std.debug.print("\n=== DEBUG: Messages being sent to LLM ===\n", .{});
+            for (filtered_messages.items, 0..) |msg, idx| {
+                std.debug.print("Message {d}: role={s}\n", .{ idx, msg.role });
+                if (msg.content) |content| {
+                    // Truncate long content for readability
+                    const max_len = 500;
+                    if (content.len > max_len) {
+                        std.debug.print("  content: {s}... (truncated, total length: {d})\n", .{ content[0..max_len], content.len });
+                    } else {
+                        std.debug.print("  content: {s}\n", .{content});
+                    }
+                }
+                if (msg.tool_calls) |calls| {
+                    std.debug.print("  tool_calls: {d} calls\n", .{calls.len});
+                    for (calls, 0..) |call, call_idx| {
+                        std.debug.print("    [{d}] {s}({s})\n", .{ call_idx, call.function.name, call.function.arguments });
+                    }
+                }
+                if (msg.tool_call_id) |id| {
+                    std.debug.print("  tool_call_id: {s}\n", .{id});
+                }
+            }
+            std.debug.print("\n=== DEBUG: Tools available ({d} tools) ===\n", .{provider_tools.items.len});
+            for (provider_tools.items, 0..) |tool, idx| {
+                std.debug.print("Tool {d}: {s} - {s}\n", .{ idx, tool.name, tool.description });
+            }
+            std.debug.print("=== END DEBUG ===\n\n", .{});
 
             var response: base.LLMResponse = undefined;
             var retry_count: usize = 0;
@@ -385,6 +453,24 @@ pub const Agent = struct {
                 .content = response.content,
                 .tool_calls = response.tool_calls,
             });
+
+            // Store iteration result for loop detection
+            // Track either content or tool calls to detect loops
+            var iteration_content: ?[]const u8 = null;
+            if (response.content) |content| {
+                iteration_content = try self.allocator.dupe(u8, content);
+            } else if (response.tool_calls) |calls| {
+                // If no content but has tool calls, track the tool names
+                var tool_summary = std.ArrayListUnmanaged(u8){};
+                defer tool_summary.deinit(self.allocator);
+                try tool_summary.appendSlice(self.allocator, "Tool calls: ");
+                for (calls, 0..) |call, i| {
+                    if (i > 0) try tool_summary.appendSlice(self.allocator, ", ");
+                    try tool_summary.appendSlice(self.allocator, call.function.name);
+                }
+                iteration_content = try tool_summary.toOwnedSlice(self.allocator);
+            }
+            try iteration_results.append(self.allocator, iteration_content);
 
             if (response.tool_calls) |calls| {
                 for (calls) |call| {

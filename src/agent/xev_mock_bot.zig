@@ -60,11 +60,16 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     const session_id = try std.fmt.allocPrint(allocator, "mock_tg_{d}", .{mock_chat_id});
     defer allocator.free(session_id);
 
-    // Run agent logic
+    // Run agent logic with shutdown flag support
     var agent = Agent.init(allocator, ctx.config, session_id);
+    agent.shutdown_flag = &shutdown_requested;
     defer agent.deinit();
 
     agent.run(task.data) catch |err| {
+        if (err == error.Interrupted) {
+            std.debug.print("\n🛑 Agent task cancelled\n", .{});
+            return;
+        }
         std.debug.print("Agent error: {any}\n", .{err});
         return;
     };
