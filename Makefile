@@ -13,7 +13,7 @@
 ################################################################################
 ZIG           ?= zig
 ZIG_VERSION   := $(shell $(ZIG) version)
-BUILD_TYPE    ?= Debug
+BUILD_TYPE    ?= ReleaseFast
 BUILD_OPTS      = -Doptimize=$(BUILD_TYPE)
 JOBS          ?= $(shell nproc || echo 2)
 SRC_DIR       := src
@@ -49,12 +49,12 @@ build: ## Build project (Mode=$(BUILD_TYPE))
 	$(ZIG) build $(BUILD_OPTS) -j$(JOBS)
 
 prod: ## Build project in production mode (only telegram bot)
-	@echo "Building telegram bot in $(BUILD_TYPE) mode with $(JOBS) concurrent jobs..."
-	$(ZIG) build $(BUILD_OPTS) -j$(JOBS) xev-telegram-bot -Dtelegram-bot-only=true
+	@echo "Building telegram bot in ReleaseFast mode with $(JOBS) concurrent jobs..."
+	$(ZIG) build -Doptimize=ReleaseFast -j$(JOBS) xev-telegram-bot -Dtelegram-bot-only=true
 
 prod-sync: ## Build synchronous telegram bot in production mode
-	@echo "Building synchronous telegram bot in $(BUILD_TYPE) mode with $(JOBS) concurrent jobs..."
-	$(ZIG) build $(BUILD_OPTS) -j$(JOBS) telegram-sync
+	@echo "Building synchronous telegram bot in ReleaseFast mode with $(JOBS) concurrent jobs..."
+	$(ZIG) build -Doptimize=ReleaseFast -j$(JOBS) telegram-sync
 
 rebuild: clean build  ## clean and build
 

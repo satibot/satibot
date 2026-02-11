@@ -70,9 +70,9 @@ git clone https://github.com/satibot/satibot.git
 cd satibot
 
 # build
-zig build -Doptimize=ReleaseFast
+zig build -Doptimize=ReleaseFast --prefix $HOME/.local
 # or
-make build
+make prod
 
 # initialize `~/.bots/config.json` (at HOME path)
 # If platform sections already exists, it will do nothing
