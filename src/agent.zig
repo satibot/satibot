@@ -585,10 +585,9 @@ test "Agent: init and tool registration" {
     var agent = Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
-    try std.testing.expect(agent.registry.get("list_files") != null);
-    try std.testing.expect(agent.registry.get("telegram_send_message") != null);
-    try std.testing.expect(agent.registry.get("discord_send_message") != null);
-    try std.testing.expect(agent.registry.get("whatsapp_send_message") != null);
+    // Only vector tools are registered by default (others are commented out)
+    try std.testing.expect(agent.registry.get("vector_upsert") != null);
+    try std.testing.expect(agent.registry.get("vector_search") != null);
 }
 
 test "Agent: message context management" {
@@ -639,38 +638,19 @@ test "Agent: tool registry operations" {
     var agent = Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
-    // Test getting existing tools
-    const list_files_tool = agent.registry.get("list_files");
-    try std.testing.expect(list_files_tool != null);
-    try std.testing.expectEqualStrings("list_files", list_files_tool.?.name);
+    // Test getting existing vector tools
+    const vector_upsert_tool = agent.registry.get("vector_upsert");
+    try std.testing.expect(vector_upsert_tool != null);
+    try std.testing.expectEqualStrings("vector_upsert", vector_upsert_tool.?.name);
 
     // Test getting non-existent tool
     const non_existent = agent.registry.get("non_existent_tool");
     try std.testing.expect(non_existent == null);
 
-    // Verify all default tools are registered
+    // Verify vector tools are registered
     const expected_tools = [_][]const u8{
-        "list_files",
-        "read_file",
-        "write_file",
-        "web_search",
-        "list_marketplace",
-        "search_marketplace",
-        "install_skill",
-        "telegram_send_message",
-        "discord_send_message",
-        "whatsapp_send_message",
         "vector_upsert",
         "vector_search",
-        "graph_upsert_node",
-        "graph_upsert_edge",
-        "graph_query",
-        "rag_search",
-        "cron_add",
-        "cron_list",
-        "cron_remove",
-        "subagent_spawn",
-        "run_command",
     };
 
     for (expected_tools) |tool_name| {
