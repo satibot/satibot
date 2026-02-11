@@ -25,7 +25,7 @@ pub fn main() !void {
     defer client.deinit();
 
     const uri = try std.Uri.parse("https://api.anthropic.com/v1/messages");
-    
+
     var request_body_buffer: [1024]u8 = undefined;
     var request_body = std.ArrayList(u8).initBuffer(&request_body_buffer);
     try request_body.writer(allocator).print(
@@ -39,9 +39,9 @@ pub fn main() !void {
     , .{});
 
     print("Sending request to Anthropic API...\n", .{});
-    
+
     var response_buffer: [4096]u8 = undefined;
-    
+
     const result = try client.open(.POST, uri, .{ .accept_encoding = .{
         .compress = false,
         .gzip = false,
@@ -49,17 +49,17 @@ pub fn main() !void {
         .zstd = false,
     } });
     defer result.deinit();
-    
+
     try result.headers.append("x-api-key", api_key);
     try result.headers.append("anthropic-version", "2023-06-01");
     try result.headers.append("content-type", "application/json");
-    
+
     try result.send();
     try result.writeAll(request_body.items);
     try result.finish();
 
     try result.wait();
-    
+
     print("Status: {d}\n", .{result.status});
     if (result.status == .ok) {
         print("✅ API request successful!\n", .{});

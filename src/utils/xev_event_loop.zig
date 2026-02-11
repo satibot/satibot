@@ -15,7 +15,7 @@ pub const Event = struct {
     type: EventType,
     payload: ?[]const u8,
     expires: i64,
-    
+
     pub fn compare(_: void, a: Event, b: Event) std.math.Order {
         return std.math.order(a.expires, b.expires);
     }
@@ -36,35 +36,35 @@ pub const EventHandler = *const fn (allocator: std.mem.Allocator, event: Event) 
 pub const XevEventLoop = struct {
     allocator: std.mem.Allocator,
     config: Config,
-    
+
     // libxev loop
     loop: xev.Loop,
-    
+
     // Thread-safe task queue for immediate processing
     task_queue: std.ArrayList(Task),
     // Mutex for thread-safe access to task queue
     task_mutex: std.Thread.Mutex,
     // Condition variable for task queue
     task_condition: std.Thread.Condition,
-    
+
     // Priority queue for scheduled events
     event_queue: std.PriorityQueue(Event, void, Event.compare),
     // Mutex for thread-safe access to event queue
     event_mutex: std.Thread.Mutex,
-    
+
     // Callback handlers
     task_handler: ?TaskHandler,
     event_handler: ?EventHandler,
-    
+
     // Shutdown flag
     shutdown: std.atomic.Value(bool),
-    
+
     // Worker threads
     worker_threads: std.ArrayList(std.Thread),
-    
+
     // Generic offset tracking for polling APIs (atomic for thread safety)
     offset: std.atomic.Value(i64),
-    
+
     // Timer for scheduled events
     timer: xev.Timer,
     timer_completion: xev.Completion,
@@ -73,7 +73,7 @@ pub const XevEventLoop = struct {
         // Initialize libxev loop
         const loop = try xev.Loop.init(.{});
         const timer = try xev.Timer.init();
-        
+
         const event_loop = XevEventLoop{
             .allocator = allocator,
             .config = config,
@@ -91,7 +91,7 @@ pub const XevEventLoop = struct {
             .timer = timer,
             .timer_completion = undefined,
         };
-        
+
         return event_loop;
     }
 
@@ -112,10 +112,10 @@ pub const XevEventLoop = struct {
             .data = try self.allocator.dupe(u8, data),
             .source = try self.allocator.dupe(u8, source),
         };
-        
+
         self.task_mutex.lock();
         defer self.task_mutex.unlock();
-        
+
         try self.task_queue.append(self.allocator, task);
         self.task_condition.signal();
     }
@@ -123,12 +123,12 @@ pub const XevEventLoop = struct {
     /// Schedule an event for future execution
     pub fn scheduleEvent(self: *XevEventLoop, id: []const u8, event_type: EventType, payload: ?[]const u8, delay_ms: u64) !void {
         const expires = std.time.nanoTimestamp() + (@as(i64, @intCast(delay_ms)) * std.time.ns_per_ms);
-        
+
         var event_payload: ?[]const u8 = null;
         if (payload) |p| {
             event_payload = try self.allocator.dupe(u8, p);
         }
-        
+
         const event = Event{
             .id = try self.allocator.dupe(u8, id),
             .type = event_type,
@@ -138,7 +138,7 @@ pub const XevEventLoop = struct {
 
         self.event_mutex.lock();
         defer self.event_mutex.unlock();
-        
+
         try self.event_queue.add(event);
     }
 
@@ -164,10 +164,10 @@ pub const XevEventLoop = struct {
                 }
                 break;
             }
-            
+
             const task = self.task_queue.orderedRemove(0);
             self.task_mutex.unlock();
-            
+
             // Process task
             if (self.task_handler) |handler| {
                 handler(self.allocator, task) catch |err| {
@@ -176,7 +176,7 @@ pub const XevEventLoop = struct {
             } else {
                 std.debug.print("[Task {s}] {s}: {s}\n", .{ task.id, task.source, task.data });
             }
-            
+
             // Free task memory
             self.allocator.free(task.id);
             self.allocator.free(task.data);
@@ -192,15 +192,15 @@ pub const XevEventLoop = struct {
             while (self.task_queue.items.len == 0 and !self.shutdown.load(.seq_cst)) {
                 self.task_condition.wait(&self.task_mutex);
             }
-            
+
             if (self.shutdown.load(.seq_cst)) {
                 self.task_mutex.unlock();
                 break;
             }
-            
+
             const task = self.task_queue.orderedRemove(0);
             self.task_mutex.unlock();
-            
+
             // Process task
             if (self.task_handler) |handler| {
                 handler(self.allocator, task) catch |err| {
@@ -209,7 +209,7 @@ pub const XevEventLoop = struct {
             } else {
                 std.debug.print("[Thread {d}] Task {s} from {s}: {s}\n", .{ thread_id, task.id, task.source, task.data });
             }
-            
+
             // Free task memory
             self.allocator.free(task.id);
             self.allocator.free(task.data);
@@ -222,7 +222,7 @@ pub const XevEventLoop = struct {
         // Start worker threads
         const num_workers = 4; // Default number of workers
         for (0..num_workers) |i| {
-            const thread = try std.Thread.spawn(.{}, workerThreadFn, .{self, i});
+            const thread = try std.Thread.spawn(.{}, workerThreadFn, .{ self, i });
             try self.worker_threads.append(self.allocator, thread);
         }
         defer {
@@ -247,13 +247,13 @@ pub const XevEventLoop = struct {
                     self.event_mutex.lock();
                     const event = self.event_queue.remove();
                     self.event_mutex.unlock();
-                    
+
                     if (self.event_handler) |handler| {
                         handler(self.allocator, event) catch |err| {
                             std.debug.print("Error processing event: {any}\n", .{err});
                         };
                     }
-                    
+
                     // Free event memory
                     self.allocator.free(event.id);
                     if (event.payload) |p| {
@@ -263,7 +263,7 @@ pub const XevEventLoop = struct {
                     // Wait for next event or task - use a short timeout to keep checking
                     const delay_ms = 100; // Check every 100ms
                     self.timer.run(&self.loop, &self.timer_completion, delay_ms * std.time.ns_per_ms, XevEventLoop, self, timerCallback);
-                    
+
                     // Run the loop with a single iteration
                     self.loop.run(.once) catch |err| {
                         std.debug.print("Event loop error: {any}\n", .{err});
@@ -285,7 +285,7 @@ pub const XevEventLoop = struct {
             std.debug.print("Timer error: {any}\n", .{err});
             return .disarm;
         };
-        
+
         // Process any due events
         const now = std.time.nanoTimestamp();
         while (self.event_queue.peek()) |event| {
@@ -293,13 +293,13 @@ pub const XevEventLoop = struct {
                 self.event_mutex.lock();
                 const due_event = self.event_queue.remove();
                 self.event_mutex.unlock();
-                
+
                 if (self.event_handler) |handler| {
                     handler(self.allocator, due_event) catch |err| {
                         std.debug.print("Error processing event: {any}\n", .{err});
                     };
                 }
-                
+
                 // Free event memory
                 self.allocator.free(due_event.id);
                 if (due_event.payload) |p| {
@@ -309,7 +309,7 @@ pub const XevEventLoop = struct {
                 break;
             }
         }
-        
+
         return .disarm;
     }
 
@@ -330,7 +330,7 @@ pub const XevEventLoop = struct {
         }
         self.task_queue.deinit(self.allocator);
         self.task_mutex.unlock();
-        
+
         // Free remaining events
         self.event_mutex.lock();
         while (self.event_queue.removeOrNull()) |event| {
@@ -341,11 +341,11 @@ pub const XevEventLoop = struct {
         }
         self.event_queue.deinit();
         self.event_mutex.unlock();
-        
+
         // Deinitialize libxev resources
         self.timer.deinit();
         self.loop.deinit();
-        
+
         // Clean up worker threads
         self.worker_threads.deinit(self.allocator);
     }
