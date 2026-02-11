@@ -182,6 +182,13 @@ pub const TelegramBot = struct {
                     var agent = Agent.init(self.allocator, self.config, session_id);
                     defer agent.deinit();
 
+                    // Send typing indicator to show user that bot is processing
+                    // This appears while waiting for LLM response (can take several seconds)
+                    self.send_chat_action(tg_config.botToken, chat_id_str) catch |err| {
+                        std.debug.print("Warning: Failed to send typing indicator: {any}\n", .{err});
+                        // Continue processing even if typing indicator fails
+                    };
+
                     // Run the agent loop (LLM inference + Tool execution)
                     // This processes the user message and generates a response
                     agent.run(actual_text) catch |err| {
@@ -230,6 +237,32 @@ pub const TelegramBot = struct {
         const body = try std.json.Stringify.valueAlloc(self.allocator, .{
             .chat_id = chat_id,
             .text = text,
+        }, .{});
+        defer self.allocator.free(body);
+
+        const headers = &[_]std.http.Header{
+            .{ .name = "Content-Type", .value = "application/json" },
+        };
+
+        const response = try self.client.post(url, headers, body);
+        @constCast(&response).deinit();
+    }
+
+    /// Send a chat action (typing indicator) to a Telegram chat.
+    ///
+    /// This tells Telegram to show "typing..." status to the user while
+    /// the bot is processing their message and waiting for LLM response.
+    ///
+    /// Args:
+    ///   - token: Bot token for authentication
+    ///   - chat_id: Target chat ID as string
+    fn send_chat_action(self: *TelegramBot, token: []const u8, chat_id: []const u8) !void {
+        const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendChatAction", .{token});
+        defer self.allocator.free(url);
+
+        const body = try std.json.Stringify.valueAlloc(self.allocator, .{
+            .chat_id = chat_id,
+            .action = "typing",
         }, .{});
         defer self.allocator.free(body);
 
@@ -305,4 +338,24 @@ test "TelegramBot tick returns if no config" {
 
     // this should return immediately (no network call)
     try bot.tick();
+}
+
+test "TelegramBot send_chat_action with fake token fails" {
+    const allocator = std.testing.allocator;
+    const config = Config{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token-for-testing" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Test that send_chat_action returns an error with fake credentials
+    // This verifies the method signature and HTTP call logic are correct
+    const result = bot.send_chat_action("fake-token-for-testing", "123456");
+    try std.testing.expectError(error.HttpError, result);
 }
