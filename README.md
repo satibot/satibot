@@ -70,7 +70,7 @@ git clone https://github.com/satibot/satibot.git
 cd satibot
 
 # build
-zig build
+zig build -Doptimize=ReleaseFast
 # or
 make build
 

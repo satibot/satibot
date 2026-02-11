@@ -2,7 +2,7 @@
 
 const std = @import("std");
 const xev = @import("xev");
-const satibot = @import("src/root.zig");
+const satibot = @import("satibot");
 
 /// Test configuration
 const TestConfig = struct {
