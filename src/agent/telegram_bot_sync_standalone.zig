@@ -1,5 +1,8 @@
 const std = @import("std");
 
+// Global HOME directory for file operations
+const HOME_DIR = std.posix.getenv("HOME") orelse "/tmp";
+
 /// Configuration data - immutable after creation
 pub const Config = struct {
     agents: struct {
@@ -46,12 +49,11 @@ const BotState = struct {
 
 /// Save last_chat_id to file for persistence across restarts
 fn saveLastChatId(chat_id: i64) void {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
-    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt" }) catch return;
+    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return;
     defer std.heap.page_allocator.free(file_path);
 
     // Ensure directory exists
-    const bots_dir = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots" }) catch return;
+    const bots_dir = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots" }) catch return;
     defer std.heap.page_allocator.free(bots_dir);
     std.fs.makeDirAbsolute(bots_dir) catch {};
 
@@ -71,8 +73,7 @@ fn saveLastChatId(chat_id: i64) void {
 
 /// Read last_chat_id from file
 fn readLastChatId() ?i64 {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
-    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt" }) catch return null;
+    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return null;
     defer std.heap.page_allocator.free(file_path);
 
     const file = std.fs.openFileAbsolute(file_path, .{}) catch return null;
@@ -411,6 +412,9 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
         if (config.tools.telegram) |tg_config| {
             std.debug.print("Sending shutdown message to chat {d}...\n", .{chat_id});
             sendShutdownMessage(allocator, client, tg_config.botToken, chat_id);
+            // Explicitly save chat_id during shutdown as a safety measure
+            saveLastChatId(chat_id);
+            std.debug.print("Saved chat ID {d} to file\n", .{chat_id});
         }
     }
 
@@ -562,4 +566,29 @@ test "extractUpdates with valid and invalid updates" {
 
     try std.testing.expectEqual(@as(usize, 1), updates.len);
     try std.testing.expectEqual(@as(i64, 100), updates[0].update_id);
+}
+
+test "saveLastChatId and readLastChatId" {
+    const test_chat_id: i64 = 123456789;
+
+    // Save chat ID
+    saveLastChatId(test_chat_id);
+
+    // Read it back
+    const read_chat_id = readLastChatId();
+    try std.testing.expect(read_chat_id != null);
+    try std.testing.expectEqual(test_chat_id, read_chat_id.?);
+}
+
+test "readLastChatId with non-existent file" {
+    // Clean up any existing test file
+    const file_path = std.fs.path.join(std.testing.allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return;
+    defer std.testing.allocator.free(file_path);
+
+    // Try to delete the file (ignore error if it doesn't exist)
+    std.fs.deleteFileAbsolute(file_path) catch {};
+
+    // Should return null when file doesn't exist
+    const read_chat_id = readLastChatId();
+    try std.testing.expect(read_chat_id == null);
 }
