@@ -165,7 +165,11 @@ pub const MockBot = struct {
         const n = stdin.read(&buf) catch |err| {
             // Handle interrupted input (e.g., from Ctrl+C signal)
             if (err == error.InputOutput or err == error.BrokenPipe) {
-                // Signal was received, just exit gracefully
+                // Signal was received, check if we should shutdown
+                if (shutdown_requested.load(.seq_cst)) {
+                    return;
+                }
+                // Otherwise continue the loop
                 return;
             }
             return err;
@@ -207,7 +211,11 @@ pub const MockBot = struct {
             self.tick() catch |err| {
                 if (err == error.EndOfStream) break;
                 if (err == error.InputOutput or err == error.BrokenPipe) {
-                    // Input was interrupted (likely by signal), just continue to shutdown check
+                    // Input was interrupted, check shutdown flag
+                    if (shutdown_requested.load(.seq_cst)) {
+                        break;
+                    }
+                    // Otherwise continue to next iteration
                     continue;
                 }
                 std.debug.print("Tick error: {any}\n", .{err});

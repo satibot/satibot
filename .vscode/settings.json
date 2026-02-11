@@ -6,6 +6,7 @@
     },
     "makefile.configureOnOpen": false,
     "cSpell.words": [
+        "Clawd",
         "deinit",
         "Doptimize",
         "Dtarget",

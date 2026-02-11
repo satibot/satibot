@@ -4,11 +4,15 @@
 
 # 🧘 satibot: The Mindful AI Agent Framework
 
-**Built in Zig for performance, designed for awareness.**
+Built in Zig for performance, designed for awareness.
 
 `satibot` is a lightweight, memory-aware AI agent framework that never forgets. Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), it combines the power of ReAct loops with persistent memory to create agents that remember, learn, and assist.
 
-Currently, it only supports Telegram and console, under development.
+IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and console, other features are under development.
+
+- [x] Telegram + OpenRouter
+- [x] Console
+- [x] chat history saved to JSON base session file, start new session with `/new` message
 
 ## Comparison with others
 
@@ -53,44 +57,67 @@ View more in [Features](docs/FEATURES.md).
 
 ### 1. Install
 
+Install Zig: <https://ziglang.org/learn/getting-started/>
+
 ```bash
+# verify zig version
+zig version
+# 0.15.2
+
 git clone https://github.com/satibot/satibot.git
 cd satibot
+
+# build
+zig build
+# or
+make build
+
+# initialize `~/.bots/config.json`
+zig build init
 ```
 
 ### 2. Configure
 
-Create `~/.bots/config.json`:
+Read [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md) for more details about Telegram + OpenRouter setup.
+
+Edit `~/.bots/config.json`:
 
 ```json
 {
+  "agents": {
+    "defaults": {
+      "model": "arcee-ai/trinity-large-preview:free"
+    }
+  },
   "providers": {
     "openrouter": {
       "apiKey": "sk-or-v1-xxx"
     }
   },
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-3-5-sonnet"
+  "tools": {
+    "telegram": {
+      "botToken": "",
+      "chatId": ""
     }
   }
 }
 ```
 
-### 3. Run
+Add `satibot` to your PATH, for example add to `~/.zshrc`:
 
 ```bash
-# Chat directly
-zig build run -- agent -m "Hello, satibot!"
-
-# Console-based interactive bot (Xev Mock Bot)
-zig build console
-
-# Run as Telegram bot (Xev/Asynchronous)
-zig build telegram
+export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 ```
 
-That's it! You have a mindful AI assistant running in seconds.
+## Run
+
+```bash
+# for console, terminal base
+satibot console
+
+# for telegram
+satibot telegram
+```
 
 ---
 
