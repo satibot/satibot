@@ -1,3 +1,5 @@
+// For testing LLM providers
+
 const std = @import("std");
 const xev = @import("xev");
 const satibot = @import("src/root.zig");
