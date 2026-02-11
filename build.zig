@@ -132,21 +132,6 @@ pub fn build(b: *std.Build) void {
     // }).module("tls"));
     // b.installArtifact(async_telegram_exe);
 
-    // Synchronous Telegram Bot executable (standalone to avoid module conflicts)
-    const sync_telegram_exe = b.addExecutable(.{
-        .name = "telegram-sync",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/telegram_sync_main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    sync_telegram_exe.root_module.addImport("build_options", build_options.createModule());
-    b.installArtifact(sync_telegram_exe);
-
-    // Create a run step for the sync telegram bot
-    const run_sync_telegram_cmd = b.addRunArtifact(sync_telegram_exe);
-
     // Xev-based Telegram Bot executable
     const xev_telegram_exe = b.addExecutable(.{
         .name = "xev-telegram-bot",
@@ -244,10 +229,6 @@ pub fn build(b: *std.Build) void {
     const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
     run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
     // run_xev_mock_cmd.step.dependOn(b.getInstallStep());
-
-    // Run step for sync telegram bot
-    const run_sync_telegram_step = b.step("telegram-sync", "Run the synchronous telegram bot");
-    run_sync_telegram_step.dependOn(&run_sync_telegram_cmd.step);
 
     // Run step for xev telegram bot
     const run_xev_telegram_step = b.step("telegram", "Run the xev telegram bot");

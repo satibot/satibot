@@ -13,6 +13,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] Telegram + OpenRouter (Async & Sync versions)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
+- [ ] VectorDB - local first vector searching for similar content chat logs.
 
 ## Comparison with others
 
@@ -228,30 +229,8 @@ We welcome contributions!
 ### Quick Development Setup
 
 ```bash
-# Run the agent with a message
-zig build run -- agent -m "Your message"
-
-# Run with a specific session ID to persist history
-zig build run -- agent -m "Follow-up message" -s my-session
-
 # Run console-based interactive bot (Xev Mock Bot)
 zig build console
-
-# Run as a Telegram Bot (Xev/Asynchronous)
-zig build telegram
-
-# Run as a Telegram Bot (Synchronous)
-zig build telegram-sync
-
-# Run the GATEWAY (Telegram + Cron + Heartbeat)
-zig build run -- gateway
-
-# RAG is enabled by default to remember conversations. 
-# To disable it for a specific run:
-zig build run -- agent -m "Don't remember this" --no-rag
-
-# Run as WhatsApp bot (requires Meta Cloud API setup)
-zig build run -- whatsapp
 ```
 
 ---

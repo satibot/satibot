@@ -594,37 +594,8 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Display active model and start bot
     std.debug.print("Active Model: {s}\nSynchronous Telegram bot started. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
 
-    // Run synchronous Telegram bot (blocking call)
-    // Note: We run the sync bot as a separate process to avoid module conflicts
-
-    const build_result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "zig", "build", "telegram-sync" },
-    });
-    defer allocator.free(build_result.stdout);
-    defer allocator.free(build_result.stderr);
-
-    if (build_result.term.Exited != 0) {
-        std.debug.print("Error building sync telegram bot: {s}\n", .{build_result.stderr});
-        return error.BotBuildFailed;
-    }
-
-    std.debug.print("Starting synchronous Telegram bot...\n", .{});
-
-    // Run the built bot
-    const bot_result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{"./zig-out/bin/telegram-sync"},
-    });
-    defer allocator.free(bot_result.stdout);
-    defer allocator.free(bot_result.stderr);
-
-    if (bot_result.term.Exited != 0) {
-        std.debug.print("Error running sync telegram bot: {s}\n", .{bot_result.stderr});
-        return error.BotExecutionFailed;
-    }
-
-    std.debug.print("{s}", .{bot_result.stdout});
+    // Run synchronous Telegram bot directly using the proper implementation
+    try satibot.agent.telegram_bot_sync.run(allocator, config);
 }
 
 /// Run WhatsApp bot server

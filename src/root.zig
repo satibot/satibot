@@ -12,6 +12,7 @@ pub const agent = struct {
         pub const telegram = @import("chat_apps/telegram/telegram.zig");
         pub const telegram_handlers = @import("chat_apps/telegram/telegram_handlers.zig");
     };
+    pub const telegram_bot_sync = @import("agent/telegram_bot_sync.zig");
     pub const whatsapp_bot = @import("agent/whatsapp_bot.zig");
     pub const cron = @import("agent/cron.zig");
     pub const heartbeat = @import("agent/heartbeat.zig");

@@ -25,9 +25,6 @@ const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
 
-// Import providers directly to avoid module conflicts
-const providers = @import("root.zig").providers;
-
 /// Synchronous TelegramBot manages interaction with the Telegram Bot API.
 ///
 /// This implementation uses simple long-polling and processes messages
@@ -297,10 +294,13 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     // This notifies the admin that the bot is online and ready to process messages
     if (config.tools.telegram) |tg_config| {
         if (tg_config.chatId) |chat_id| {
+            std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
             bot.send_message(tg_config.botToken, chat_id, "🚀 Bot is ready and starting to poll for messages...") catch |err| {
                 std.debug.print("Warning: Failed to send startup message: {any}\n", .{err});
                 // Continue even if startup message fails
             };
+        } else {
+            std.debug.print("Note: No chatId configured. Startup message not sent.\n", .{});
         }
     } else {
         std.debug.print("Warning: No Telegram configuration found. Skipping startup message.\n", .{});
