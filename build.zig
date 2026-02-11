@@ -225,13 +225,13 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(xev_mock_exe);
 
     // Run step for xev mock bot
-    const run_xev_mock_step = b.step("run-console", "Run the xev mock bot (console-based)");
+    const run_xev_mock_step = b.step("console", "Run the xev mock bot (console-based)");
     const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
     run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
     // run_xev_mock_cmd.step.dependOn(b.getInstallStep());
 
     // Run step for xev telegram bot
-    const run_xev_telegram_step = b.step("run-xev-telegram", "Run the xev telegram bot");
+    const run_xev_telegram_step = b.step("telegram", "Run the xev telegram bot");
     run_xev_telegram_step.dependOn(&run_xev_telegram_cmd.step);
 
     // Run step for test-llm-xev

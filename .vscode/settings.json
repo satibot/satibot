@@ -13,6 +13,7 @@
         "groq",
         "openrouter",
         "orelse",
+        "Pico",
         "satibot",
         "Sigaction",
         "sigset"

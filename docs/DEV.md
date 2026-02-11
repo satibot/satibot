@@ -112,12 +112,10 @@ Test:
 zig build run -- agent -m "Your message"
 # Run with a specific session ID to persist history
 zig build run -- agent -m "Follow-up message" -s my-session
-# Run as a Telegram Bot (Legacy/Blocking)
-zig build run -- telegram
 # Run as a Telegram Bot (Xev/Asynchronous)
-zig build run-xev-telegram
+zig build telegram
 # Run as a Mock Bot (Console-based, uses Xev loop)
-zig build run-console
+zig build console
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
 # RAG is enabled by default to remember conversations. 
@@ -133,6 +131,9 @@ zig build test-mock-bot
 
 # Run LLM tests with Xev integration
 zig build test-llm-xev
+
+# Run all unit tests
+zig build test
 ```
 
 ## Architecture

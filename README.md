@@ -8,10 +8,21 @@
 
 `satibot` is a lightweight, memory-aware AI agent framework that never forgets. Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), it combines the power of ReAct loops with persistent memory to create agents that remember, learn, and assist.
 
+Currently, it only supports Telegram and console, under development.
+
+## Comparison with others
+
+| Feature | OpenClaw | NanoBot | PicoClaw | satibot |
+|---|---|---|---|---|
+| **Language** | TypeScript | Python | Go | Zig |
+| **RAM Usage** | >1GB | >100MB | < 10MB | < 4MB |
+| **Startup Time**<br>(0.8GHz core) | >500s | >30s | <1s | ?s |
+| **Cost** | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
+
 ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
 🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
 🔧 **Extensible**: Easy skill installation and tool system
-💬 **Multi-Platform**: Telegram, Discord, WhatsApp, and more
+💬 **Multi-Platform**: [TODO: current is using Telegram and console] Telegram, Discord, WhatsApp, and more
 
 View more in [Features](docs/FEATURES.md).
 
@@ -19,8 +30,6 @@ View more in [Features](docs/FEATURES.md).
 
 ## 📋 Requirements
 
-- **Zig 0.15.2**: Required for thread-based event loop and latest language features
-- **Memory**: ~512MB RAM for basic operation
 - **OS**: Linux, macOS, or Windows (with WSL)
 
 > **Note**: This project uses Zig 0.15.0's thread-based concurrency with XevEventLoop.
@@ -74,17 +83,11 @@ Create `~/.bots/config.json`:
 # Chat directly
 zig build run -- agent -m "Hello, satibot!"
 
-# Console-based interactive bot
-zig build run -- console
+# Console-based interactive bot (Xev Mock Bot)
+zig build console
 
-# Start the gateway (Telegram + Cron + Heartbeat)
-zig build run -- gateway
-
-# Run as Telegram bot
-zig build run -- telegram
-
-# Run as WhatsApp bot
-zig build run -- whatsapp
+# Run as Telegram bot (Xev/Asynchronous)
+zig build telegram
 ```
 
 That's it! You have a mindful AI assistant running in seconds.
@@ -97,7 +100,7 @@ That's it! You have a mindful AI assistant running in seconds.
 
 1. Create bot via [@BotFather](https://t.me/BotFather) --> `/newbot`
 2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
-3. Add to config and run `zig build run -- telegram`
+3. Add to config and run `zig build telegram`
 
 ### Discord, WhatsApp & More
 
@@ -181,11 +184,11 @@ zig build run -- agent -m "Your message"
 # Run with a specific session ID to persist history
 zig build run -- agent -m "Follow-up message" -s my-session
 
-# Run console-based interactive bot
-zig build run -- console
+# Run console-based interactive bot (Xev Mock Bot)
+zig build console
 
-# Run as a Telegram Bot (long polling)
-zig build run -- telegram
+# Run as a Telegram Bot (Xev/Asynchronous)
+zig build telegram
 
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
