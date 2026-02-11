@@ -23,6 +23,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 | **RAM Usage** | >1GB | >100MB | < 10MB | < 4MB |
 | **Startup Time**<br>(0.8GHz core) | >500s | >30s | <1s | ?s |
 | **Cost** | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
+| src | [openclaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | [picoclaw](https://github.com/sipeed/picoclaw) | [satibot](https://github.com/satibot/satibot) |
 
 ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
 🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
