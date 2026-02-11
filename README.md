@@ -241,6 +241,8 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 
 We welcome contributions!
 
+Please read our [docs/DEV.md](docs/DEV.md) for more information.
+
 ---
 
 ## 📖 The Meaning of Sati

@@ -205,10 +205,10 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Xev-based Mock Bot executable
-    const xev_mock_exe = b.addExecutable(.{
+    const xev_console_exe = b.addExecutable(.{
         .name = "xev-mock-bot",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/xev_mock_main.zig"),
+            .root_source_file = b.path("src/xev_console_main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -225,13 +225,13 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    b.installArtifact(xev_mock_exe);
+    b.installArtifact(xev_console_exe);
 
     // Run step for xev mock bot
-    const run_xev_mock_step = b.step("console", "Run the xev mock bot (console-based)");
-    const run_xev_mock_cmd = b.addRunArtifact(xev_mock_exe);
-    run_xev_mock_step.dependOn(&run_xev_mock_cmd.step);
-    // run_xev_mock_cmd.step.dependOn(b.getInstallStep());
+    const run_xev_console_step = b.step("console", "Run the xev mock bot (console-based)");
+    const run_xev_console_cmd = b.addRunArtifact(xev_console_exe);
+    run_xev_console_step.dependOn(&run_xev_console_cmd.step);
+    // run_xev_console_cmd.step.dependOn(b.getInstallStep());
 
     // Run step for xev telegram bot
     // const run_xev_telegram_step = b.step("telegram", "Run the xev telegram bot");
