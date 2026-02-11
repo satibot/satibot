@@ -18,9 +18,9 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    // Handle help and version flags
+    // Handle help and version flags (only when no additional arguments)
     if (args.len >= 2) {
-        if (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h") or std.mem.eql(u8, args[1], "help")) {
+        if (args.len == 2 and (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h"))) {
             try usage();
             return;
         }
@@ -193,117 +193,171 @@ fn usage() !void {
 /// Show detailed help for a specific command
 fn showCommandHelp(command: []const u8) !void {
     if (std.mem.eql(u8, command, "agent")) {
-        std.debug.print("🤖 AGENT COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot agent [options]\n\n", .{});
-        std.debug.print("OPTIONS:\n", .{});
-        std.debug.print("  -m \"message\"        Send a single message and exit\n", .{});
-        std.debug.print("  -s <session_id>    Use specific session ID (default: \"default\")\n", .{});
-        std.debug.print("  --no-rag           Disable RAG (Retrieval-Augmented Generation)\n", .{});
-        std.debug.print("  --rag              Enable RAG (default)\n", .{});
-        std.debug.print("  openrouter         Validate OpenRouter configuration\n\n", .{});
-        std.debug.print("EXAMPLES:\n", .{});
-        std.debug.print("  satibot agent                           # Interactive mode\n", .{});
-        std.debug.print("  satibot agent -m \"Hello\"                # Single message\n", .{});
-        std.debug.print("  satibot agent -s chat123 -m \"Hello\"     # With session\n", .{});
-        std.debug.print("  satibot agent --no-rag                  # Disable RAG\n", .{});
+        const help_text =
+            \\AGENT COMMAND
+            \\
+            \\USAGE:
+            \\  satibot agent [options]
+            \\
+            \\OPTIONS:
+            \\  -m "message"        Send a single message and exit
+            \\  -s <session_id>    Use specific session ID (default: "default")
+            \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+            \\  --rag              Enable RAG (default)
+            \\  openrouter         Validate OpenRouter configuration
+            \\
+            \\EXAMPLES:
+            \\  satibot agent                           # Interactive mode
+            \\  satibot agent -m "Hello"                # Single message
+            \\  satibot agent -s chat123 -m "Hello"     # With session
+            \\  satibot agent --no-rag                  # Disable RAG
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "console")) {
-        std.debug.print("💻 CONSOLE COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot console\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Runs satibot as a console-based interactive bot. This provides\n", .{});
-        std.debug.print("  a simple terminal interface for chatting with the AI agent.\n", .{});
-        std.debug.print("  Uses the same agent logic and memory system as other platforms.\n\n", .{});
-        std.debug.print("COMMANDS:\n", .{});
-        std.debug.print("  /help    Show help message\n", .{});
-        std.debug.print("  /new     Start a new session\n", .{});
-        std.debug.print("  exit     Exit the console bot\n", .{});
-        std.debug.print("  quit     Exit the console bot\n\n", .{});
-        std.debug.print("EXAMPLE:\n", .{});
-        std.debug.print("  satibot console\n", .{});
+        const help_text =
+            \\CONSOLE COMMAND
+            \\
+            \\USAGE:
+            \\  satibot console
+            \\
+            \\DESCRIPTION:
+            \\  Runs satibot as a console-based interactive bot. This provides
+            \\  a simple terminal interface for chatting with the AI agent.
+            \\  Uses the same agent logic and memory system as other platforms.
+            \\
+            \\COMMANDS:
+            \\  /help    Show help message
+            \\  /new     Start a new session
+            \\  exit     Exit the console bot
+            \\  quit     Exit the console bot
+            \\
+            \\EXAMPLE:
+            \\  satibot console
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "vector-db")) {
-        std.debug.print("🗃️  VECTOR-DB COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot vector-db <subcommand> [args...]\n\n", .{});
-        std.debug.print("SUBCOMMANDS:\n", .{});
-        std.debug.print("  list              List all entries in vector DB\n", .{});
-        std.debug.print("  search <query>    Search vector DB with query\n", .{});
-        std.debug.print("  add <text>        Add text to vector DB\n", .{});
-        std.debug.print("  stats             Show vector DB statistics\n\n", .{});
-        std.debug.print("EXAMPLES:\n", .{});
-        std.debug.print("  satibot vector-db list\n", .{});
-        std.debug.print("  satibot vector-db add \"Your text here\"\n", .{});
-        std.debug.print("  satibot vector-db search \"query text\"\n", .{});
-        std.debug.print("  satibot vector-db search \"query\" 5    # Top 5 results\n", .{});
-        std.debug.print("  satibot vector-db stats\n", .{});
+        const help_text =
+            \\VECTOR-DB COMMAND
+            \\
+            \\USAGE:
+            \\  satibot vector-db <subcommand> [args...]
+            \\
+            \\SUBCOMMANDS:
+            \\  list              List all entries in vector DB
+            \\  search <query>    Search vector DB with query
+            \\  add <text>        Add text to vector DB
+            \\  stats             Show vector DB statistics
+            \\
+            \\EXAMPLES:
+            \\  satibot vector-db list
+            \\  satibot vector-db add "Your text here"
+            \\  satibot vector-db search "query text"
+            \\  satibot vector-db search "query" 5    # Top 5 results
+            \\  satibot vector-db stats
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "telegram")) {
-        std.debug.print("📱 TELEGRAM COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot telegram [options]\n\n", .{});
-        std.debug.print("OPTIONS:\n", .{});
-        std.debug.print("  openrouter         Validate OpenRouter configuration\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Runs satibot as a Telegram bot. The bot will listen for messages\n", .{});
-        std.debug.print("  and respond using the configured AI model.\n\n", .{});
-        std.debug.print("CONFIGURATION:\n", .{});
-        std.debug.print("  Requires telegram.botToken and telegram.chatId in config.json\n", .{});
-        std.debug.print("  Get bot token from @BotFather\n", .{});
-        std.debug.print("  Get chat ID from @userinfobot\n", .{});
+        const help_text =
+            \\TELEGRAM COMMAND
+            \\
+            \\USAGE:
+            \\  satibot telegram [options]
+            \\
+            \\OPTIONS:
+            \\  openrouter         Validate OpenRouter configuration
+            \\
+            \\DESCRIPTION:
+            \\  Runs satibot as a Telegram bot. The bot will listen for messages
+            \\  and respond using the configured AI model.
+            \\
+            \\CONFIGURATION:
+            \\  Requires telegram.botToken and telegram.chatId in config.json
+            \\  Get bot token from @BotFather
+            \\  Get chat ID from @userinfobot
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "whatsapp")) {
-        std.debug.print("📱 WHATSAPP COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot whatsapp [options]\n\n", .{});
-        std.debug.print("OPTIONS:\n", .{});
-        std.debug.print("  openrouter         Validate OpenRouter configuration\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Runs satibot as a WhatsApp bot using the Meta Graph API.\n\n", .{});
-        std.debug.print("CONFIGURATION:\n", .{});
-        std.debug.print("  Uses ~/.bots/whatsapp.json configuration file\n", .{});
-        std.debug.print("  Requires accessToken, phoneNumberId, and recipientPhoneNumber\n", .{});
+        const help_text =
+            \\WHATSAPP COMMAND
+            \\
+            \\USAGE:
+            \\  satibot whatsapp [options]
+            \\
+            \\OPTIONS:
+            \\  openrouter         Validate OpenRouter configuration
+            \\
+            \\DESCRIPTION:
+            \\  Runs satibot as a WhatsApp bot using the Meta Graph API.
+            \\
+            \\CONFIGURATION:
+            \\  Uses ~/.bots/whatsapp.json configuration file
+            \\  Requires accessToken, phoneNumberId, and recipientPhoneNumber
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "gateway")) {
-        std.debug.print("🌉 GATEWAY COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot gateway\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Runs the gateway service that manages multiple components:\n", .{});
-        std.debug.print("  - Telegram bot for message handling\n", .{});
-        std.debug.print("  - Cron jobs for scheduled tasks\n", .{});
-        std.debug.print("  - Heartbeat for periodic checks\n\n", .{});
-        std.debug.print("  This is the main production deployment mode.\n", .{});
+        const help_text =
+            \\GATEWAY COMMAND
+            \\
+            \\USAGE:
+            \\  satibot gateway
+            \\
+            \\DESCRIPTION:
+            \\  Runs the gateway service that manages multiple components:
+            \\  - Telegram bot for message handling
+            \\  - Cron jobs for scheduled tasks
+            \\  - Heartbeat for periodic checks
+            \\
+            \\  This is the main production deployment mode.
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "status")) {
-        std.debug.print("📊 STATUS COMMAND\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot status\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Displays system status including:\n", .{});
-        std.debug.print("  - Default model configuration\n", .{});
-        std.debug.print("  - Provider configurations\n", .{});
-        std.debug.print("  - Channel configurations\n", .{});
-        std.debug.print("  - Data directory location\n", .{});
-        std.debug.print("  - Active cron jobs\n", .{});
+        const help_text =
+            \\STATUS COMMAND
+            \\
+            \\USAGE:
+            \\  satibot status
+            \\
+            \\DESCRIPTION:
+            \\  Displays system status including:
+            \\  - Default model configuration
+            \\  - Provider configurations
+            \\  - Channel configurations
+            \\  - Data directory location
+            \\  - Active cron jobs
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "in")) {
-        std.debug.print("⚡ IN COMMAND (Quick Start)\n\n", .{});
-        std.debug.print("USAGE:\n", .{});
-        std.debug.print("  satibot in <platform>\n\n", .{});
-        std.debug.print("PLATFORMS:\n", .{});
-        std.debug.print("  whatsapp   Auto-create WhatsApp config and run\n", .{});
-        std.debug.print("  telegram   Auto-create Telegram config and run\n\n", .{});
-        std.debug.print("DESCRIPTION:\n", .{});
-        std.debug.print("  Quickly starts a bot with auto-configuration.\n", .{});
-        std.debug.print("  Creates the necessary config files if they don't exist.\n", .{});
+        const help_text =
+            \\IN COMMAND (Quick Start)
+            \\
+            \\USAGE:
+            \\  satibot in <platform>
+            \\
+            \\PLATFORMS:
+            \\  whatsapp   Auto-create WhatsApp config and run
+            \\  telegram   Auto-create Telegram config and run
+            \\
+            \\DESCRIPTION:
+            \\  Quickly starts a bot with auto-configuration.
+            \\  Creates the necessary config files if they don't exist.
+        ;
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else {
-        std.debug.print("Unknown command: {s}\n\n", .{command});
-        std.debug.print("Available commands: agent, telegram, whatsapp, gateway, vector-db,\n", .{});
-        std.debug.print("                  status, in\n", .{});
+        const help_text =
+            \\Unknown command: {s}
+            \\
+            \\Available commands: agent, console, telegram, whatsapp, gateway, vector-db,
+            \\                  status, in
+        ;
+        std.debug.print(help_text, .{command});
     }
 }
 
