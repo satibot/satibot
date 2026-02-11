@@ -2,7 +2,7 @@ const std = @import("std");
 const Config = @import("config.zig").Config;
 const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");
-const providers = @import("root.zig").providers;
+const providers = @import("root.zig");
 const base = @import("providers/base.zig");
 const session = @import("db/session.zig");
 

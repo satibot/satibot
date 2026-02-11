@@ -4,7 +4,7 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const context = @import("context.zig");
 const tools = @import("tools.zig");
-const providers = @import("../root.zig").providers;
+const providers = @import("../root.zig");
 const base = @import("../providers/base.zig");
 const session = @import("../db/session.zig");
 
