@@ -124,6 +124,38 @@ std.debug.print("{s} {d}\n", .{"Hello"});
 std.debug.print("{s} {d}\n", .{"Hello", 42});
 ```
 
+Unescaped braces in format strings:
+
+When printing text that contains literal `{` or `}` characters (like JSON), you must escape them by doubling: `{{` and `}}`.
+
+```zig
+// ❌ Wrong (unescaped braces cause compile error)
+const help_text =
+    \\\\Error: Configuration not found
+    \\\\Please add: "tools": { "token": "abc" }
+;
+std.debug.print(help_text, .{});
+// Compile error: expected . or }, found ' '
+
+// ✅ Correct (escaped braces)
+const help_text =
+    \\\\Error: Configuration not found
+    \\\\Please add: "tools": {{ "token": "abc" }}
+;
+std.debug.print(help_text, .{});
+// Output: Error: Configuration not found
+//         Please add: "tools": { "token": "abc" }
+```
+
+Common scenarios requiring escaped braces:
+
+- JSON examples in error messages
+- Code snippets in help text
+- Regular expressions or templates
+- Any documentation containing `{` or `}` literals
+
+**Rule:** In Zig format strings, always double braces for literal characters: `{{` = `{`, `}}` = `}`
+
 ### Best Practices
 
 1. **Always include `\n`** at the end of debug messages for proper formatting

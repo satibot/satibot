@@ -40,11 +40,11 @@ pub fn main() !void {
         const error_msg =
             \\Error: telegram configuration is required but not found in ~/.bots/config.json
             \\Please add the following to your config:
-            \\  "tools": {
-            \\    "telegram": {
+            \\  "tools": {{
+            \\    "telegram": {{
             \\      "botToken": "your-bot-token"
-            \\    }
-            \\  }
+            \\    }}
+            \\  }}
         ;
         std.debug.print(error_msg, .{});
         return error.TelegramConfigNotFound;
