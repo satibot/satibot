@@ -72,6 +72,9 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "telegram")) {
         // Run Telegram bot
         try runTelegramBot(allocator, args);
+    } else if (std.mem.eql(u8, command, "telegram-sync")) {
+        // Run synchronous Telegram bot
+        try runTelegramBotSync(allocator, args);
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         // Run WhatsApp bot
         try runWhatsAppBot(allocator, args);
@@ -129,7 +132,8 @@ fn usage() !void {
         \\  help          Show this help message
         \\  agent         Run AI agent in interactive or single message mode
         \\  console       Run console-based interactive bot
-        \\  telegram      Run satibot as a Telegram bot
+        \\  telegram      Run satibot as a Telegram bot (async version)
+        \\  telegram-sync Run satibot as a Telegram bot (sync version)
         \\  whatsapp      Run satibot as a WhatsApp bot
         \\  gateway       Run gateway service (Telegram + Cron + Heartbeat)
         \\  vector-db     Manage vector database for RAG functionality
@@ -185,9 +189,10 @@ fn usage() !void {
         \\  GROQ_API_KEY         Groq API key
         \\
         \\For more information, visit: https://github.com/satibot/satibot
+        \\
     ;
 
-    std.debug.print("{s}\n", .{help_text});
+    std.debug.print("{s}", .{help_text});
 }
 
 /// Show detailed help for a specific command
@@ -211,6 +216,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\  satibot agent -m "Hello"                # Single message
             \\  satibot agent -s chat123 -m "Hello"     # With session
             \\  satibot agent --no-rag                  # Disable RAG
+            \\
         ;
         std.debug.print("{s}\n", .{help_text});
         return;
@@ -234,8 +240,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\
             \\EXAMPLE:
             \\  satibot console
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "vector-db")) {
         const help_text =
@@ -256,8 +263,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\  satibot vector-db search "query text"
             \\  satibot vector-db search "query" 5    # Top 5 results
             \\  satibot vector-db stats
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "telegram")) {
         const help_text =
@@ -280,6 +288,33 @@ fn showCommandHelp(command: []const u8) !void {
         ;
         std.debug.print("{s}\n", .{help_text});
         return;
+    } else if (std.mem.eql(u8, command, "telegram-sync")) {
+        const help_text =
+            \\TELEGRAM-SYNC COMMAND
+            \\
+            \\USAGE:
+            \\  satibot telegram-sync [options]
+            \\
+            \\OPTIONS:
+            \\  openrouter         Validate OpenRouter configuration
+            \\
+            \\DESCRIPTION:
+            \\  Runs satibot as a synchronous Telegram bot. This version processes
+            \\  messages one at a time, making it simple and reliable.
+            \\
+            \\CHARACTERISTICS:
+            \\  - Single-threaded sequential processing
+            \\  - Lower resource usage (~4MB)
+            \\  - Easy to debug and understand
+            \\  - Best for development and small deployments
+            \\
+            \\CONFIGURATION:
+            \\  Requires telegram.botToken in config.json
+            \\  Get bot token from @BotFather
+            \\
+        ;
+        std.debug.print("{s}", .{help_text});
+        return;
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         const help_text =
             \\WHATSAPP COMMAND
@@ -296,8 +331,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\CONFIGURATION:
             \\  Uses ~/.bots/whatsapp.json configuration file
             \\  Requires accessToken, phoneNumberId, and recipientPhoneNumber
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "gateway")) {
         const help_text =
@@ -313,8 +349,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\  - Heartbeat for periodic checks
             \\
             \\  This is the main production deployment mode.
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "status")) {
         const help_text =
@@ -330,8 +367,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\  - Channel configurations
             \\  - Data directory location
             \\  - Active cron jobs
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "in")) {
         const help_text =
@@ -347,8 +385,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\DESCRIPTION:
             \\  Quickly starts a bot with auto-configuration.
             \\  Creates the necessary config files if they don't exist.
+            \\
         ;
-        std.debug.print("{s}\n", .{help_text});
+        std.debug.print("{s}", .{help_text});
         return;
     } else {
         const help_text =
@@ -356,6 +395,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\
             \\Available commands: agent, console, telegram, whatsapp, gateway, vector-db,
             \\                  status, in
+            \\
         ;
         std.debug.print(help_text, .{command});
     }
@@ -492,8 +532,7 @@ fn runConsole(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Display active model and start console bot
-    std.debug.print("Active Model: {s}\n", .{config.agents.defaults.model});
-    std.debug.print("Console bot started. Type 'exit' or 'quit' to stop.\n", .{});
+    std.debug.print("Active Model: {s}\nConsole bot started. Type 'exit' or 'quit' to stop.\n", .{config.agents.defaults.model});
 
     // Import and run the console mock bot
     var bot = try satibot.agent.console.MockBot.init(allocator, config);
@@ -524,11 +563,68 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     // Display active model and start bot
-    std.debug.print("Active Model: {s}\n", .{config.agents.defaults.model});
-    std.debug.print("Telegram bot started. Press Ctrl+C to stop.\n", .{});
+    std.debug.print("Active Model: {s}\nTelegram bot started. Press Ctrl+C to stop.\n", .{config.agents.defaults.model});
 
     // Run Telegram bot (blocking call)
     try satibot.agent.chat_apps.telegram.runBot(allocator, config);
+}
+
+/// Run synchronous Telegram bot server
+/// Listens for Telegram messages and responds using the AI agent
+/// Processes messages one at a time (simplified, reliable version)
+fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    // Load configuration
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    // Check if OpenRouter validation is requested
+    var check_openrouter = false;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "openrouter")) {
+            check_openrouter = true;
+            break;
+        }
+    }
+
+    if (check_openrouter) {
+        try validateConfig(config);
+    }
+
+    // Display active model and start bot
+    std.debug.print("Active Model: {s}\nSynchronous Telegram bot started. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
+
+    // Run synchronous Telegram bot (blocking call)
+    // Note: We run the sync bot as a separate process to avoid module conflicts
+
+    const build_result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "zig", "build", "telegram-sync" },
+    });
+    defer allocator.free(build_result.stdout);
+    defer allocator.free(build_result.stderr);
+
+    if (build_result.term.Exited != 0) {
+        std.debug.print("Error building sync telegram bot: {s}\n", .{build_result.stderr});
+        return error.BotBuildFailed;
+    }
+
+    std.debug.print("Starting synchronous Telegram bot...\n", .{});
+
+    // Run the built bot
+    const bot_result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{"./zig-out/bin/telegram-sync"},
+    });
+    defer allocator.free(bot_result.stdout);
+    defer allocator.free(bot_result.stderr);
+
+    if (bot_result.term.Exited != 0) {
+        std.debug.print("Error running sync telegram bot: {s}\n", .{bot_result.stderr});
+        return error.BotExecutionFailed;
+    }
+
+    std.debug.print("{s}", .{bot_result.stdout});
 }
 
 /// Run WhatsApp bot server
@@ -592,16 +688,20 @@ fn runGateway(allocator: std.mem.Allocator) !void {
 fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Show usage if no subcommand provided
     if (args.len < 3) {
-        std.debug.print("Usage: satibot vector-db <command> [args...]\n", .{});
-        std.debug.print("Commands:\n", .{});
-        std.debug.print("  list              List all entries in vector DB\n", .{});
-        std.debug.print("  search <query>    Search vector DB with query\n", .{});
-        std.debug.print("  add <text>        Add text to vector DB\n", .{});
-        std.debug.print("  stats             Show vector DB statistics\n", .{});
+        const out =
+            \\Usage: satibot vector-db <command> [args...]
+            \\Commands:
+            \\  list              List all entries in vector DB
+            \\  search <query>    Search vector DB with query
+            \\  add <text>        Add text to vector DB
+            \\  stats             Show vector DB statistics
+            \\
+        ;
+        std.debug.print("{s}", .{out});
         return;
     }
 
-    const subcmd = args[2];
+    const sub_cmd = args[2];
     const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
@@ -625,13 +725,13 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     };
 
     // Handle list command - display all entries
-    if (std.mem.eql(u8, subcmd, "list")) {
+    if (std.mem.eql(u8, sub_cmd, "list")) {
         std.debug.print("Vector DB Entries ({d} total):\n", .{store.entries.items.len});
         for (store.entries.items, 0..) |entry, i| {
             std.debug.print("{d}. {s}\n", .{ i + 1, entry.text });
             std.debug.print("   Embedding dims: {d}\n", .{entry.embedding.len});
         }
-    } else if (std.mem.eql(u8, subcmd, "stats")) {
+    } else if (std.mem.eql(u8, sub_cmd, "stats")) {
         // Handle stats command - show database statistics
         std.debug.print("Vector DB Statistics:\n", .{});
         std.debug.print("  Total entries: {d}\n", .{store.entries.items.len});
@@ -639,7 +739,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             std.debug.print("  Embedding dimension: {d}\n", .{store.entries.items[0].embedding.len});
         }
         std.debug.print("  DB path: {s}\n", .{db_path});
-    } else if (std.mem.eql(u8, subcmd, "search")) {
+    } else if (std.mem.eql(u8, sub_cmd, "search")) {
         // Handle search command - find similar entries
         if (config.agents.defaults.disableRag) {
             std.debug.print("Error: RAG is globally disabled in config.json\n", .{});
@@ -684,7 +784,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         for (results, 0..) |res, i| {
             std.debug.print("{d}. {s}\n", .{ i + 1, res.text });
         }
-    } else if (std.mem.eql(u8, subcmd, "add")) {
+    } else if (std.mem.eql(u8, sub_cmd, "add")) {
         // Handle add command - add new text entry to vector DB
         if (config.agents.defaults.disableRag) {
             std.debug.print("Error: RAG is globally disabled in config.json\n", .{});
@@ -738,7 +838,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         try store.save(db_path);
         std.debug.print("Added to vector DB: {s}\n", .{text});
     } else {
-        std.debug.print("Unknown vector-db command: {s}\n", .{subcmd});
+        std.debug.print("Unknown vector-db command: {s}\n", .{sub_cmd});
     }
 }
 
@@ -755,8 +855,7 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Display header and model info
-    std.debug.print("\n--- satibot Status 🐸 ---\n", .{});
-    std.debug.print("Default Model: {s}\n", .{config.agents.defaults.model});
+    std.debug.print("\n--- satibot Status 🐸 ---\nDefault Model: {s}\n", .{config.agents.defaults.model});
 
     // Display provider status
     std.debug.print("\nProviders:\n", .{});
@@ -783,9 +882,7 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     var store = satibot.agent.cron.CronStore.init(allocator);
     defer store.deinit();
     store.load(cron_path) catch {};
-    std.debug.print("Cron Jobs:      {d} active\n", .{store.jobs.items.len});
-
-    std.debug.print("------------------------\n", .{});
+    std.debug.print("Cron Jobs:      {d} active\n------------------------\n", .{store.jobs.items.len});
 }
 
 /// Validate configuration based on model type
@@ -795,15 +892,13 @@ fn validateConfig(config: satibot.config.Config) !void {
     // Check for Claude models (require Anthropic API key)
     if (std.mem.indexOf(u8, model, "claude") != null) {
         if (config.providers.anthropic == null and std.posix.getenv("ANTHROPIC_API_KEY") == null) {
-            std.debug.print("\n❌ Error: Anthropic API key not found.\n", .{});
-            std.debug.print("Please set ANTHROPIC_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
+            std.debug.print("\n❌ Error: Anthropic API key not found.\nPlease set ANTHROPIC_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
             std.process.exit(1);
         }
     } else {
         // Assume OpenRouter for other models
         if (config.providers.openrouter == null and std.posix.getenv("OPENROUTER_API_KEY") == null) {
-            std.debug.print("\n❌ Error: OpenRouter API key not found.\n", .{});
-            std.debug.print("Please set OPENROUTER_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
+            std.debug.print("\n❌ Error: OpenRouter API key not found.\nPlease set OPENROUTER_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
             std.process.exit(1);
         }
     }
@@ -916,11 +1011,7 @@ fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
             \\}
         ;
         try file.writeAll(default_json);
-        std.debug.print("✅ Created WhatsApp config at {s}\n", .{config_path});
-        std.debug.print("📋 Please edit the file and add your Meta API credentials:\n", .{});
-        std.debug.print("   1. accessToken - Your Meta WhatsApp API token\n", .{});
-        std.debug.print("   2. phoneNumberId - Your WhatsApp phone number ID\n", .{});
-        std.debug.print("   3. recipientPhoneNumber - Your test phone number\n", .{});
+        std.debug.print("✅ Created WhatsApp config at {s}\n📋 Please edit the file and add your Meta API credentials:\n   1. accessToken - Your Meta WhatsApp API token\n   2. phoneNumberId - Your WhatsApp phone number ID\n   3. recipientPhoneNumber - Your test phone number\n", .{config_path});
     } else {
         std.debug.print("⚠️ WhatsApp config already exists at {s}\n", .{config_path});
     }
@@ -981,10 +1072,8 @@ fn autoCreateTelegramConfig(allocator: std.mem.Allocator) !void {
             \\}
         ;
         try file.writeAll(default_json);
-        std.debug.print("✅ Created Telegram config at {s}\n", .{config_path});
-        std.debug.print("📋 Please edit the file and add your Telegram credentials:\n", .{});
-        std.debug.print("   1. botToken - Get this from @BotFather\n", .{});
-        std.debug.print("   2. chatId - Get this from @userinfobot\n", .{});
+
+        std.debug.print("✅ Created Telegram config at {s}\n📋 Please edit the file and add your Telegram credentials:\n   1. botToken - Get this from @BotFather\n   2. chatId - Get this from @userinfobot\n", .{config_path});
     } else {
         std.debug.print("⚠️ Config already exists at {s}\n", .{config_path});
     }

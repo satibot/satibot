@@ -52,6 +52,10 @@ prod: ## Build project in production mode (only telegram bot)
 	@echo "Building telegram bot in $(BUILD_TYPE) mode with $(JOBS) concurrent jobs..."
 	$(ZIG) build $(BUILD_OPTS) -j$(JOBS) xev-telegram-bot -Dtelegram-bot-only=true
 
+prod-sync: ## Build synchronous telegram bot in production mode
+	@echo "Building synchronous telegram bot in $(BUILD_TYPE) mode with $(JOBS) concurrent jobs..."
+	$(ZIG) build $(BUILD_OPTS) -j$(JOBS) telegram-sync
+
 rebuild: clean build  ## clean and build
 
 run: build  ## Run the main application

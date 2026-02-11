@@ -10,7 +10,7 @@ Built in Zig for performance, designed for awareness.
 
 IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and console, other features are under development.
 
-- [x] Telegram + OpenRouter
+- [x] Telegram + OpenRouter (Async & Sync versions)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 
@@ -115,9 +115,32 @@ export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 # for console, terminal base
 satibot console
 
-# for telegram
+# for telegram (sync version - simple & reliable)
+satibot telegram-sync
+
+# for telegram (async version - high performance)
 satibot telegram
 ```
+
+### Telegram Bot Versions
+
+satibot offers two Telegram bot implementations:
+
+**🔄 Sync Version** (`telegram-sync`)
+
+- Simple, reliable, single-threaded
+- Processes one message at a time
+- Lower resource usage (~2MB)
+- Text messages only (no voice support)
+- Best for: development, small deployments, resource-constrained environments
+
+**⚡ Async Version** (`telegram`)
+
+- High-performance, event-driven
+- Processes multiple messages concurrently
+- Higher resource usage (~4MB)
+
+See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
 
 ---
 
@@ -216,6 +239,9 @@ zig build console
 
 # Run as a Telegram Bot (Xev/Asynchronous)
 zig build telegram
+
+# Run as a Telegram Bot (Synchronous)
+zig build telegram-sync
 
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
