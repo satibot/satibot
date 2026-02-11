@@ -141,3 +141,7 @@ fn usage() !void {
 - Cleaner code: More readable and maintainable
 - Memory efficiency: Single string allocation
 - Better formatting: Easier to edit and preserve formatting
+
+## Use `std.debug.print` for printing
+
+Reduce the number of `std.debug.print` calls by combining them into single multiline strings.
