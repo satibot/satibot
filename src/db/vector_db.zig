@@ -102,6 +102,9 @@ pub const VectorStore = struct {
         const content = try file.readToEndAlloc(self.allocator, 104857600); // 100 * 1024 * 1024
         defer self.allocator.free(content);
 
+        // Handle empty file - nothing to load
+        if (content.len == 0) return;
+
         const parsed = try std.json.parseFromSlice([]VectorEntry, self.allocator, content, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 

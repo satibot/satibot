@@ -177,7 +177,6 @@ fn usage() !void {
         \\CONFIGURATION:
         \\  Configuration files are stored in ~/.bots/
         \\  - config.json: Main configuration
-        \\  - whatsapp.json: WhatsApp-specific config
         \\  - vector_db.json: Vector database storage
         \\  - sessions/: Conversation history
         \\  - HEARTBEAT.md: Periodic tasks
@@ -329,7 +328,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\  Runs satibot as a WhatsApp bot using the Meta Graph API.
             \\
             \\CONFIGURATION:
-            \\  Uses ~/.bots/whatsapp.json configuration file
+            \\  Uses ~/.bots/config.json configuration file
             \\  Requires accessToken, phoneNumberId, and recipientPhoneNumber
             \\
         ;
@@ -600,17 +599,9 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
 /// Run WhatsApp bot server
 /// Listens for WhatsApp messages via Meta API and responds using the AI agent
-/// Note: Loads config from ~/.bots/whatsapp.json instead of default config.json
 fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
-    // Load WhatsApp-specific config from ~/.bots/whatsapp.json
-    const home = std.posix.getenv("HOME") orelse "/tmp";
-    const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
-    defer allocator.free(bots_dir);
-    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "whatsapp.json" });
-    defer allocator.free(config_path);
-
-    // Load WhatsApp configuration
-    const parsed_config = try satibot.config.loadFromPath(allocator, config_path);
+    // Load configuration from main config file
+    const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
@@ -926,8 +917,8 @@ fn runUpgrade(allocator: std.mem.Allocator) !void {
     std.debug.print("✅ Upgrade complete! Restart satibot to use the new version.\n", .{});
 }
 
-/// Auto-create WhatsApp configuration file
-/// Creates ~/.bots/whatsapp.json with default template if it doesn't exist
+/// Auto-create WhatsApp configuration in main config file
+/// Adds WhatsApp configuration to ~/.bots/config.json if it doesn't exist
 fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
     const home = std.posix.getenv("HOME") orelse "/tmp";
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
@@ -938,54 +929,62 @@ fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
         if (err != error.PathAlreadyExists) return err;
     };
 
-    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "whatsapp.json" });
+    const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "config.json" });
     defer allocator.free(config_path);
 
-    // Check if config already exists
-    var config_exists = true;
-    std.fs.accessAbsolute(config_path, .{}) catch |err| {
+    // Load existing config or create default
+    var parsed_config = satibot.config.loadFromPath(allocator, config_path) catch |err| {
         if (err == error.FileNotFound) {
-            config_exists = false;
-        } else {
-            return err;
+            // Create default config with WhatsApp settings
+            const default_json =
+                \\{
+                \\  "agents": {
+                \\    "defaults": {
+                \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+                \\    }
+                \\  },
+                \\  "providers": {
+                \\    "openrouter": {
+                \\      "apiKey": "sk-or-v1-..."
+                \\    }
+                \\  },
+                \\  "tools": {
+                \\    "web": {
+                \\      "search": {
+                \\        "apiKey": "BSA..."
+                \\      }
+                \\    },
+                \\    "whatsapp": {
+                \\      "accessToken": "YOUR_ACCESS_TOKEN_HERE",
+                \\      "phoneNumberId": "YOUR_PHONE_NUMBER_ID_HERE",
+                \\      "recipientPhoneNumber": "YOUR_PHONE_NUMBER_HERE"
+                \\    }
+                \\  }
+                \\}
+            ;
+            const file = try std.fs.createFileAbsolute(config_path, .{});
+            defer file.close();
+            try file.writeAll(default_json);
+            std.debug.print("✅ Created config with WhatsApp settings at {s}\n📋 Please edit the file and add your Meta API credentials:\n   1. accessToken - Your Meta WhatsApp API token\n   2. phoneNumberId - Your WhatsApp phone number ID\n   3. recipientPhoneNumber - Your test phone number\n", .{config_path});
+            return;
         }
+        return err;
     };
+    defer parsed_config.deinit();
 
-    if (!config_exists) {
-        // Create default WhatsApp configuration
-        const file = try std.fs.createFileAbsolute(config_path, .{});
-        defer file.close();
-        const default_json =
-            \\{
-            \\  "agents": {
-            \\    "defaults": {
-            \\      "model": "anthropic/claude-3-5-sonnet-20241022"
-            \\    }
-            \\  },
-            \\  "providers": {
-            \\    "openrouter": {
-            \\      "apiKey": "sk-or-v1-..."
-            \\    }
-            \\  },
-            \\  "tools": {
-            \\    "web": {
-            \\      "search": {
-            \\        "apiKey": "BSA..."
-            \\      }
-            \\    },
-            \\    "whatsapp": {
-            \\      "accessToken": "YOUR_ACCESS_TOKEN_HERE",
-            \\      "phoneNumberId": "YOUR_PHONE_NUMBER_ID_HERE",
-            \\      "recipientPhoneNumber": "YOUR_PHONE_NUMBER_HERE"
-            \\    }
-            \\  }
-            \\}
-        ;
-        try file.writeAll(default_json);
-        std.debug.print("✅ Created WhatsApp config at {s}\n📋 Please edit the file and add your Meta API credentials:\n   1. accessToken - Your Meta WhatsApp API token\n   2. phoneNumberId - Your WhatsApp phone number ID\n   3. recipientPhoneNumber - Your test phone number\n", .{config_path});
-    } else {
-        std.debug.print("⚠️ WhatsApp config already exists at {s}\n", .{config_path});
+    // Check if WhatsApp config already exists
+    if (parsed_config.value.tools.whatsapp != null) {
+        std.debug.print("⚠️ WhatsApp configuration already exists in {s}\n", .{config_path});
+        return;
     }
+
+    // Add WhatsApp config to existing config
+    var config = parsed_config.value;
+    config.tools.whatsapp = .{ .accessToken = "YOUR_ACCESS_TOKEN_HERE", .phoneNumberId = "YOUR_PHONE_NUMBER_ID_HERE", .recipientPhoneNumber = "YOUR_PHONE_NUMBER_HERE" };
+
+    // Save updated config
+    try satibot.config.saveToPath(allocator, config, config_path);
+    std.debug.print("✅ Added WhatsApp configuration to {s}\n📋 Please edit the file and add your Meta API credentials:\n   1. accessToken - Your Meta WhatsApp API token\n   2. phoneNumberId - Your WhatsApp phone number ID\n   3. recipientPhoneNumber - Your test phone number\n", .{config_path});
 }
 
 /// Auto-create Telegram configuration file

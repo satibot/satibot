@@ -1,7 +1,12 @@
 const std = @import("std");
 
 // Global HOME directory for file operations
-const HOME_DIR = std.posix.getenv("HOME") orelse "/tmp";
+var HOME_DIR: []const u8 = undefined;
+
+// Initialize HOME_DIR at runtime
+fn initHomeDir() void {
+    HOME_DIR = std.posix.getenv("HOME") orelse "/tmp";
+}
 
 /// Configuration data - immutable after creation
 pub const Config = struct {
@@ -93,7 +98,7 @@ fn readLastChatId() ?i64 {
 /// Parse update from JSON value - pure function
 fn parseUpdate(value: std.json.Value) ?TelegramUpdate {
     const update_id = value.object.get("update_id") orelse return null;
-    if (update_id.integer == null) return null;
+    if (update_id.integer == 0) return null;
 
     var message: ?TelegramMessage = null;
     if (value.object.get("message")) |msg| {
@@ -118,16 +123,16 @@ fn parseUpdate(value: std.json.Value) ?TelegramUpdate {
 
 /// Extract all valid updates from parsed JSON array - pure function
 fn extractUpdates(allocator: std.mem.Allocator, result_array: []std.json.Value) ![]TelegramUpdate {
-    var updates = std.ArrayList(TelegramUpdate).init(allocator);
-    errdefer updates.deinit();
+    var updates = std.ArrayList(TelegramUpdate).initCapacity(allocator, 0) catch return error.OutOfMemory;
+    defer updates.deinit(allocator);
 
     for (result_array) |item| {
         if (parseUpdate(item)) |update| {
-            try updates.append(update);
+            try updates.append(allocator, update);
         }
     }
 
-    return updates.toOwnedSlice();
+    return updates.toOwnedSlice(allocator);
 }
 
 /// Find the maximum update ID from a list of updates - pure function
@@ -322,12 +327,10 @@ fn processUpdate(
 fn fetchAndProcessUpdates(
     allocator: std.mem.Allocator,
     client: SimpleHttpClient,
-    config: Config,
     state: BotState,
+    botToken: []const u8,
 ) !BotState {
-    const tg_config = config.tools.telegram orelse return state;
-
-    const url = try buildGetUpdatesUrl(allocator, tg_config.botToken, state.offset);
+    const url = try buildGetUpdatesUrl(allocator, botToken, state.offset);
     defer allocator.free(url);
 
     const response = try client.get(url);
@@ -352,7 +355,7 @@ fn fetchAndProcessUpdates(
     for (updates_array) |update| {
         new_state.offset = update.update_id + 1;
 
-        if (try processUpdate(allocator, client, tg_config.botToken, update)) |chat_id| {
+        if (try processUpdate(allocator, client, botToken, update)) |chat_id| {
             new_state.last_chat_id = chat_id;
             saveLastChatId(chat_id); // Persist to file
         }
@@ -377,6 +380,14 @@ fn signalHandler(sig: i32) callconv(.c) void {
 // =============================================================================
 
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
+    // Initialize HOME_DIR at runtime
+    initHomeDir();
+
+    const tg_config = config.tools.telegram orelse {
+        std.debug.print("No Telegram config found.\n", .{});
+        return;
+    };
+
     const client = SimpleHttpClient.init(allocator);
     defer client.deinit();
 
@@ -392,7 +403,8 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     const sa = std.posix.Sigaction{
         .handler = .{ .handler = signalHandler },
         .mask = std.mem.zeroes(std.posix.sigset_t),
-        .flags = 0,
+        // SA_RESTART is needed for proper signal handling
+        .flags = std.posix.SA_RESTART,
     };
     std.posix.sigaction(std.posix.SIG.INT, &sa, null);
     std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
@@ -400,7 +412,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     std.debug.print("🐸 Synchronous Telegram Bot\nModel: {s}\nPress Ctrl+C to stop.\n\n", .{config.agents.defaults.model});
 
     while (!shutdown_requested.load(.seq_cst)) {
-        state = fetchAndProcessUpdates(allocator, client, config, state) catch |err| {
+        state = fetchAndProcessUpdates(allocator, client, state, tg_config.botToken) catch |err| {
             std.debug.print("Error in Telegram bot tick: {any}\nRetrying in 5 seconds...\n", .{err});
             std.Thread.sleep(std.time.ns_per_s * 5);
             continue;
@@ -409,13 +421,11 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
 
     // Send shutdown message
     if (state.last_chat_id) |chat_id| {
-        if (config.tools.telegram) |tg_config| {
-            std.debug.print("Sending shutdown message to chat {d}...\n", .{chat_id});
-            sendShutdownMessage(allocator, client, tg_config.botToken, chat_id);
-            // Explicitly save chat_id during shutdown as a safety measure
-            saveLastChatId(chat_id);
-            std.debug.print("Saved chat ID {d} to file\n", .{chat_id});
-        }
+        std.debug.print("Sending shutdown message to chat {d}...\n", .{chat_id});
+        sendShutdownMessage(allocator, client, tg_config.botToken, chat_id);
+        // Explicitly save chat_id during shutdown as a safety measure
+        saveLastChatId(chat_id);
+        std.debug.print("Saved chat ID {d} to file\n", .{chat_id});
     }
 
     std.debug.print("Bot shut down successfully.\n", .{});
@@ -554,14 +564,15 @@ test "extractUpdates with valid and invalid updates" {
     const allocator = std.testing.allocator;
 
     var valid_update = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    defer valid_update.object.deinit();
     try valid_update.object.put("update_id", std.json.Value{ .integer = 100 });
 
     var invalid_update = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    defer invalid_update.object.deinit();
     try invalid_update.object.put("other_field", std.json.Value{ .string = "value" });
 
-    const input = &[_]std.json.Value{ valid_update, invalid_update };
-
-    const updates = try extractUpdates(allocator, input);
+    var input = [_]std.json.Value{ valid_update, invalid_update };
+    const updates = try extractUpdates(allocator, &input);
     defer allocator.free(updates);
 
     try std.testing.expectEqual(@as(usize, 1), updates.len);
@@ -569,6 +580,7 @@ test "extractUpdates with valid and invalid updates" {
 }
 
 test "saveLastChatId and readLastChatId" {
+    initHomeDir();
     const test_chat_id: i64 = 123456789;
 
     // Save chat ID
@@ -581,6 +593,9 @@ test "saveLastChatId and readLastChatId" {
 }
 
 test "readLastChatId with non-existent file" {
+    // Initialize HOME_DIR for test
+    initHomeDir();
+
     // Clean up any existing test file
     const file_path = std.fs.path.join(std.testing.allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return;
     defer std.testing.allocator.free(file_path);
@@ -591,4 +606,28 @@ test "readLastChatId with non-existent file" {
     // Should return null when file doesn't exist
     const read_chat_id = readLastChatId();
     try std.testing.expect(read_chat_id == null);
+}
+
+test "signalHandler sets shutdown_requested" {
+    // Reset shutdown flag
+    shutdown_requested.store(false, .seq_cst);
+
+    // Call signal handler
+    signalHandler(std.posix.SIG.INT);
+
+    // Should set shutdown flag
+    try std.testing.expect(shutdown_requested.load(.seq_cst));
+}
+
+test "shutdown_requested flag behavior" {
+    // Test initial state
+    shutdown_requested.store(false, .seq_cst);
+    try std.testing.expect(!shutdown_requested.load(.seq_cst));
+
+    // Test setting flag
+    shutdown_requested.store(true, .seq_cst);
+    try std.testing.expect(shutdown_requested.load(.seq_cst));
+
+    // Reset for other tests
+    shutdown_requested.store(false, .seq_cst);
 }
