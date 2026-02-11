@@ -26,7 +26,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 | src | [openclaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | [picoclaw](https://github.com/sipeed/picoclaw) | [satibot](https://github.com/satibot/satibot) |
 
 - ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
-- 🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
+- 🐵 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
 - 🔧 **Extensible**: Easy skill installation and tool system
 - 💬 **Multi-Platform**: [TODO: current is using Telegram and console] Telegram, Discord, WhatsApp, and more
 
@@ -47,7 +47,7 @@ View more in [Features](docs/FEATURES.md).
 🪶 **Lightweight & Fast**: Minimal footprint with Zig's performance guarantees
 🔬 **Research-Ready**: Clean, readable codebase perfect for experimentation
 ⚡️ **Gateway System**: Single command runs all services together
-🧠 **Smart Memory**: RAG + VectorDB + GraphDB for intelligent context management
+🤖 **Smart Memory**: RAG + VectorDB + GraphDB for intelligent context management
 🔧 **Skill Ecosystem**: Browse and install skills from <https://agent-skills.md/>
 🎙️ **Voice Ready**: Automatic voice transcription with Groq
 ⏰ **Proactive**: Heartbeat system wakes agent for pending tasks
@@ -167,7 +167,7 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ## 🛠️ Advanced Features
 
-### 🧠 Memory System
+### 🍡 Memory System
 
 - **VectorDB**: Semantic search across conversations
 - **GraphDB**: Relationship mapping for complex knowledge
@@ -241,13 +241,6 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 
 We welcome contributions!
 
-### Quick Development Setup
-
-```bash
-# Run console-based interactive bot (Xev Mock Bot)
-zig build console
-```
-
 ---
 
 ## 📖 The Meaning of Sati
@@ -262,19 +255,10 @@ In Buddhist psychology, sati evolved from simple memory to profound awareness:
 
 **SatiBot embodies this principle:**
 
-- 🧠 Never forgets context or conversations
-- 📍 Tracks state consistently across sessions
-- 👁️ Stays aware of ongoing processes
-- 🌊 Never loses events in the flow
-
----
-
-## 📊 Stats
-
-![GitHub stars](https://img.shields.io/github/stars/satibot/satibot?style=social)
-![GitHub forks](https://img.shields.io/github/forks/satibot/satibot?style=social)
-![GitHub issues](https://img.shields.io/github/issues/satibot/satibot)
-![GitHub license](https://img.shields.io/github/license/satibot/satibot)
+- Never forgets context or conversations
+- Tracks state consistently across sessions
+- Stays aware of ongoing processes
+- Never loses events in the flow
 
 ---
 
