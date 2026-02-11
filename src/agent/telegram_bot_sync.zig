@@ -293,13 +293,26 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     var bot = try TelegramBot.init(allocator, config);
     defer bot.deinit();
 
+    // Send startup ready message to configured admin chat if available
+    // This notifies the admin that the bot is online and ready to process messages
+    if (config.tools.telegram) |tg_config| {
+        if (tg_config.chatId) |chat_id| {
+            bot.send_message(tg_config.botToken, chat_id, "🚀 Bot is ready and starting to poll for messages...") catch |err| {
+                std.debug.print("Warning: Failed to send startup message: {any}\n", .{err});
+                // Continue even if startup message fails
+            };
+        }
+    } else {
+        std.debug.print("Warning: No Telegram configuration found. Skipping startup message.\n", .{});
+        return error.NoTelegramConfig;
+    }
+
     while (true) {
         // Robust error handling: If tick() fails (e.g., network error),
         // log it and retry after a delay. This prevents the bot from
         // crashing completely on transient errors.
         bot.tick() catch |err| {
-            std.debug.print("Error in Telegram bot tick: {any}\n", .{err});
-            std.debug.print("Retrying in 5 seconds...\n", .{});
+            std.debug.print("Error in Telegram bot tick: {any}\nRetrying in 5 seconds...\n", .{err});
             std.Thread.sleep(std.time.ns_per_s * 5);
         };
     }
