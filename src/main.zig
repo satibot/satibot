@@ -82,10 +82,7 @@ pub fn main() !void {
         // Handle "satibot in <platform>" command format
         // This auto-creates config for the specified platform before running
         if (args.len < 3) {
-            std.debug.print("Usage: satibot in <platform>\n", .{});
-            std.debug.print("Platforms:\n", .{});
-            std.debug.print("  whatsapp   Auto-create WhatsApp config and run\n", .{});
-            std.debug.print("  telegram   Auto-create Telegram config and run\n", .{});
+            std.debug.print("Usage: satibot in <platform>\nPlatforms:\n  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n", .{});
             return;
         }
         const platform = args[2];

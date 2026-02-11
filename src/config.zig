@@ -96,7 +96,7 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
                 \\{
                 \\  "agents": {
                 \\    "defaults": {
-                \\      "model": "anthropic/claude-opus-4-5",
+                \\      "model": "arcee-ai/trinity-large-preview:free",
                 \\      "embeddingModel": "local"
                 \\    }
                 \\  },
@@ -122,7 +122,7 @@ test "Config: default loading" {
     const parsed = try loadFromPath(allocator, "/non/existent/path");
     defer parsed.deinit();
 
-    try std.testing.expectEqualStrings("anthropic/claude-opus-4-5", parsed.value.agents.defaults.model);
+    try std.testing.expectEqualStrings("arcee-ai/trinity-large-preview:free", parsed.value.agents.defaults.model);
 }
 
 test "Config: loading from file" {

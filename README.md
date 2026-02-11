@@ -74,7 +74,12 @@ zig build
 make build
 
 # initialize `~/.bots/config.json`
-zig build init
+# If already exists, it will do nothing
+# default config is:
+# - using `arcee-ai/trinity-large-preview:free`
+# - using `openrouter`
+# - using `telegram`
+satibot in
 ```
 
 ### 2. Configure
