@@ -13,7 +13,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] Telegram + OpenRouter (Sync version)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
-- [ ] VectorDB - local first vector searching for similar content chat logs.
+- [x] VectorDB - very simple local first vector searching for similar content chat logs.
 
 ## Comparison with others
 
@@ -73,8 +73,8 @@ zig build
 # or
 make build
 
-# initialize `~/.bots/config.json`
-# If already exists, it will do nothing
+# initialize `~/.bots/config.json` (at HOME path)
+# If platform sections already exists, it will do nothing
 # default config is:
 # - using `arcee-ai/trinity-large-preview:free`
 # - using `openrouter`
@@ -172,6 +172,25 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 - **GraphDB**: Relationship mapping for complex knowledge
 - **RAG**: Retrieval-Augmented Generation for accurate responses
 - **Session Cache**: In-memory session history with automatic cleanup (30 minutes idle timeout)
+
+### 📚 VectorDB
+
+🎯 Perfect For Chat Logs:
+
+- Semantic Search: Find similar conversations by meaning, not just keywords
+- Local First: No external database dependencies
+- Fast Enough: Linear search suitable for thousands of entries
+- Auto-indexing: Already integrated with conversation indexing
+
+- **Storage**: `~/.bots/vector_db.json`
+- **Usage**:
+
+```bash
+satibot vector-db stats
+satibot vector-db list
+satibot vector-db search "your query" [top_k]
+satibot vector-db add "my name is John"
+```
 
 ### 🔧 Skills & Tools
 
