@@ -10,7 +10,7 @@ Built in Zig for performance, designed for awareness.
 
 IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and console, other features are under development.
 
-- [x] Telegram + OpenRouter (Async & Sync versions)
+- [x] Telegram + OpenRouter (Sync version)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 - [ ] VectorDB - local first vector searching for similar content chat logs.
@@ -119,8 +119,9 @@ satibot console
 # for telegram (sync version - simple & reliable)
 satibot telegram-sync
 
+# TODO
 # for telegram (async version - high performance)
-satibot telegram
+# satibot telegram
 ```
 
 ### Telegram Bot Versions
@@ -137,9 +138,11 @@ satibot offers two Telegram bot implementations:
 
 **⚡ Async Version** (`telegram`)
 
+TODO
+
 - High-performance, event-driven
 - Processes multiple messages concurrently
-- Higher resource usage - RAM usage ~2.5MB on macOS M1
+- Higher resource usage - RAM usage ~3.5MB on macOS M1
 
 See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
 
@@ -147,17 +150,12 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ## 💬 Chat Integrations
 
-### Telegram
-
-1. Create bot via [@BotFather](https://t.me/BotFather) --> `/newbot`
-2. Get token and user ID via [@userinfobot](https://t.me/userinfobot)
-3. Add to config and run `zig build telegram`
-
-### Discord, WhatsApp & More
-
-Full setup guides in our [Documentation](#-documentation).
-
-**New**: WhatsApp support with Meta Cloud API is now available!
+- Telegram: `satibot telegram-sync`
+  - [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
+  - [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md)
+  - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
+- Terminal console: `satibot console`
+  - [docs/CONSOLE.md](docs/CONSOLE.md)
 
 ---
 
@@ -170,19 +168,9 @@ Full setup guides in our [Documentation](#-documentation).
 - **RAG**: Retrieval-Augmented Generation for accurate responses
 - **Session Cache**: In-memory session history with automatic cleanup (30 minutes idle timeout)
 
-### 🔄 Functional Architecture
-
-satibot uses a pure functional approach for message processing:
-
-- **No State Mutation**: All operations are pure functions that take input and return output
-- **Immutable Data**: Session history is treated as immutable data structures
-- **Predictable Behavior**: Same input always produces the same output
-- **Easy Testing**: Pure functions are simple to test and debug
-- **Memory Efficient**: Automatic cleanup prevents memory leaks
-
-The session cache temporarily holds conversation history in memory for performance, automatically cleaning up inactive sessions after 30 minutes to prevent memory accumulation.
-
 ### 🔧 Skills & Tools
+
+TODO
 
 ```bash
 # Browse available skills
@@ -196,6 +184,8 @@ zig build run -- agent -m "Run: ls -la"
 ```
 
 ### ⏰ Automation
+
+TODO
 
 ```bash
 # Heartbeat: Proactive task checking
