@@ -25,10 +25,10 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 | **Cost** | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
 | src | [openclaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | [picoclaw](https://github.com/sipeed/picoclaw) | [satibot](https://github.com/satibot/satibot) |
 
-⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
-🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
-🔧 **Extensible**: Easy skill installation and tool system
-💬 **Multi-Platform**: [TODO: current is using Telegram and console] Telegram, Discord, WhatsApp, and more
+- ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
+- 🧠 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
+- 🔧 **Extensible**: Easy skill installation and tool system
+- 💬 **Multi-Platform**: [TODO: current is using Telegram and console] Telegram, Discord, WhatsApp, and more
 
 View more in [Features](docs/FEATURES.md).
 
