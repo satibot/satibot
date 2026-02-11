@@ -23,13 +23,22 @@ const XevEventLoop = xev_event_loop.XevEventLoop;
 /// Global flag for shutdown signal
 var shutdown_requested = std.atomic.Value(bool).init(false);
 
+/// Global flag to prevent multiple shutdown messages
+var shutdown_message_printed = std.atomic.Value(bool).init(false);
+
 /// Global event loop pointer for signal handler access
 var global_event_loop: ?*XevEventLoop = null;
 
 /// Signal handler for SIGINT (Ctrl+C) and SIGTERM
 fn signalHandler(sig: i32) callconv(.c) void {
     _ = sig;
-    std.debug.print("\n🛑 Mock bot shutting down...\n", .{});
+
+    // Only print shutdown message once
+    if (!shutdown_message_printed.load(.seq_cst)) {
+        shutdown_message_printed.store(true, .seq_cst);
+        std.debug.print("\n🛑 Mock bot shutting down...\n", .{});
+    }
+
     shutdown_requested.store(true, .seq_cst);
     if (global_event_loop) |el| {
         el.requestShutdown();
@@ -153,7 +162,14 @@ pub const MockBot = struct {
         var buf: [1024]u8 = undefined;
 
         std.debug.print("\nUser > ", .{});
-        const n = try stdin.read(&buf);
+        const n = stdin.read(&buf) catch |err| {
+            // Handle interrupted input (e.g., from Ctrl+C signal)
+            if (err == error.InputOutput or err == error.BrokenPipe) {
+                // Signal was received, just exit gracefully
+                return;
+            }
+            return err;
+        };
         if (n == 0) return;
 
         const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
@@ -190,8 +206,17 @@ pub const MockBot = struct {
         while (!shutdown_requested.load(.seq_cst)) {
             self.tick() catch |err| {
                 if (err == error.EndOfStream) break;
+                if (err == error.InputOutput or err == error.BrokenPipe) {
+                    // Input was interrupted (likely by signal), just continue to shutdown check
+                    continue;
+                }
                 std.debug.print("Tick error: {any}\n", .{err});
             };
+        }
+
+        // Ensure clean shutdown message
+        if (shutdown_message_printed.load(.seq_cst)) {
+            std.debug.print("--- Mock bot shut down successfully. ---\n", .{});
         }
     }
 };
