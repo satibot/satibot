@@ -83,3 +83,28 @@
 - [ ] Implement GraphDB (Basic)
 - [x] Add auto-indexing of conversations
 - [x] Support RAG lookup tools
+
+## TODO
+
+### [ ] 🔧 Skills & Tools
+
+```bash
+# Browse available skills
+curl https://agent-skills.md/
+
+# Install a new skill
+./scripts/install-skill.sh <github-url-or-path>
+
+# Use built-in tools
+zig build run -- agent -m "Run: ls -la"
+```
+
+### ⏰ Automation
+
+```bash
+# Heartbeat: Proactive task checking
+echo "Check emails" > HEARTBEAT.md
+
+# Cron: Schedule recurring tasks
+zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
+```

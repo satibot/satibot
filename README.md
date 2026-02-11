@@ -130,7 +130,7 @@ satibot offers two Telegram bot implementations:
 
 - Simple, reliable, single-threaded
 - Processes one message at a time
-- Lower resource usage (~2MB)
+- Lower resource usage (~1MB on macOS M1)
 - Text messages only (no voice support)
 - Best for: development, small deployments, resource-constrained environments
 
@@ -138,7 +138,7 @@ satibot offers two Telegram bot implementations:
 
 - High-performance, event-driven
 - Processes multiple messages concurrently
-- Higher resource usage (~4MB)
+- Higher resource usage - RAM usage ~2.5MB on macOS M1
 
 See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
 
