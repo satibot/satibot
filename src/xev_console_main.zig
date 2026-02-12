@@ -4,7 +4,7 @@ const console = @import("agent/console.zig");
 
 pub fn main() !void {
     // Initialize allocator
-    const gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+    var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 

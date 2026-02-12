@@ -439,7 +439,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // If no message provided, enter interactive mode
     if (message.len == 0) {
         std.debug.print("Entering interactive mode. Type 'exit' or 'quit' to end.\n", .{});
-        var agent = satibot.agent.Agent.init(allocator, config, session_id);
+        var agent = satibot.Agent.init(allocator, config, session_id);
         defer agent.deinit();
 
         // Read from stdin for interactive mode
@@ -476,7 +476,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     // Initialize agent with session
-    var agent = satibot.agent.Agent.init(allocator, config, session_id);
+    var agent = satibot.Agent.init(allocator, config, session_id);
     defer agent.deinit();
 
     // Process single message
@@ -503,11 +503,11 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     };
 
     // Initialize OpenRouter provider
-    var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+    var provider = try satibot.openrouter.OpenRouterProvider.init(allocator, api_key);
     defer provider.deinit();
 
     // Create test message
-    const messages = &[_]satibot.providers.base.LLMMessage{
+    const messages = &[_]satibot.base.LLMMessage{
         .{ .role = "user", .content = "Say hello from Zig!" },
     };
 
@@ -531,7 +531,7 @@ fn runConsole(allocator: std.mem.Allocator) !void {
     std.debug.print("Active Model: {s}\nConsole bot started. Type 'exit' or 'quit' to stop.\n", .{config.agents.defaults.model});
 
     // Import and run the console mock bot
-    var bot = try satibot.agent.console.MockBot.init(allocator, config);
+    var bot = try satibot.console.MockBot.init(allocator, config);
     defer bot.deinit();
 
     try bot.run();
@@ -562,7 +562,7 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Active Model: {s}\nTelegram bot started. Press Ctrl+C to stop.\n", .{config.agents.defaults.model});
 
     // Run Telegram bot (blocking call)
-    try satibot.agent.chat_apps.telegram.runBot(allocator, config);
+    try satibot.telegram_bot_sync.run(allocator, config);
 }
 
 /// Run synchronous Telegram bot server
@@ -591,7 +591,7 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Active Model: {s}\nSynchronous Telegram bot started. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
 
     // Run synchronous Telegram bot directly using the proper implementation
-    try satibot.agent.telegram_bot_sync.run(allocator, config);
+    try satibot.telegram_bot_sync.run(allocator, config);
 }
 
 /// Run WhatsApp bot server
@@ -620,7 +620,7 @@ fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("WhatsApp bot started. Press Ctrl+C to stop.\n", .{});
 
     // Run WhatsApp bot (blocking call)
-    try satibot.agent.whatsapp_bot.run(allocator, config);
+    try satibot.whatsapp_bot.run(allocator, config);
 }
 
 /// Run gateway service that manages multiple components:
@@ -635,7 +635,7 @@ fn runGateway(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Initialize gateway with all components
-    var g = try satibot.agent.gateway.Gateway.init(allocator, config);
+    var g = try satibot.gateway.Gateway.init(allocator, config);
     defer g.deinit();
 
     // Run gateway (blocking call)
@@ -673,7 +673,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer allocator.free(db_path);
 
     // Initialize vector store
-    var store = satibot.agent.vector_db.VectorStore.init(allocator);
+    var store = satibot.vector_db.VectorStore.init(allocator);
     defer store.deinit();
     // Load existing data or create new store
     store.load(db_path) catch |err| {
@@ -715,16 +715,16 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         }
 
         const emb_model = config.agents.defaults.embeddingModel orelse "local";
-        var resp: satibot.providers.base.EmbeddingResponse = undefined;
+        var resp: satibot.base.EmbeddingResponse = undefined;
 
         if (std.mem.eql(u8, emb_model, "local")) {
-            resp = try satibot.agent.local_embeddings.LocalEmbedder.generate(allocator, &.{query});
+            resp = try satibot.local_embeddings.LocalEmbedder.generate(allocator, &.{query});
         } else {
             const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
                 std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
                 return error.NoApiKey;
             };
-            var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+            var provider = try satibot.openrouter.OpenRouterProvider.init(allocator, api_key);
             defer provider.deinit();
             resp = try provider.embeddings(.{ .input = &.{query}, .model = emb_model });
         }
@@ -772,16 +772,16 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         const text = text_buf[0..pos];
 
         const emb_model = config.agents.defaults.embeddingModel orelse "local";
-        var resp: satibot.providers.base.EmbeddingResponse = undefined;
+        var resp: satibot.base.EmbeddingResponse = undefined;
 
         if (std.mem.eql(u8, emb_model, "local")) {
-            resp = try satibot.agent.local_embeddings.LocalEmbedder.generate(allocator, &.{text});
+            resp = try satibot.local_embeddings.LocalEmbedder.generate(allocator, &.{text});
         } else {
             const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
                 std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
                 return error.NoApiKey;
             };
-            var provider = try satibot.providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+            var provider = try satibot.openrouter.OpenRouterProvider.init(allocator, api_key);
             defer provider.deinit();
             resp = try provider.embeddings(.{ .input = &.{text}, .model = emb_model });
         }
@@ -838,7 +838,7 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     // Check and display cron jobs
     const cron_path = try std.fs.path.join(allocator, &.{ bots_dir, "cron_jobs.json" });
     defer allocator.free(cron_path);
-    var store = satibot.agent.cron.CronStore.init(allocator);
+    var store = satibot.cron.CronStore.init(allocator);
     defer store.deinit();
     store.load(cron_path) catch {};
     std.debug.print("Cron Jobs:      {d} active\n------------------------\n", .{store.jobs.items.len});

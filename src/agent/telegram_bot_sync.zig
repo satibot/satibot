@@ -138,7 +138,7 @@ pub const TelegramBot = struct {
                 // Voice transcription requires additional provider configuration
                 if (msg.voice) |voice| {
                     _ = voice; // Mark as used
-                    try self.send_message(tg_config.botToken, chat_id_str, "🎤 Voice messages are not supported in the sync version. Please use text messages or the async version with voice transcription enabled.");
+                    try self.sendMessage(tg_config.botToken, chat_id_str, "🎤 Voice messages are not supported in the sync version. Please use text messages or the async version with voice transcription enabled.");
                 }
 
                 // Process text messages only (voice messages are handled above)
@@ -169,7 +169,7 @@ pub const TelegramBot = struct {
 
                         // If user sent "/new" without additional text, clear session and confirm
                         if (final_text.len <= 4) {
-                            try self.send_message(tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
+                            try self.sendMessage(tg_config.botToken, chat_id_str, "🆕 Session cleared! Send me a new message.");
                             continue;
                         }
                         // If user sent "/new <prompt>", clear session but process the prompt
@@ -202,7 +202,7 @@ pub const TelegramBot = struct {
                     // Send the agent's response back to Telegram
                     // We look for the last message in the conversation history
                     // and send it if it's from the assistant and has content
-                    const messages = agent.ctx.get_messages();
+                    const messages = agent.ctx.getMessages();
                     if (messages.len > 0) {
                         const last_msg = messages[messages.len - 1];
                         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
@@ -298,7 +298,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     if (config.tools.telegram) |tg_config| {
         if (tg_config.chatId) |chat_id| {
             std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
-            bot.send_message(tg_config.botToken, chat_id, "🚀 Bot is ready and starting to poll for messages...") catch |err| {
+            bot.sendMessage(tg_config.botToken, chat_id, "🚀 Bot is ready and starting to poll for messages...") catch |err| {
                 std.debug.print("Warning: Failed to send startup message: {any}\n", .{err});
                 // Continue even if startup message fails
             };
