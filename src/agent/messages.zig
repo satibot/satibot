@@ -154,7 +154,7 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
             .name = "vector_search",
             .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
-            .execute = tools.vector_search,
+            .execute = tools.vectorSearch,
         });
         // Graph and cron tools are commented out
         // try registry.register(.{
@@ -232,7 +232,7 @@ fn ensureSystemPrompt(history: *SessionHistory, config: Config) !void {
         }
     }
 
-    const system_msg = Message{
+    const system_msg: Message = .{
         .role = try history.allocator.dupe(u8, "system"),
         .content = try history.allocator.dupe(u8, prompt_builder.items),
     };
@@ -248,7 +248,7 @@ fn loadSessionHistory(allocator: std.mem.Allocator, session_id: []const u8) !Ses
     if (session.load(allocator, session_id)) |loaded_messages| {
         for (loaded_messages) |msg| {
             // Convert loaded messages to our Message format
-            const new_msg = Message{
+            const new_msg: Message = .{
                 .role = try allocator.dupe(u8, msg.role),
                 .content = if (msg.content) |c| try allocator.dupe(u8, c) else null,
                 .tool_call_id = if (msg.tool_call_id) |id| try allocator.dupe(u8, id) else null,
@@ -359,7 +359,7 @@ pub fn processMessage(
     try ensureSystemPrompt(&history, config);
 
     // Add user message
-    const user_msg = Message{
+    const user_msg: Message = .{
         .role = try allocator.dupe(u8, "user"),
         .content = try allocator.dupe(u8, user_message),
     };
@@ -406,15 +406,15 @@ pub fn processMessage(
     const provider_interface = getProviderInterface("openrouter");
 
     // Chunk callback to collect response
-    var response_chunks = std.ArrayListUnmanaged(u8){};
+    var response_chunks: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable;
     defer response_chunks.deinit(allocator);
 
     const CallbackContext = struct {
         allocator: std.mem.Allocator,
-        chunks: *std.ArrayListUnmanaged(u8),
+        chunks: *std.ArrayList(u8),
     };
 
-    var callback_ctx = CallbackContext{
+    var callback_ctx: CallbackContext = .{
         .allocator = allocator,
         .chunks = &response_chunks,
     };
@@ -429,7 +429,7 @@ pub fn processMessage(
     }.call;
 
     // Convert tool registry to expected format
-    var provider_tools = std.ArrayListUnmanaged(base.ToolDefinition){};
+    var provider_tools: std.ArrayList(base.ToolDefinition) = std.ArrayList(base.ToolDefinition).initCapacity(allocator, 10) catch unreachable;
     defer provider_tools.deinit(allocator);
     var tool_it = tool_registry.tools.iterator();
     while (tool_it.next()) |entry| {
@@ -457,7 +457,7 @@ pub fn processMessage(
     defer @constCast(&response).deinit();
 
     // Add assistant response to history
-    const assistant_msg = Message{
+    const assistant_msg: Message = .{
         .role = try allocator.dupe(u8, "assistant"),
         .content = if (response.content) |c| try allocator.dupe(u8, c) else null,
     };

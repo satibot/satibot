@@ -107,7 +107,7 @@ pub const XevEventLoop = struct {
 
     /// Add a task to the queue for immediate processing
     pub fn addTask(self: *XevEventLoop, id: []const u8, data: []const u8, source: []const u8) !void {
-        const task = Task{
+        const task: Task = .{
             .id = try self.allocator.dupe(u8, id),
             .data = try self.allocator.dupe(u8, data),
             .source = try self.allocator.dupe(u8, source),
@@ -129,7 +129,7 @@ pub const XevEventLoop = struct {
             event_payload = try self.allocator.dupe(u8, p);
         }
 
-        const event = Event{
+        const event: Event = .{
             .id = try self.allocator.dupe(u8, id),
             .type = event_type,
             .payload = event_payload,
@@ -348,5 +348,7 @@ pub const XevEventLoop = struct {
 
         // Clean up worker threads
         self.worker_threads.deinit(self.allocator);
+
+        self.* = undefined;
     }
 };

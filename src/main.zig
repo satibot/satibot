@@ -10,7 +10,7 @@ pub fn main() !void {
     std.debug.print("--- satibot 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
     // Initialize general purpose allocator for memory management
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -840,7 +840,9 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     defer allocator.free(cron_path);
     var store = satibot.cron.CronStore.init(allocator);
     defer store.deinit();
-    store.load(cron_path) catch {};
+    store.load(cron_path) catch |err| {
+        std.debug.print("Failed to load cron jobs: {any}\n", .{err});
+    };
     std.debug.print("Cron Jobs:      {d} active\n------------------------\n", .{store.jobs.items.len});
 }
 

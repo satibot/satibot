@@ -3,7 +3,7 @@ const xev_event_loop = @import("xev_event_loop.zig");
 const Config = @import("../config.zig").Config;
 
 test "Task: struct creation and access" {
-    const task = xev_event_loop.Task{
+    const task: xev_event_loop.Task = .{
         .id = "task_123",
         .data = "task data",
         .source = "test_source",
@@ -15,7 +15,7 @@ test "Task: struct creation and access" {
 }
 
 test "Task: empty strings" {
-    const task = xev_event_loop.Task{
+    const task: xev_event_loop.Task = .{
         .id = "",
         .data = "",
         .source = "",
@@ -27,7 +27,7 @@ test "Task: empty strings" {
 }
 
 test "Event: struct creation and access" {
-    const event = xev_event_loop.Event{
+    const event: xev_event_loop.Event = .{
         .id = "event_456",
         .type = .custom,
         .payload = "event payload",
@@ -41,7 +41,7 @@ test "Event: struct creation and access" {
 }
 
 test "Event: with null payload" {
-    const event = xev_event_loop.Event{
+    const event: xev_event_loop.Event = .{
         .id = "no_payload",
         .type = .shutdown,
         .payload = null,
@@ -60,14 +60,14 @@ test "EventType: enum values" {
 }
 
 test "Event: compare function" {
-    const event1 = xev_event_loop.Event{
+    const event1: xev_event_loop.Event = .{
         .id = "earlier",
         .type = .custom,
         .payload = null,
         .expires = 1000,
     };
 
-    const event2 = xev_event_loop.Event{
+    const event2: xev_event_loop.Event = .{
         .id = "later",
         .type = .custom,
         .payload = null,
@@ -83,7 +83,7 @@ test "Event: compare function" {
     try std.testing.expectEqual(std.math.Order.gt, reverse_order);
 
     // Same expiration time should be equal
-    const event3 = xev_event_loop.Event{
+    const event3: xev_event_loop.Event = .{
         .id = "same_time",
         .type = .custom,
         .payload = null,
@@ -95,14 +95,14 @@ test "Event: compare function" {
 }
 
 test "Event: compare with negative timestamps" {
-    const event1 = xev_event_loop.Event{
+    const event1: xev_event_loop.Event = .{
         .id = "negative1",
         .type = .custom,
         .payload = null,
         .expires = -1000,
     };
 
-    const event2 = xev_event_loop.Event{
+    const event2: xev_event_loop.Event = .{
         .id = "negative2",
         .type = .custom,
         .payload = null,
@@ -331,14 +331,14 @@ test "XevEventLoop: event queue operations" {
     try std.testing.expectEqual(@as(usize, 0), event_loop.event_queue.count());
 
     // Test adding events
-    const event1 = xev_event_loop.Event{
+    const event1: xev_event_loop.Event = .{
         .id = "event1",
         .type = .custom,
         .payload = "payload1",
         .expires = 1000,
     };
 
-    const event2 = xev_event_loop.Event{
+    const event2: xev_event_loop.Event = .{
         .id = "event2",
         .type = .custom,
         .payload = "payload2",

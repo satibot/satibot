@@ -138,7 +138,7 @@ pub const Agent = struct {
             .name = "vector_search",
             .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
-            .execute = tools.vector_search,
+            .execute = tools.vectorSearch,
         }) catch {};
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // self.registry.register(.{

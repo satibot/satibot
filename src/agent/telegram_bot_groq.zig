@@ -2,6 +2,7 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
+const groq_provider = @import("../root.zig").providers.groq.GroqProvider;
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received
@@ -41,7 +42,7 @@ fn trackActiveChat(allocator: std.mem.Allocator, chat_id: i64) void {
 /// Setup signal handlers for graceful shutdown
 /// Registers handlers for SIGINT (Ctrl+C) and SIGTERM signals
 fn setupSignalHandlers() void {
-    const sa = std.posix.Sigaction{
+    const sa: std.posix.Sigaction = .{
         .handler = .{ .handler = signalHandler },
         .mask = std.mem.zeroes(std.posix.sigset_t),
         .flags = 0,
@@ -92,6 +93,7 @@ pub const TelegramBot = struct {
     /// Must be called when the bot is shutting down
     pub fn deinit(self: *TelegramBot) void {
         self.client.deinit(); // Close HTTP connections
+        self.* = undefined;
     }
 
     /// Single polling iteration.
@@ -210,7 +212,7 @@ pub const TelegramBot = struct {
                                 // 3. Transcribe using Groq
                                 // We initialize a temporary provider instance just for this operation.
                                 // In a higher-load system, we might want to share a provider instance.
-                                var groq = try @import("../root.zig").providers.groq.GroqProvider.init(self.allocator, groq_cfg.apiKey);
+                                var groq = try groq_provider.init(self.allocator, groq_cfg.apiKey);
                                 defer groq.deinit();
 
                                 // Transcribe the audio data
@@ -219,7 +221,7 @@ pub const TelegramBot = struct {
                             }
                         } else {
                             // Groq is not configured, send error message to user
-                            try self.send_message(tg_config.botToken, chat_id_str, "🎤 Voice message received, but transcription is not configured (need Groq API key).");
+                            try self.sendMessage(tg_config.botToken, chat_id_str, "🎤 Voice message received, but transcription is not configured (need Groq API key).");
                         }
                     }
 
@@ -250,7 +252,7 @@ pub const TelegramBot = struct {
                                 \\
                                 \\Send any message to chat with the AI assistant.
                             ;
-                            try self.send_message(tg_config.botToken, chat_id_str, help_text);
+                            try self.sendMessage(tg_config.botToken, chat_id_str, help_text);
                             continue;
                         }
 
@@ -265,11 +267,11 @@ pub const TelegramBot = struct {
                             new_session_id = try std.fmt.allocPrint(self.allocator, "{s}_{d}", .{ session_id, ts });
 
                             if (final_text.len <= 4) {
-                                try self.send_message(tg_config.botToken, chat_id_str, "🆕 New session started! Send me a new message.");
+                                try self.sendMessage(tg_config.botToken, chat_id_str, "🆕 New session started! Send me a new message.");
                                 continue;
                             }
                             // If user sent "/new some prompt", start new session and process the prompt
-                            actual_text = std.mem.trimLeft(u8, final_text[4..], " ");
+                            actual_text = std.mem.trimStart(u8, final_text[4..], " ");
                         }
 
                         // Spin up a fresh Agent instance for this interaction.
@@ -280,7 +282,9 @@ pub const TelegramBot = struct {
 
                         // Send initial "typing" action to show the user we're processing.
                         // This provides immediate feedback that the bot is working.
-                        self.send_chat_action(tg_config.botToken, chat_id_str, "typing") catch {};
+                        self.sendChatAction(tg_config.botToken, chat_id_str, "typing") catch |err| {
+                            std.debug.print("Failed to send typing action: {any}\n", .{err});
+                        };
 
                         // Shared state to coordinate between agent thread and typing thread
                         // This allows us to show typing indicator while processing LLM requests
@@ -371,7 +375,9 @@ pub const TelegramBot = struct {
                                     if (is_done) break;
 
                                     // Send typing action (ignore errors to avoid crashing)
-                                    ctx.bot.send_chat_action(ctx.token, ctx.chat_id, "typing") catch {};
+                                    ctx.bot.sendChatAction(ctx.token, ctx.chat_id, "typing") catch |err| {
+                                        std.debug.print("Failed to send typing action: {any}\n", .{err});
+                                    };
                                 }
                             }
                         }.run, .{typing_ctx});
@@ -389,7 +395,7 @@ pub const TelegramBot = struct {
                             // Send error message to user if processing failed
                             const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: Agent failed to process request\n\nPlease try again.", .{});
                             defer self.allocator.free(error_msg);
-                            try self.send_message(tg_config.botToken, chat_id_str, error_msg);
+                            try self.sendMessage(tg_config.botToken, chat_id_str, error_msg);
                         } else {
                             // Send the final response back to Telegram.
                             // Get all messages from the agent's conversation context
@@ -399,14 +405,16 @@ pub const TelegramBot = struct {
                                 const last_msg = messages[messages.len - 1];
                                 // Only send if it's an assistant message with content
                                 if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                                    try self.send_message(tg_config.botToken, chat_id_str, last_msg.content.?);
+                                    try self.sendMessage(tg_config.botToken, chat_id_str, last_msg.content.?);
                                 }
                             }
                         }
 
                         // Save session state to Vector/Graph DB for long-term memory.
                         // This enables RAG (Retrieval-Augmented Generation) functionality.
-                        agent.index_conversation() catch {};
+                        agent.index_conversation() catch |err| {
+                            std.debug.print("Failed to index conversation: {any}\n", .{err});
+                        };
                     }
                 }
             }
@@ -416,7 +424,7 @@ pub const TelegramBot = struct {
     /// Send a chat action (typing, upload_photo, record_video, etc.) to Telegram.
     /// This shows the user that the bot is processing their request.
     /// Common actions include: "typing", "upload_photo", "record_video", "upload_document"
-    fn send_chat_action(self: *TelegramBot, token: []const u8, chat_id: []const u8, action: []const u8) !void {
+    fn sendChatAction(self: *TelegramBot, token: []const u8, chat_id: []const u8, action: []const u8) !void {
         // Build the API URL for sending chat actions
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendChatAction", .{token});
         defer self.allocator.free(url);
@@ -440,7 +448,7 @@ pub const TelegramBot = struct {
 
     /// Helper to send a text message back to a chat using the Telegram API.
     /// This is the primary method for sending bot responses to users.
-    fn send_message(self: *TelegramBot, token: []const u8, chat_id: []const u8, text: []const u8) !void {
+    fn sendMessage(self: *TelegramBot, token: []const u8, chat_id: []const u8, text: []const u8) !void {
         // Build the API URL for sending messages
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
         defer self.allocator.free(url);
@@ -497,7 +505,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
 
                 // Send shutdown message to user
                 const shutdown_msg = "🛑 Bot is turned off. See you next time! 👋";
-                bot.send_message(tg_config.botToken, chat_id_str, shutdown_msg) catch |err| {
+                bot.sendMessage(tg_config.botToken, chat_id_str, shutdown_msg) catch |err| {
                     // Log error but continue with other chats
                     std.debug.print("Failed to send shutdown message to chat {d}: {any}\n", .{ chat_id, err });
                 };
@@ -526,7 +534,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     // Send startup message to configured chat
     std.debug.print("Sending startup message to chat {s}...\n", .{chat_id});
     const startup_msg = "🐸 Bot is now online and ready! 🚀";
-    bot.send_message(tg_config.botToken, chat_id, startup_msg) catch |err| {
+    bot.sendMessage(tg_config.botToken, chat_id, startup_msg) catch |err| {
         std.debug.print("Failed to send startup message: {any}\n", .{err});
     };
 
@@ -674,7 +682,7 @@ test "TelegramBot /new with prompt extracts prompt correctly" {
     const new_with_prompt = "/new what is zig?";
 
     // Extract prompt after /new (simulate the logic)
-    const actual_prompt = std.mem.trimLeft(u8, new_with_prompt[4..], " ");
+    const actual_prompt = std.mem.trimStart(u8, new_with_prompt[4..], " ");
 
     try std.testing.expectEqualStrings("what is zig?", actual_prompt);
 }

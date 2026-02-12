@@ -43,6 +43,7 @@ pub const ToolRegistry = struct {
     /// Clean up registry resources.
     pub fn deinit(self: *ToolRegistry) void {
         self.tools.deinit();
+        self.* = undefined;
     }
 
     /// Register a new tool in the registry.
@@ -358,7 +359,7 @@ pub const ToolRegistry = struct {
 // }
 
 // Helper to get db paths
-fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
+fn getDbPath(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
     const home = std.posix.getenv("HOME") orelse return filename;
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
@@ -367,7 +368,7 @@ fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
         if (err != error.PathAlreadyExists) return err;
     };
 
-    return try std.fs.path.join(allocator, &.{ bots_dir, filename });
+    return std.fs.path.join(allocator, &.{ bots_dir, filename });
 }
 
 pub fn upsertVector(ctx: ToolContext, arguments: []const u8) ![]const u8 {
@@ -387,7 +388,7 @@ pub fn upsertVector(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     var store = vector_db.VectorStore.init(ctx.allocator);
     defer store.deinit();
 
-    const path = try get_db_path(ctx.allocator, "vector_db.json");
+    const path = try getDbPath(ctx.allocator, "vector_db.json");
     defer ctx.allocator.free(path);
 
     try store.load(path);
@@ -397,7 +398,7 @@ pub fn upsertVector(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return ctx.allocator.dupe(u8, "Vector upserted successfully");
 }
 
-pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     if (ctx.config.agents.defaults.disableRag) {
         return ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
     }
@@ -414,15 +415,15 @@ pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     var store = vector_db.VectorStore.init(ctx.allocator);
     defer store.deinit();
 
-    const path = try get_db_path(ctx.allocator, "vector_db.json");
+    const path = try getDbPath(ctx.allocator, "vector_db.json");
     defer ctx.allocator.free(path);
 
     try store.load(path);
     const results = try store.search(resp.embeddings[0], parsed.value.top_k.?);
     defer ctx.allocator.free(results);
 
-    var result_text: std.ArrayListUnmanaged(u8) = .{};
-    errdefer result_text.deinit(ctx.allocator);
+    var result_text: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.allocator, 1024) catch unreachable;
+    defer result_text.deinit();
 
     const writer = result_text.writer(ctx.allocator);
     try writer.print("Vector Search Results ({d} items):\n", .{results.len});
@@ -702,7 +703,7 @@ test "ToolRegistry: register and get" {
         .name = "vector_search",
         .description = "Search vector database for similar content",
         .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
-        .execute = vector_search,
+        .execute = vectorSearch,
     });
     try registry.register(.{
         .name = "vector_upsert",
@@ -807,7 +808,7 @@ test "Tools: vector_upsert and vector_search" {
     };
     defer allocator.free(res1);
 
-    const res2 = vector_search(ctx, "{\"query\": \"hi\"}");
+    const res2 = vectorSearch(ctx, "{\"query\": \"hi\"}");
     if (res2) |r| {
         defer allocator.free(r);
         try std.testing.expect(std.mem.indexOf(u8, r, "Vector Search Results") != null);
@@ -1103,7 +1104,7 @@ test "Tools: respect disableRag flag" {
     defer allocator.free(upsert_res);
     try std.testing.expect(std.mem.indexOf(u8, upsert_res, "RAG is globally disabled") != null);
 
-    const search_res = try vector_search(ctx, "{\"query\": \"hello\"}");
+    const search_res = try vectorSearch(ctx, "{\"query\": \"hello\"}");
     defer allocator.free(search_res);
     try std.testing.expect(std.mem.indexOf(u8, search_res, "RAG is globally disabled") != null);
 }

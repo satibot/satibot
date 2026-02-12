@@ -141,7 +141,7 @@ pub const CronStore = struct {
             next_run = schedule.at_ms;
         }
 
-        const job = CronJob{
+        const job: CronJob = .{
             .id = id,
             .name = try self.allocator.dupe(u8, name),
             .schedule = schedule,
@@ -220,7 +220,7 @@ test "CronStore: init, add, save, and load" {
 
     const job_name = "test_job";
     const job_msg = "test_message";
-    const schedule = CronSchedule{ .kind = .every, .every_ms = 1000 };
+    const schedule: CronSchedule = .{ .kind = .every, .every_ms = 1000 };
 
     const id = try store.addJob(job_name, schedule, job_msg);
     try std.testing.expect(id.len > 0);
@@ -245,7 +245,7 @@ test "CronStore: init, add, save, and load" {
 
 test "CronSchedule: struct creation" {
     // Test 'at' schedule
-    const at_schedule = CronSchedule{
+    const at_schedule: CronSchedule = .{
         .kind = .at,
         .at_ms = 1234567890,
     };
@@ -254,7 +254,7 @@ test "CronSchedule: struct creation" {
     try std.testing.expect(at_schedule.every_ms == null);
 
     // Test 'every' schedule
-    const every_schedule = CronSchedule{
+    const every_schedule: CronSchedule = .{
         .kind = .every,
         .every_ms = 5000,
     };
@@ -264,7 +264,7 @@ test "CronSchedule: struct creation" {
 }
 
 test "CronPayload: struct creation" {
-    const payload = CronPayload{
+    const payload: CronPayload = .{
         .message = "Hello World",
         .deliver = true,
         .channel = "#general",
@@ -278,7 +278,7 @@ test "CronPayload: struct creation" {
 }
 
 test "CronPayload: minimal creation" {
-    const payload = CronPayload{
+    const payload: CronPayload = .{
         .message = "Simple message",
     };
 
@@ -289,7 +289,7 @@ test "CronPayload: minimal creation" {
 }
 
 test "CronJobState: struct creation" {
-    const state = CronJobState{
+    const state: CronJobState = .{
         .next_run_at_ms = 1000,
         .last_run_at_ms = 500,
         .last_status = "success",
@@ -307,16 +307,16 @@ test "CronStore: multiple jobs" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    const id1 = try store.addJob("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
+    const id1 = try store.addJob("job1", .{ .kind = .every, .every_ms = 1000 }, "msg1");
 
     // Small delay to ensure different timestamps (1 millisecond)
     std.Thread.sleep(1000000); // 1ms in nanoseconds
 
-    const id2 = try store.addJob("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
+    const id2 = try store.addJob("job2", .{ .kind = .every, .every_ms = 2000 }, "msg2");
 
     std.Thread.sleep(1000000);
 
-    const id3 = try store.addJob("job3", CronSchedule{ .kind = .at, .at_ms = 9999999999 }, "msg3");
+    const id3 = try store.addJob("job3", .{ .kind = .at, .at_ms = 9999999999 }, "msg3");
 
     try std.testing.expectEqual(@as(usize, 3), store.jobs.items.len);
 
@@ -338,8 +338,8 @@ test "CronStore: remove_job" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    _ = try store.addJob("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
-    _ = try store.addJob("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
+    _ = try store.addJob("job1", .{ .kind = .every, .every_ms = 1000 }, "msg1");
+    _ = try store.addJob("job2", .{ .kind = .every, .every_ms = 2000 }, "msg2");
 
     try std.testing.expectEqual(@as(usize, 2), store.jobs.items.len);
 
@@ -368,7 +368,7 @@ test "CronJob: default state" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    _ = try store.addJob("test_job", CronSchedule{ .kind = .every, .every_ms = 1000 }, "test_msg");
+    _ = try store.addJob("test_job", .{ .kind = .every, .every_ms = 1000 }, "test_msg");
 
     const job = store.jobs.items[0];
     try std.testing.expectEqualStrings("test_job", job.name);
