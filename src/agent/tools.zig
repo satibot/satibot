@@ -370,7 +370,7 @@ fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
     return try std.fs.path.join(allocator, &.{ bots_dir, filename });
 }
 
-pub fn vector_upsert(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+pub fn upsertVector(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     if (ctx.config.agents.defaults.disableRag) {
         return ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
     }
@@ -708,7 +708,7 @@ test "ToolRegistry: register and get" {
         .name = "vector_upsert",
         .description = "Add content to vector database",
         .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-        .execute = vector_upsert,
+        .execute = upsertVector,
     });
 
     const tool = registry.get("test");
@@ -797,10 +797,10 @@ test "Tools: vector_upsert and vector_search" {
     // We need to point get_db_path to a temporary location for the test.
     // However, get_db_path uses HOME env var.
     // Let's just test that it fails or succeeds based on the mock.
-    // Actually, vector_upsert calls get_db_path.
+    // Actually, upsertVector calls get_db_path.
     // We can't easily mock get_db_path without changing the ENV.
 
-    const res1 = vector_upsert(ctx, "{\"text\": \"hello\"}") catch |err| {
+    const res1 = upsertVector(ctx, "{\"text\": \"hello\"}") catch |err| {
         // If it fails due to HOME not set or similar, we skip the rest
         if (err == error.HomeNotFound) return;
         return err;
@@ -1099,7 +1099,7 @@ test "Tools: respect disableRag flag" {
         },
     };
 
-    const upsert_res = try vector_upsert(ctx, "{\"text\": \"hello\"}");
+    const upsert_res = try upsertVector(ctx, "{\"text\": \"hello\"}");
     defer allocator.free(upsert_res);
     try std.testing.expect(std.mem.indexOf(u8, upsert_res, "RAG is globally disabled") != null);
 

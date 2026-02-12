@@ -132,7 +132,7 @@ pub const Agent = struct {
             .name = "vector_upsert",
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.vector_upsert,
+            .execute = tools.upsertVector,
         }) catch {};
         self.registry.register(.{
             .name = "vector_search",
@@ -209,7 +209,7 @@ pub const Agent = struct {
 
         var prompt_builder = std.ArrayListUnmanaged(u8){};
         defer prompt_builder.deinit(self.allocator);
-        try prompt_builder.appendSlice(self.allocator, "You are satibot, a helpful AI assistant.\nYou have access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+        try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
 
         if (self.config.tools.web.search.apiKey) |key| {
             if (key.len > 0) {
@@ -562,7 +562,7 @@ pub const Agent = struct {
                     const args = try std.json.Stringify.valueAlloc(self.allocator, .{ .text = entry_text.items }, .{});
                     defer self.allocator.free(args);
 
-                    const result = try tools.vector_upsert(tool_ctx, args);
+                    const result = try tools.upsertVector(tool_ctx, args);
                     self.allocator.free(result);
                 }
             }

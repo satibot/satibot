@@ -88,7 +88,7 @@ User Message --> Session ID (tg_{chat_id}) --> Agent.run() --> LLM (OpenRouter) 
   "messages": [
     {
       "role": "system",
-      "content": "You are satibot, a helpful AI assistant.\nYou have access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before...\nUse 'vector_upsert' to remember important facts..."
+      "content": "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before...\nUse 'upsertVector' to remember important facts..."
     },
     {
       "role": "user", 
@@ -99,7 +99,7 @@ User Message --> Session ID (tg_{chat_id}) --> Agent.run() --> LLM (OpenRouter) 
     {
       "type": "function",
       "function": {
-        "name": "vector_upsert",
+        "name": "upsertVector",
         "description": "Add text to vector database for future retrieval...",
         "parameters": {"type": "object", "properties": {"text": {"type": "string"}}}
       }

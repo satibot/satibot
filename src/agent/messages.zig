@@ -148,7 +148,7 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
             .name = "vector_upsert",
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.vector_upsert,
+            .execute = tools.upsertVector,
         });
         try registry.register(.{
             .name = "vector_search",
@@ -224,7 +224,7 @@ fn ensureSystemPrompt(history: *SessionHistory, config: Config) !void {
     var prompt_builder = std.ArrayList(u8).initCapacity(history.allocator, 0) catch unreachable;
     defer prompt_builder.deinit(history.allocator);
 
-    try prompt_builder.appendSlice(history.allocator, "You are satibot, a helpful AI assistant.\nYou have access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+    try prompt_builder.appendSlice(history.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
 
     if (config.tools.web.search.apiKey) |key| {
         if (key.len > 0) {
