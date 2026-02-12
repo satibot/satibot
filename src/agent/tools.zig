@@ -423,7 +423,7 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     defer ctx.allocator.free(results);
 
     var result_text: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.allocator, 1024) catch unreachable;
-    defer result_text.deinit();
+    defer result_text.deinit(ctx.allocator);
 
     const writer = result_text.writer(ctx.allocator);
     try writer.print("Vector Search Results ({d} items):\n", .{results.len});
