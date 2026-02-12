@@ -13,7 +13,7 @@ pub fn main() !void {
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
-    // Initialize and run the mock bot
+    // Initialize and run the Console bot
     var bot = try console.MockBot.init(allocator, config);
     defer bot.deinit();
 

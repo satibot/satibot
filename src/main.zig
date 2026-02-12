@@ -64,7 +64,7 @@ pub fn main() !void {
         // Run interactive agent or single message mode
         try runAgent(allocator, args);
     } else if (std.mem.eql(u8, command, "console")) {
-        // Run console-based mock bot
+        // Run console-based Console bot
         try runConsole(allocator);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         // Test LLM provider connectivity
@@ -519,7 +519,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     std.debug.print("Response: {s}\n", .{response.content orelse "(no content)"});
 }
 
-/// Run console-based mock bot
+/// Run console-based Console bot
 /// Provides interactive console chat using the same agent logic as other platforms
 fn runConsole(allocator: std.mem.Allocator) !void {
     // Load configuration
@@ -530,7 +530,7 @@ fn runConsole(allocator: std.mem.Allocator) !void {
     // Display active model and start console bot
     std.debug.print("Active Model: {s}\nConsole bot started. Type 'exit' or 'quit' to stop.\n", .{config.agents.defaults.model});
 
-    // Import and run the console mock bot
+    // Import and run the console Console bot
     var bot = try satibot.console.MockBot.init(allocator, config);
     defer bot.deinit();
 

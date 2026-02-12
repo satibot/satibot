@@ -142,17 +142,17 @@ sequenceDiagram
     EL->>Main: join thread
 ```
 
-## Mock Bot for Testing
+## Console bot for Testing
 
 For local development and testing without a Telegram connection, you can use the `MockBot`. It simulates the Telegram environment by reading from the console (stdin) and processing messages through the same `XevEventLoop` and `Agent` logic.
 
-### Running the Mock Bot
+### Running the Console bot
 
 ```bash
 zig build run-console
 ```
 
-### Running Mock Bot Tests
+### Running Console bot Tests
 
 ```bash
 zig build test-mock-bot

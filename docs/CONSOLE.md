@@ -1,6 +1,6 @@
 # Console Bot (Terminal)
 
-A console-based mock bot implementation for testing and development. Simulates Telegram bot behavior using console input/output with the xev event loop.
+A console-based Console bot implementation for testing and development. Simulates Telegram bot behavior using console input/output with the xev event loop.
 
 ## Overview
 
@@ -47,7 +47,7 @@ var bot = try MockBot.init(allocator, config);
 defer bot.deinit();
 ```
 
-The mock bot initializes:
+The Console bot initializes:
 
 - Xev event loop for async processing
 - Mock context with allocator and config
@@ -180,8 +180,8 @@ User > tell me about zig
 🤖 [Bot]: Zig is a general-purpose programming language...
 
 User > exit
-🛑 Mock bot shutting down...
---- Mock bot shut down successfully. ---
+🛑 Console bot shutting down...
+--- Console bot shut down successfully. ---
 ```
 
 ### Commands

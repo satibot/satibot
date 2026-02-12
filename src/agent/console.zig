@@ -1,4 +1,4 @@
-/// xev-based Mock Bot implementation for console-based testing.
+/// xev-based Console bot implementation for console-based testing.
 /// This file simulates a Telegram bot by reading input from the console
 /// and processing it through the same xev event loop and Agent logic.
 ///
@@ -36,7 +36,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
     // Only print shutdown message once
     if (!shutdown_message_printed.load(.seq_cst)) {
         shutdown_message_printed.store(true, .seq_cst);
-        std.debug.print("\n🛑 Mock bot shutting down...\n", .{});
+        std.debug.print("\n🛑 Console bot shutting down...\n", .{});
     }
 
     shutdown_requested.store(true, .seq_cst);
@@ -133,7 +133,7 @@ pub const MockBot = struct {
     event_loop: XevEventLoop,
     ctx: MockContext,
 
-    /// Initialize the mock bot
+    /// Initialize the Console bot
     pub fn init(allocator: std.mem.Allocator, config: Config) !*MockBot {
         const self = try allocator.create(MockBot);
 
@@ -191,7 +191,7 @@ pub const MockBot = struct {
         try self.event_loop.addTask("console_msg", trimmed, "console_input");
     }
 
-    /// Run the mock bot
+    /// Run the Console bot
     pub fn run(self: *MockBot) !void {
         std.debug.print("🎮 Mock Xev Bot started. Type 'exit' to quit.\n", .{});
 
@@ -227,7 +227,7 @@ pub const MockBot = struct {
 
         // Ensure clean shutdown message
         if (shutdown_message_printed.load(.seq_cst)) {
-            std.debug.print("--- Mock bot shut down successfully. ---\n", .{});
+            std.debug.print("--- Console bot shut down successfully. ---\n", .{});
         }
     }
 };

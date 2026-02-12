@@ -204,7 +204,7 @@ pub fn build(b: *std.Build) void {
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
 
-    // Xev-based Mock Bot executable
+    // Xev-based Console bot executable
     const xev_console_exe = b.addExecutable(.{
         .name = "xev-mock-bot",
         .root_module = b.createModule(.{
@@ -227,8 +227,8 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(xev_console_exe);
 
-    // Run step for xev mock bot
-    const run_xev_console_step = b.step("console", "Run the xev mock bot (console-based)");
+    // Run step for xev Console bot
+    const run_xev_console_step = b.step("console", "Run the xev Console bot (console-based)");
     const run_xev_console_cmd = b.addRunArtifact(xev_console_exe);
     run_xev_console_step.dependOn(&run_xev_console_cmd.step);
     // run_xev_console_cmd.step.dependOn(b.getInstallStep());
@@ -281,7 +281,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
-    // Test step for the mock bot specifically
+    // Test step for the Console bot specifically
     const mock_bot_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/agent/console.zig"),
@@ -301,7 +301,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_mock_bot_tests = b.addRunArtifact(mock_bot_tests);
-    const test_mock_bot_step = b.step("test-mock-bot", "Run unit tests for the xev mock bot");
+    const test_mock_bot_step = b.step("test-mock-bot", "Run unit tests for the xev Console bot");
     test_mock_bot_step.dependOn(&run_mock_bot_tests.step);
 
     // Build step for xev-telegram-bot only (production)

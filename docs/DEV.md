@@ -114,7 +114,7 @@ zig build run -- agent -m "Your message"
 zig build run -- agent -m "Follow-up message" -s my-session
 # Run as a Telegram Bot (Xev/Asynchronous)
 zig build telegram
-# Run as a Mock Bot (Console-based, uses Xev loop)
+# Run as a Console bot (Console-based, uses Xev loop)
 zig build console
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
@@ -126,7 +126,7 @@ zig build run -- agent -m "Don't remember this" --no-rag
 ### Specialized Tests
 
 ```bash
-# Run unit tests for the Xev Mock Bot
+# Run unit tests for the Xev Console bot
 zig build test-mock-bot
 
 # Run LLM tests with Xev integration
