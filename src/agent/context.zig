@@ -19,7 +19,7 @@ const base = @import("../providers/base.zig");
 /// Context manages a list of conversation messages.
 /// Provides methods to add messages and retrieve conversation history.
 pub const Context = struct {
-    messages: std.ArrayListUnmanaged(base.LLMMessage),
+    messages: std.ArrayListUnmanaged(base.LlmMessage),
     allocator: std.mem.Allocator,
 
     /// Initialize a new empty conversation context.
@@ -53,8 +53,8 @@ pub const Context = struct {
     /// Add a message to the conversation context.
     /// Creates deep copies of all strings to ensure memory safety.
     /// Handles both regular messages and messages with tool calls.
-    pub fn addMessage(self: *Context, msg: base.LLMMessage) !void {
-        var new_msg: base.LLMMessage = .{
+    pub fn addMessage(self: *Context, msg: base.LlmMessage) !void {
+        var new_msg: base.LlmMessage = .{
             .role = try self.allocator.dupe(u8, msg.role),
             .content = if (msg.content) |c| try self.allocator.dupe(u8, c) else null,
             .tool_call_id = if (msg.tool_call_id) |id| try self.allocator.dupe(u8, id) else null,
@@ -80,7 +80,7 @@ pub const Context = struct {
     }
 
     /// Get all messages in the conversation as a slice.
-    pub fn getMessages(self: *Context) []base.LLMMessage {
+    pub fn getMessages(self: *Context) []base.LlmMessage {
         return self.messages.items;
     }
 };

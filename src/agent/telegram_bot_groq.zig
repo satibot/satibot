@@ -293,13 +293,6 @@ pub const TelegramBot = struct {
                             mutex: std.Thread.Mutex,
                             /// Flag indicating if agent processing is complete
                             done: bool,
-                            /// Flag indicating if an error occurred during processing
-                            error_occurred: bool,
-                        };
-                        var state = AgentState{
-                            .mutex = .{},
-                            .done = false,
-                            .error_occurred = false,
                         };
 
                         // Thread context for agent processing
@@ -312,7 +305,13 @@ pub const TelegramBot = struct {
                             /// Shared state for coordination
                             state: *AgentState,
                         };
-                        const agent_ctx = AgentContext{
+
+                        var state: AgentState = .{
+                            .mutex = std.Thread.Mutex{},
+                            .done = false,
+                        };
+
+                        const agent_ctx: AgentContext = .{
                             .agent = &agent,
                             .text = actual_text,
                             .state = &state,
@@ -351,7 +350,7 @@ pub const TelegramBot = struct {
                             /// Shared state to check if processing is complete
                             state: *AgentState,
                         };
-                        const typing_ctx = TypingContext{
+                        const typing_ctx: TypingContext = .{
                             .bot = self,
                             .token = tg_config.botToken,
                             .chat_id = chat_id_str,

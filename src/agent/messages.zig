@@ -295,7 +295,7 @@ fn loadSessionHistory(allocator: std.mem.Allocator, session_id: []const u8) !Ses
 fn saveSessionHistory(history: *SessionHistory, session_id: []const u8) !void {
     // Convert our Message format back to session format
     const allocator = history.allocator;
-    const save_messages = try allocator.alloc(base.LLMMessage, history.messages.items.len);
+    const save_messages = try allocator.alloc(base.LlmMessage, history.messages.items.len);
     errdefer allocator.free(save_messages);
 
     for (history.messages.items, 0..) |msg, i| {

@@ -7,13 +7,13 @@ const base = @import("../providers/base.zig");
 /// Session container for serialization.
 /// Holds an array of messages to be saved/loaded from disk.
 pub const Session = struct {
-    messages: []base.LLMMessage,
+    messages: []base.LlmMessage,
 };
 
 /// Save conversation messages to a session file.
 /// Creates the sessions directory if it doesn't exist.
 /// File is saved as {session_id}.json in ~/.bots/sessions/
-pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []const base.LLMMessage) !void {
+pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []const base.LlmMessage) !void {
     const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
@@ -31,7 +31,7 @@ pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []co
 
 /// Save messages to a specific file path.
 /// Serializes messages to JSON format with indentation.
-pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []const base.LLMMessage) !void {
+pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []const base.LlmMessage) !void {
     defer allocator.free(path);
     const file = try std.fs.createFileAbsolute(path, .{});
     defer file.close();
@@ -48,7 +48,7 @@ pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []co
 /// Load conversation messages from a session file.
 /// Returns empty array if session file doesn't exist.
 /// Caller owns the returned memory and must free it.
-pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LLMMessage {
+pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LlmMessage {
     const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
     const filename = try std.fmt.allocPrint(allocator, "{s}.json", .{session_id});
     defer allocator.free(filename);
@@ -58,10 +58,10 @@ pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LLMMes
 
 /// Internal function to load messages from a file path.
 /// Returns empty array if file not found.
-fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMessage {
+fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LlmMessage {
     defer allocator.free(path);
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-        if (err == error.FileNotFound) return &[_]base.LLMMessage{};
+        if (err == error.FileNotFound) return &[_]base.LlmMessage{};
         return err;
     };
     defer file.close();
@@ -71,7 +71,7 @@ fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMessa
 
     const parsed = try std.json.parseFromSlice(Session, allocator, content, .{ .ignore_unknown_fields = true });
     // We need to dupe the messages because parsed will be deinitialized
-    const msgs = try allocator.alloc(base.LLMMessage, parsed.value.messages.len);
+    const msgs = try allocator.alloc(base.LlmMessage, parsed.value.messages.len);
     for (parsed.value.messages, 0..) |msg, i| {
         msgs[i] = .{
             .role = try allocator.dupe(u8, msg.role),
@@ -106,7 +106,7 @@ test "Session: save and load" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "hello" },
         .{ .role = "assistant", .content = "hi" },
     };
@@ -151,7 +151,7 @@ test "Session: save and load with tool calls" {
         .{ .id = "call_1", .type = "function", .function = .{ .name = "test_tool", .arguments = "{\"arg\": \"value\"}" } },
     };
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "Use the test tool" },
         .{
             .role = "assistant",
@@ -223,7 +223,7 @@ test "Session: save and load empty messages" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const messages = &[_]base.LLMMessage{};
+    const messages = &[_]base.LlmMessage{};
     const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(tmp_path);
     const path = try std.fs.path.join(allocator, &.{ tmp_path, "empty_session.json" });

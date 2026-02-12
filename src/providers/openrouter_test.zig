@@ -36,7 +36,7 @@ test "Choice: struct fields" {
         .tool_calls = null,
     };
 
-    const choice = openrouter.Choice{
+    const choice: openrouter.Choice = .{
         .message = message,
     };
 
@@ -46,7 +46,7 @@ test "Choice: struct fields" {
 }
 
 test "Message: with tool calls" {
-    const tool_call = openrouter.ToolCallResponse{
+    const tool_call: openrouter.ToolCallResponse = .{
         .id = "call_abc",
         .type = "function",
         .function = .{
@@ -55,7 +55,7 @@ test "Message: with tool calls" {
         },
     };
 
-    const message = openrouter.Message{
+    const message: openrouter.Message = .{
         .content = "I'll call a function",
         .role = "assistant",
         .tool_calls = &[_]openrouter.ToolCallResponse{tool_call},
@@ -69,12 +69,12 @@ test "Message: with tool calls" {
 }
 
 test "ToolCallResponse: struct fields" {
-    const func_response = openrouter.FunctionCallResponse{
+    const func_response: openrouter.FunctionCallResponse = .{
         .name = "my_function",
         .arguments = "{\"key\": \"value\"}",
     };
 
-    const tool_call = openrouter.ToolCallResponse{
+    const tool_call: openrouter.ToolCallResponse = .{
         .id = "call_123",
         .type = "function",
         .function = func_response,
@@ -87,7 +87,7 @@ test "ToolCallResponse: struct fields" {
 }
 
 test "FunctionCallResponse: struct fields" {
-    const func_response = openrouter.FunctionCallResponse{
+    const func_response: openrouter.FunctionCallResponse = .{
         .name = "test_func",
         .arguments = "{\"arg1\": \"val1\", \"arg2\": 123}",
     };
@@ -99,14 +99,14 @@ test "FunctionCallResponse: struct fields" {
 test "ChatAsyncResult: success case" {
     const allocator = std.testing.allocator;
 
-    var response = base.LLMResponse{
+    var response: base.LLMResponse = .{
         .content = try allocator.dupe(u8, "Success response"),
         .tool_calls = null,
         .allocator = allocator,
     };
     defer response.deinit();
 
-    const result = openrouter.ChatAsyncResult{
+    const result: openrouter.ChatAsyncResult = .{
         .request_id = "req_123",
         .success = true,
         .response = response,
@@ -123,7 +123,7 @@ test "ChatAsyncResult: success case" {
 test "ChatAsyncResult: error case" {
     const allocator = std.testing.allocator;
 
-    var result = openrouter.ChatAsyncResult{
+    var result: openrouter.ChatAsyncResult = .{
         .request_id = "req_456",
         .success = false,
         .response = null,
@@ -371,7 +371,7 @@ test "OpenRouterProvider: initWithEventLoop" {
     const MockEventLoop = struct {
         const Self = @This();
 
-        pub fn init() @This() {
+        pub fn init() Self {
             return .{};
         }
         pub fn deinit(self: *@This()) void {
@@ -389,4 +389,152 @@ test "OpenRouterProvider: initWithEventLoop" {
     try std.testing.expectEqualStrings("test-api-key", provider.api_key);
     try std.testing.expect(provider.async_client != null);
     try std.testing.expect(provider.event_loop != null);
+}
+
+test "OpenRouterProvider: error handling" {
+    const allocator = std.testing.allocator;
+
+    // Test that provider handles invalid API keys gracefully
+    var provider = try openrouter.OpenRouterProvider.init(allocator, "");
+    defer provider.deinit();
+
+    try std.testing.expectEqualStrings("", provider.api_key);
+    try std.testing.expectEqualStrings("https://openrouter.ai/api/v1", provider.api_base);
+}
+
+test "buildChatRequestBody: complex tools" {
+    const allocator = std.testing.allocator;
+
+    const messages = &[_]base.LlmMessage{
+        .{ .role = "user", .content = "Use multiple tools" },
+    };
+
+    const tools = &[_]base.ToolDefinition{
+        .{
+            .name = "search",
+            .description = "Search the web",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+        },
+        .{
+            .name = "calculate",
+            .description = "Perform calculations",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"expression\": {\"type\": \"string\"}}}",
+        },
+    };
+
+    const body = try openrouter.buildChatRequestBody(allocator, messages, "gpt-4", tools, false);
+    defer allocator.free(body);
+
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"tools\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"search\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"calculate\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"type\": \"function\"") != null);
+}
+
+test "parseErrorBody: malformed JSON" {
+    const allocator = std.testing.allocator;
+
+    const malformed_json = "{ invalid json }";
+    const error_msg = try openrouter.parseErrorBody(allocator, malformed_json);
+    defer allocator.free(error_msg);
+
+    try std.testing.expectEqualStrings("{ invalid json }", error_msg);
+}
+
+test "parseErrorBody: empty response" {
+    const allocator = std.testing.allocator;
+
+    const empty_json = "";
+    const error_msg = try openrouter.parseErrorBody(allocator, empty_json);
+    defer allocator.free(error_msg);
+
+    try std.testing.expectEqualStrings("", error_msg);
+}
+
+test "parseChatResponse: missing content and tool calls" {
+    const allocator = std.testing.allocator;
+
+    const response_json =
+        \\{
+        \\  "id": "chat_empty",
+        \\  "model": "gpt-3.5-turbo",
+        \\  "choices": [
+        \\    {
+        \\      "message": {
+        \\        "role": "assistant"
+        \\      }
+        \\    }
+        \\  ]
+        \\}
+    ;
+
+    const response = try openrouter.parseChatResponse(allocator, response_json);
+    defer response.deinit();
+
+    try std.testing.expect(response.content == null);
+    try std.testing.expect(response.tool_calls == null);
+}
+
+test "ChatAsyncResult: lifecycle management" {
+    const allocator = std.testing.allocator;
+
+    // Test that deinit properly cleans up both success and error cases
+    {
+        var success_result: openrouter.ChatAsyncResult = .{
+            .request_id = "req_success",
+            .success = true,
+            .response = base.LlmResponse{
+                .content = try allocator.dupe(u8, "Success"),
+                .tool_calls = null,
+                .allocator = allocator,
+            },
+            .err_msg = null,
+        };
+        success_result.deinit(allocator);
+    }
+
+    {
+        var error_result: openrouter.ChatAsyncResult = .{
+            .request_id = "req_error",
+            .success = false,
+            .response = null,
+            .err_msg = try allocator.dupe(u8, "Error occurred"),
+        };
+        error_result.deinit(allocator);
+    }
+
+    // If we reach here without crashing, the deinit worked correctly
+    try std.testing.expect(true);
+}
+
+test "parseEmbeddingsResponse: empty data array" {
+    const allocator = std.testing.allocator;
+
+    const embeddings_json =
+        \\{
+        \\  "data": []
+        \\}
+    ;
+
+    const response = try openrouter.parseEmbeddingsResponse(allocator, embeddings_json);
+    defer response.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), response.embeddings.len);
+}
+
+test "parseEmbeddingsResponse: malformed embedding" {
+    const allocator = std.testing.allocator;
+
+    // Test with embedding that has wrong type
+    const malformed_json =
+        \\{
+        \\  "data": [
+        \\    {"embedding": "not_an_array"}
+        \\  ]
+        \\}
+    ;
+
+    // This should fail to parse
+    const response = openrouter.parseEmbeddingsResponse(allocator, malformed_json);
+    try std.testing.expectError(error.InvalidType, response);
 }

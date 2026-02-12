@@ -41,7 +41,9 @@ pub const Agent = struct {
         // Load history
         if (session.load(allocator, session_id)) |history| {
             for (history) |msg| {
-                self.ctx.addMessage(msg) catch {};
+                self.ctx.addMessage(msg) catch |err| {
+                    std.log.err("Failed to add message to context: {any}", .{err});
+                };
             }
             // Note: we should free history and its elements after adding to context
             // But context.addMessage dupes them.
@@ -133,13 +135,17 @@ pub const Agent = struct {
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
             .execute = tools.upsertVector,
-        }) catch {};
+        }) catch |err| {
+            std.log.err("Failed to register vector_upsert tool: {any}", .{err});
+        };
         self.registry.register(.{
             .name = "vector_search",
             .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
             .execute = tools.vectorSearch,
-        }) catch {};
+        }) catch |err| {
+            std.log.err("Failed to register vector_search tool: {any}", .{err});
+        };
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // self.registry.register(.{
         //     .name = "graph_upsert_node",
@@ -332,7 +338,7 @@ pub const Agent = struct {
             defer if (loop_warning) |lw| self.allocator.free(lw);
 
             // Rebuild filtered_messages each iteration so tool results are included
-            var filtered_messages = std.ArrayListUnmanaged(base.LLMMessage){};
+            var filtered_messages = std.ArrayListUnmanaged(base.LlmMessage){};
             defer filtered_messages.deinit(self.allocator);
             for (self.ctx.getMessages()) |msg| {
                 if (std.mem.eql(u8, msg.role, "assistant")) {
@@ -407,7 +413,7 @@ pub const Agent = struct {
             }
             std.debug.print("=== END DEBUG ===\n\n", .{});
 
-            var response: base.LLMResponse = undefined;
+            var response: base.LlmResponse = undefined;
 
             const internal_cb = struct {
                 fn call(ctx: ?*anyopaque, chunk: []const u8) void {

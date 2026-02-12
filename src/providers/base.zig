@@ -11,7 +11,7 @@ pub const ChunkCallback = *const fn (ctx: ?*anyopaque, chunk: []const u8) void;
 
 /// Message in a conversation with an LLM.
 /// Can represent messages from user, assistant, system, or tool results.
-pub const LLMMessage = struct {
+pub const LlmMessage = struct {
     role: []const u8,
     content: ?[]const u8 = null,
     tool_call_id: ?[]const u8 = null,
@@ -38,13 +38,13 @@ pub const ToolDefinition = struct {
 
 /// Response from an LLM chat completion.
 /// Contains either text content, tool calls, or both.
-pub const LLMResponse = struct {
+pub const LlmResponse = struct {
     content: ?[]const u8 = null,
     tool_calls: ?[]const ToolCall = null,
     allocator: std.mem.Allocator,
 
     /// Free all allocated memory in the response.
-    pub fn deinit(self: *LLMResponse) void {
+    pub fn deinit(self: *LlmResponse) void {
         if (self.content) |c| self.allocator.free(c);
         if (self.tool_calls) |calls| {
             for (calls) |call| {
@@ -82,9 +82,9 @@ pub const EmbeddingRequest = struct {
     model: []const u8,
 };
 
-test "LLMResponse: deinit" {
+test "LlmResponse: deinit" {
     const allocator = std.testing.allocator;
-    var resp: LLMResponse = .{
+    var resp: LlmResponse = .{
         .content = try allocator.dupe(u8, "hello"),
         .tool_calls = null,
         .allocator = allocator,
@@ -107,8 +107,8 @@ test "EmbeddingResponse: deinit" {
     resp.deinit();
 }
 
-test "LLMMessage: creation" {
-    const msg: LLMMessage = .{
+test "LlmMessage: creation" {
+    const msg: LlmMessage = .{
         .role = "user",
         .content = "hello",
     };
@@ -119,12 +119,12 @@ test "LLMMessage: creation" {
     try std.testing.expect(msg.tool_calls == null);
 }
 
-test "LLMMessage: with tool calls" {
+test "LlmMessage: with tool calls" {
     const tool_calls = &[_]ToolCall{
         .{ .id = "call_1", .function = .{ .name = "test_func", .arguments = "{\"arg\": \"value\"}" } },
     };
 
-    const msg: LLMMessage = .{
+    const msg: LlmMessage = .{
         .role = "assistant",
         .content = "I'll call a tool",
         .tool_calls = tool_calls,
@@ -137,8 +137,8 @@ test "LLMMessage: with tool calls" {
     try std.testing.expectEqualStrings("call_1", msg.tool_calls.?[0].id);
 }
 
-test "LLMMessage: tool result message" {
-    const msg: LLMMessage = .{
+test "LlmMessage: tool result message" {
+    const msg: LlmMessage = .{
         .role = "tool",
         .content = "Tool output",
         .tool_call_id = "call_123",
@@ -168,12 +168,12 @@ pub const ProviderInterface = struct {
     /// Function pointer to call chatStream
     chatStream: *const fn (
         provider: *anyopaque,
-        messages: []const LLMMessage,
+        messages: []const LlmMessage,
         model: []const u8,
         tools: []const ToolDefinition,
         chunk_callback: ChunkCallback,
         callback_ctx: ?*anyopaque,
-    ) anyerror!LLMResponse,
+    ) anyerror!LlmResponse,
 
     /// Function pointer to get the provider name
     getProviderName: *const fn () []const u8,
@@ -185,12 +185,12 @@ pub fn executeWithRetry(
     provider_interface: ProviderInterface,
     allocator: std.mem.Allocator,
     config: Config,
-    messages: []const LLMMessage,
+    messages: []const LlmMessage,
     model: []const u8,
     tools: []const ToolDefinition,
     chunk_callback: ChunkCallback,
     callback_ctx: ?*anyopaque,
-) !LLMResponse {
+) !LlmResponse {
     const api_key = provider_interface.getApiKey(provider_interface.ctx, config) orelse {
         std.debug.print("Error: API key not set for {s}\n", .{provider_interface.getProviderName()});
         return error.NoApiKey;
@@ -266,9 +266,9 @@ test "ToolCall: struct fields" {
     try std.testing.expectEqualStrings("{\"key\": \"value\"}", call.function.arguments);
 }
 
-test "LLMResponse: creation with content only" {
+test "LlmResponse: creation with content only" {
     const allocator = std.testing.allocator;
-    var resp: LLMResponse = .{
+    var resp: LlmResponse = .{
         .content = try allocator.dupe(u8, "Hello world"),
         .tool_calls = null,
         .allocator = allocator,
@@ -279,7 +279,7 @@ test "LLMResponse: creation with content only" {
     try std.testing.expect(resp.tool_calls == null);
 }
 
-test "LLMResponse: creation with tool calls only" {
+test "LlmResponse: creation with tool calls only" {
     const allocator = std.testing.allocator;
 
     const calls = try allocator.alloc(ToolCall, 2);
@@ -298,7 +298,7 @@ test "LLMResponse: creation with tool calls only" {
         },
     };
 
-    var resp: LLMResponse = .{
+    var resp: LlmResponse = .{
         .content = null,
         .tool_calls = calls,
         .allocator = allocator,
@@ -312,7 +312,7 @@ test "LLMResponse: creation with tool calls only" {
     try std.testing.expectEqualStrings("call_2", resp.tool_calls.?[1].id);
 }
 
-test "LLMResponse: creation with both content and tool calls" {
+test "LlmResponse: creation with both content and tool calls" {
     const allocator = std.testing.allocator;
 
     const calls = try allocator.alloc(ToolCall, 1);
@@ -324,7 +324,7 @@ test "LLMResponse: creation with both content and tool calls" {
         },
     };
 
-    var resp: LLMResponse = .{
+    var resp: LlmResponse = .{
         .content = try allocator.dupe(u8, "I'll call the function"),
         .tool_calls = calls,
         .allocator = allocator,
@@ -401,10 +401,10 @@ test "EmbeddingResponse: empty embeddings" {
     try std.testing.expectEqual(@as(usize, 0), resp.embeddings.len);
 }
 
-test "LLMResponse: empty content and no tool calls" {
+test "LlmResponse: empty content and no tool calls" {
     const allocator = std.testing.allocator;
 
-    var resp: LLMResponse = .{
+    var resp: LlmResponse = .{
         .content = null,
         .tool_calls = null,
         .allocator = allocator,
@@ -413,4 +413,194 @@ test "LLMResponse: empty content and no tool calls" {
 
     try std.testing.expect(resp.content == null);
     try std.testing.expect(resp.tool_calls == null);
+}
+
+test "ToolCall: creation and validation" {
+    _ = @as(std.mem.Allocator, undefined); // Mark as used
+
+    const tool_call = ToolCall{
+        .id = "test_call_123",
+        .type = "function",
+        .function = .{
+            .name = "test_function",
+            .arguments = "{\"param\": \"value\"}",
+        },
+    };
+
+    try std.testing.expectEqualStrings("test_call_123", tool_call.id);
+    try std.testing.expectEqualStrings("function", tool_call.type);
+    try std.testing.expectEqualStrings("test_function", tool_call.function.name);
+    try std.testing.expectEqualStrings("{\"param\": \"value\"}", tool_call.function.arguments);
+}
+
+test "ToolDefinition: validation" {
+    _ = @as(std.mem.Allocator, undefined); // Mark as used
+
+    const tool_def = ToolDefinition{
+        .name = "search_web",
+        .description = "Search the web for information",
+        .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
+    };
+
+    try std.testing.expectEqualStrings("search_web", tool_def.name);
+    try std.testing.expectEqualStrings("Search the web for information", tool_def.description);
+    try std.testing.expect(std.mem.indexOf(u8, tool_def.parameters, "query") != null);
+}
+
+test "EmbeddingRequest: creation with allocated inputs" {
+    const allocator = std.testing.allocator;
+
+    const input_texts = try allocator.alloc([]const u8, 2);
+    defer allocator.free(input_texts);
+
+    input_texts[0] = "Hello world";
+    input_texts[1] = "How are you?";
+
+    const request = EmbeddingRequest{
+        .input = input_texts,
+        .model = "text-embedding-ada-002",
+    };
+
+    try std.testing.expectEqual(@as(usize, 2), request.input.len);
+    try std.testing.expectEqualStrings("Hello world", request.input[0]);
+    try std.testing.expectEqualStrings("How are you?", request.input[1]);
+    try std.testing.expectEqualStrings("text-embedding-ada-002", request.model);
+}
+
+test "ChunkCallback: function pointer type" {
+    const allocator = std.testing.allocator;
+    _ = allocator;
+
+    // Test that ChunkCallback can be assigned to a function
+    const TestCallback = struct {
+        fn callback(ctx: ?*anyopaque, chunk: []const u8) void {
+            _ = ctx;
+            _ = chunk;
+        }
+    };
+
+    const callback: ChunkCallback = TestCallback.callback;
+    _ = callback; // Just verify the type is compatible
+}
+
+test "LlmMessage: with tool result" {
+    const allocator = std.testing.allocator;
+    _ = allocator;
+
+    const msg: LlmMessage = .{
+        .role = "tool",
+        .content = "Function executed successfully",
+        .tool_call_id = "call_abc123",
+        .tool_calls = null,
+    };
+
+    try std.testing.expectEqualStrings("tool", msg.role);
+    try std.testing.expectEqualStrings("Function executed successfully", msg.content.?);
+    try std.testing.expectEqualStrings("call_abc123", msg.tool_call_id.?);
+    try std.testing.expect(msg.tool_calls == null);
+}
+
+test "LlmMessage: assistant with multiple tool calls" {
+    var allocator = std.testing.allocator;
+
+    const tool_calls = try allocator.alloc(ToolCall, 2);
+    defer {
+        for (tool_calls) |call| {
+            allocator.free(call.id);
+            allocator.free(call.function.name);
+            allocator.free(call.function.arguments);
+        }
+        allocator.free(tool_calls);
+    }
+
+    tool_calls[0] = .{
+        .id = try allocator.dupe(u8, "call_1"),
+        .type = "function",
+        .function = .{
+            .name = try allocator.dupe(u8, "search"),
+            .arguments = try allocator.dupe(u8, "{\"query\": \"test\"}"),
+        },
+    };
+
+    tool_calls[1] = .{
+        .id = try allocator.dupe(u8, "call_2"),
+        .type = "function",
+        .function = .{
+            .name = try allocator.dupe(u8, "calculate"),
+            .arguments = try allocator.dupe(u8, "{\"expression\": \"1+1\"}"),
+        },
+    };
+
+    const msg: LlmMessage = .{
+        .role = "assistant",
+        .content = "I'll help you with that",
+        .tool_calls = tool_calls,
+    };
+
+    try std.testing.expectEqualStrings("assistant", msg.role);
+    try std.testing.expectEqualStrings("I'll help you with that", msg.content.?);
+    try std.testing.expect(msg.tool_calls != null);
+    try std.testing.expectEqual(@as(usize, 2), msg.tool_calls.?.len);
+    try std.testing.expectEqualStrings("call_1", msg.tool_calls.?[0].id);
+    try std.testing.expectEqualStrings("call_2", msg.tool_calls.?[1].id);
+}
+
+test "ProviderInterface: function pointer compatibility" {
+    const allocator = std.testing.allocator;
+    _ = allocator;
+
+    // Test that ProviderInterface can be created with proper function pointers
+    const MockProvider = struct {
+        fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
+            _ = ctx;
+            _ = config;
+            return "test-key";
+        }
+
+        fn initProvider(alloc: std.mem.Allocator, api_key: []const u8) !*anyopaque {
+            _ = alloc;
+            _ = api_key;
+            return @as(*anyopaque, @ptrCast(@alignCast(@constCast(&@as(u8, 0)))));
+        }
+
+        fn deinitProvider(provider: *anyopaque) void {
+            _ = provider;
+        }
+
+        fn chatStream(
+            provider: *anyopaque,
+            messages: []const LlmMessage,
+            model: []const u8,
+            tools: []const ToolDefinition,
+            chunk_callback: ChunkCallback,
+            callback_ctx: ?*anyopaque,
+        ) !LlmResponse {
+            _ = provider;
+            _ = messages;
+            _ = model;
+            _ = tools;
+            _ = chunk_callback;
+            _ = callback_ctx;
+            return LlmResponse{
+                .content = "test response",
+                .tool_calls = null,
+                .allocator = std.testing.allocator,
+            };
+        }
+
+        fn getProviderName() []const u8 {
+            return "MockProvider";
+        }
+    };
+
+    const interface: ProviderInterface = .{
+        .ctx = undefined,
+        .getApiKey = MockProvider.getApiKey,
+        .initProvider = MockProvider.initProvider,
+        .deinitProvider = MockProvider.deinitProvider,
+        .chatStream = MockProvider.chatStream,
+        .getProviderName = MockProvider.getProviderName,
+    };
+
+    try std.testing.expectEqualStrings("MockProvider", interface.getProviderName());
 }

@@ -66,7 +66,7 @@ pub const AnthropicProvider = struct {
         self.* = undefined;
     }
 
-    pub fn chat(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LLMResponse {
+    pub fn chat(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -104,7 +104,7 @@ pub const AnthropicProvider = struct {
         return self.parseResponse(response.body);
     }
 
-    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
+    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -125,7 +125,7 @@ pub const AnthropicProvider = struct {
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
-            var err_body: std.ArrayListUnmanaged(u8) = .{};
+            var err_body: std.ArrayList(u8) = .empty;
             defer err_body.deinit(self.allocator);
             var err_reader = response.reader(&head_buf);
             var buf: [1024]u8 = undefined;
@@ -156,17 +156,17 @@ pub const AnthropicProvider = struct {
             return error.ApiRequestFailed;
         }
 
-        var full_content: std.ArrayListUnmanaged(u8) = .{};
+        var full_content: std.ArrayList(u8) = .empty;
         errdefer full_content.deinit(self.allocator);
 
         var response_body_buf: [8192]u8 = undefined;
         var reader = response.reader(&response_body_buf);
 
-        var buffer: std.ArrayListUnmanaged(u8) = .{};
+        var buffer: std.ArrayList(u8) = .empty;
         defer buffer.deinit(self.allocator);
 
         // Track tool calls from content_block_start/delta events
-        var tool_calls: std.ArrayListUnmanaged(base.ToolCall) = .{};
+        var tool_calls: std.ArrayList(base.ToolCall) = .empty;
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
@@ -256,18 +256,18 @@ pub const AnthropicProvider = struct {
         };
     }
 
-    fn buildRequestBody(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
+    fn buildRequestBody(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
         // Anthropic uses a different message format
         // - system message goes in "system" field
         // - messages array contains only user/assistant turns
         // - tool results are sent as user messages with tool_result content blocks
 
         var system_prompt: ?[]const u8 = null;
-        var anthropic_messages: std.ArrayListUnmanaged(AnthropicMessage) = .{};
+        var anthropic_messages: std.ArrayList(AnthropicMessage) = .empty;
         defer anthropic_messages.deinit(self.allocator);
 
         // We need to allocate content blocks for tool_result messages
-        var content_blocks_storage: std.ArrayListUnmanaged([]const AnthropicContentBlock) = .{};
+        var content_blocks_storage: std.ArrayList([]const AnthropicContentBlock) = .empty;
         defer {
             for (content_blocks_storage.items) |blocks| {
                 self.allocator.free(blocks);
@@ -301,7 +301,7 @@ pub const AnthropicProvider = struct {
         }
 
         // Build the request using a custom approach since we need dynamic struct
-        var json_buf: std.ArrayListUnmanaged(u8) = .{};
+        var json_buf: std.ArrayList(u8) = .empty;
         defer json_buf.deinit(self.allocator);
         const writer = json_buf.writer(self.allocator);
 
@@ -392,16 +392,16 @@ pub const AnthropicProvider = struct {
         return json_buf.toOwnedSlice(self.allocator);
     }
 
-    fn parseResponse(self: *AnthropicProvider, body: []const u8) !base.LLMResponse {
+    fn parseResponse(self: *AnthropicProvider, body: []const u8) !base.LlmResponse {
         const parsed = try std.json.parseFromSlice(MessageResponse, self.allocator, body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         const msg = parsed.value;
 
-        var text_content: std.ArrayListUnmanaged(u8) = .{};
+        var text_content: std.ArrayList(u8) = .empty;
         errdefer text_content.deinit(self.allocator);
 
-        var tool_calls: std.ArrayListUnmanaged(base.ToolCall) = .{};
+        var tool_calls: std.ArrayList(base.ToolCall) = .empty;
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
@@ -551,7 +551,7 @@ test "Anthropic: buildRequestBody with simple message" {
     var provider = try AnthropicProvider.init(allocator, "test-key");
     defer provider.deinit();
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "Hello!" },
     };
 
@@ -570,7 +570,7 @@ test "Anthropic: buildRequestBody with system message" {
     var provider = try AnthropicProvider.init(allocator, "test-key");
     defer provider.deinit();
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "system", .content = "You are a helpful assistant." },
         .{ .role = "user", .content = "Hi!" },
     };
@@ -589,7 +589,7 @@ test "Anthropic: buildRequestBody with streaming enabled" {
     var provider = try AnthropicProvider.init(allocator, "test-key");
     defer provider.deinit();
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "Hello!" },
     };
 
@@ -601,7 +601,7 @@ test "Anthropic: buildRequestBody with streaming enabled" {
 
 test "Anthropic: struct definitions" {
     // Test ContentBlock
-    const block = ContentBlock{
+    const block: ContentBlock = .{
         .type = "text",
         .text = "Hello",
     };
@@ -612,7 +612,7 @@ test "Anthropic: struct definitions" {
     const content_blocks = &[_]ContentBlock{
         .{ .type = "text", .text = "Response text" },
     };
-    const response = MessageResponse{
+    const response: MessageResponse = .{
         .id = "msg_123",
         .type = "message",
         .role = "assistant",
@@ -627,7 +627,7 @@ test "Anthropic: struct definitions" {
 
 test "Anthropic: AnthropicMessage union" {
     // Test text variant
-    const text_msg = AnthropicMessage{
+    const text_msg: AnthropicMessage = .{
         .role = "user",
         .content = .{ .text = "Hello" },
     };
@@ -641,7 +641,7 @@ test "Anthropic: AnthropicMessage union" {
     const blocks = &[_]AnthropicContentBlock{
         .{ .type = "tool_result", .tool_use_id = "call_1", .content = "Result" },
     };
-    const block_msg = AnthropicMessage{
+    const block_msg: AnthropicMessage = .{
         .role = "user",
         .content = .{ .blocks = blocks },
     };
@@ -685,12 +685,12 @@ fn deinitProvider(provider: *anyopaque) void {
 /// Chat stream implementation for Anthropic provider
 fn chatStream(
     provider: *anyopaque,
-    messages: []const base.LLMMessage,
+    messages: []const base.LlmMessage,
     model: []const u8,
     tools: []const base.ToolDefinition,
     chunk_callback: base.ChunkCallback,
     callback_ctx: ?*anyopaque,
-) !base.LLMResponse {
+) !base.LlmResponse {
     const anthropic_provider: *AnthropicProvider = @ptrCast(@alignCast(provider));
     return anthropic_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
 }

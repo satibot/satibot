@@ -46,7 +46,7 @@ pub const OpenRouterError = error{
 ///     end
 ///
 ///     subgraph "Output"
-///         RESP[LLMResponse]
+///         RESP[LlmResponse]
 ///         STREAM[Stream Chunks]
 ///     end
 ///
@@ -162,6 +162,7 @@ pub const OpenRouterProvider = struct {
     pub fn deinit(self: *OpenRouterProvider) void {
         self.client.deinit();
         if (self.async_client) |*client| client.deinit();
+        self.* = undefined;
     }
 
     // Core logic is separated into pure functions below.
@@ -176,13 +177,13 @@ pub const OpenRouterProvider = struct {
     /// - tools: Optional tool definitions for function calling
     ///
     /// # Returns
-    /// LLMResponse with content and optional tool calls
+    /// LlmResponse with content and optional tool calls
     ///
     /// # Errors
     /// - error.ApiRequestFailed: HTTP request failed
     /// - error.NoChoicesReturned: Empty response from API
     /// - JSON parsing errors for malformed responses
-    pub fn chat(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LLMResponse {
+    pub fn chat(self: *OpenRouterProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -212,7 +213,7 @@ pub const OpenRouterProvider = struct {
     /// # Note
     /// Must be initialized with initWithEventLoop to use async operations.
     /// The callback is responsible for freeing the result resources.
-    pub fn chatAsync(self: *OpenRouterProvider, request_id: []const u8, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: *const fn (result: ChatAsyncResult) void) !void {
+    pub fn chatAsync(self: *OpenRouterProvider, request_id: []const u8, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: *const fn (result: ChatAsyncResult) void) !void {
         if (self.async_client == null or self.event_loop == null) {
             return error.AsyncNotInitialized;
         }
@@ -241,7 +242,7 @@ pub const OpenRouterProvider = struct {
 
             fn handleResponse(ctx: *Self, response_body: []const u8) void {
                 const llm_response = parseChatResponse(ctx.provider.allocator, response_body) catch |err| {
-                    const error_result = ChatAsyncResult{
+                    const error_result: ChatAsyncResult = .{
                         .request_id = ctx.request_id,
                         .success = false,
                         .err_msg = std.fmt.allocPrint(ctx.provider.allocator, "Failed to parse response: {any}", .{err}) catch unreachable,
@@ -250,7 +251,7 @@ pub const OpenRouterProvider = struct {
                     return;
                 };
 
-                const success_result = ChatAsyncResult{
+                const success_result: ChatAsyncResult = .{
                     .request_id = ctx.request_id,
                     .success = true,
                     .response = llm_response,
@@ -259,7 +260,7 @@ pub const OpenRouterProvider = struct {
             }
 
             fn handleError(ctx: *Self, err_msg: []const u8) void {
-                const error_result = ChatAsyncResult{
+                const error_result: ChatAsyncResult = .{
                     .request_id = ctx.request_id,
                     .success = false,
                     .err_msg = ctx.provider.allocator.dupe(u8, err_msg),
@@ -320,7 +321,7 @@ pub const OpenRouterProvider = struct {
     /// # Rate Limits
     /// Automatically detects and reports rate limit status
     /// via the callback before streaming content.
-    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
+    pub fn chatStream(self: *OpenRouterProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LlmResponse {
         // Stream implementation is complex to separate IO entirely without a generator/iterator
         // But we can reuse request building.
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
@@ -480,7 +481,7 @@ pub const OpenRouterProvider = struct {
             }
         }
 
-        return try self.allocator.dupe(u8, response.body);
+        return self.allocator.dupe(u8, response.body);
     }
 };
 
@@ -488,12 +489,13 @@ pub const OpenRouterProvider = struct {
 pub const ChatAsyncResult = struct {
     request_id: []const u8,
     success: bool,
-    response: ?base.LLMResponse = null,
+    response: ?base.LlmResponse = null,
     err_msg: ?[]const u8 = null,
 
     pub fn deinit(self: *ChatAsyncResult, allocator: std.mem.Allocator) void {
         if (self.response) |*resp| resp.deinit();
         if (self.err_msg) |err| allocator.free(err);
+        self.* = undefined;
     }
 };
 
@@ -501,8 +503,8 @@ pub const ChatAsyncResult = struct {
 
 /// Builds the JSON request body for chat completions.
 /// Pure function: depends only on inputs, no side effects.
-pub fn buildChatRequestBody(allocator: std.mem.Allocator, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
-    var json_buf = std.ArrayListUnmanaged(u8){};
+pub fn buildChatRequestBody(allocator: std.mem.Allocator, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
+    var json_buf: std.ArrayList(u8) = .empty;
     defer json_buf.deinit(allocator);
     const writer = json_buf.writer(allocator);
 
@@ -552,9 +554,9 @@ fn writeEscaped(writer: anytype, text: []const u8) !void {
     try writer.writeAll("\"");
 }
 
-/// Parses the API response body into a LLMResponse.
+/// Parses the API response body into a LlmResponse.
 /// Pure function.
-pub fn parseChatResponse(allocator: std.mem.Allocator, body: []const u8) !base.LLMResponse {
+pub fn parseChatResponse(allocator: std.mem.Allocator, body: []const u8) !base.LlmResponse {
     const parsed = try std.json.parseFromSlice(CompletionResponse, allocator, body, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
@@ -608,9 +610,9 @@ pub fn parseErrorBody(allocator: std.mem.Allocator, body: []const u8) ![]u8 {
     };
     if (std.json.parseFromSlice(ErrorResponse, allocator, body, .{ .ignore_unknown_fields = true })) |parsed_err| {
         defer parsed_err.deinit();
-        return try allocator.dupe(u8, parsed_err.value.@"error".message);
+        return allocator.dupe(u8, parsed_err.value.@"error".message);
     } else |_| {
-        return try allocator.dupe(u8, body);
+        return allocator.dupe(u8, body);
     }
 }
 
@@ -647,7 +649,7 @@ pub fn parseEmbeddingsResponse(allocator: std.mem.Allocator, body: []const u8) !
 
 // Helper for stream error parsing (involves reader, so not strictly pure string input, but separate logic)
 fn parseErrorStream(allocator: std.mem.Allocator, status: std.http.Status, err_reader: anytype) ![]u8 {
-    var err_body: std.ArrayListUnmanaged(u8) = .{};
+    var err_body: std.ArrayList(u8) = .empty;
     defer err_body.deinit(allocator);
     var buf: [1024]u8 = undefined;
     var reader = err_reader;
@@ -674,8 +676,8 @@ fn parseErrorStream(allocator: std.mem.Allocator, status: std.http.Status, err_r
     }
 }
 
-fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.IncomingResponse, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
-    var full_content: std.ArrayListUnmanaged(u8) = .{};
+fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.IncomingResponse, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LlmResponse {
+    var full_content: std.ArrayList(u8) = .empty;
     errdefer full_content.deinit(allocator);
 
     var response_body_buf: [8192]u8 = undefined;
@@ -683,9 +685,9 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
 
     // Tool calls are delivered in chunks
     var tool_calls_map = std.AutoHashMap(usize, struct {
-        id: std.ArrayListUnmanaged(u8),
-        name: std.ArrayListUnmanaged(u8),
-        arguments: std.ArrayListUnmanaged(u8),
+        id: std.ArrayList(u8),
+        name: std.ArrayList(u8),
+        arguments: std.ArrayList(u8),
     }).init(allocator);
     defer {
         var it = tool_calls_map.valueIterator();
@@ -697,7 +699,7 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
         tool_calls_map.deinit();
     }
 
-    var buffer: std.ArrayListUnmanaged(u8) = .{};
+    var buffer: std.ArrayList(u8) = .empty;
     defer buffer.deinit(allocator);
 
     while_read: while (true) {
@@ -751,9 +753,9 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
                                         var entry = try tool_calls_map.getOrPut(call.index);
                                         if (!entry.found_existing) {
                                             entry.value_ptr.* = .{
-                                                .id = std.ArrayListUnmanaged(u8){},
-                                                .name = std.ArrayListUnmanaged(u8){},
-                                                .arguments = std.ArrayListUnmanaged(u8){},
+                                                .id = std.ArrayList(u8).empty,
+                                                .name = std.ArrayList(u8).empty,
+                                                .arguments = std.ArrayList(u8).empty,
                                             };
                                         }
                                         if (call.id) |id| try entry.value_ptr.id.appendSlice(allocator, id);
@@ -809,7 +811,7 @@ test "OpenRouter: parse response" {
 
 test "OpenRouter: struct definitions" {
     // Test FunctionCallResponse
-    const func = FunctionCallResponse{
+    const func: FunctionCallResponse = .{
         .name = "test_function",
         .arguments = "{\"key\": \"value\"}",
     };
@@ -817,7 +819,7 @@ test "OpenRouter: struct definitions" {
     try std.testing.expectEqualStrings("{\"key\": \"value\"}", func.arguments);
 
     // Test ToolCallResponse
-    const tool_call = ToolCallResponse{
+    const tool_call: ToolCallResponse = .{
         .id = "call_123",
         .type = "function",
         .function = func,
@@ -841,7 +843,7 @@ test "OpenRouter: init and deinit" {
 // Additional tests for pure functions
 test "OpenRouter pure: buildChatRequestBody" {
     const allocator = std.testing.allocator;
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "hello" },
     };
     const body = try buildChatRequestBody(allocator, messages, "gpt-4", null, false);
@@ -854,7 +856,7 @@ test "OpenRouter pure: buildChatRequestBody" {
 
 test "OpenRouter pure: buildChatRequestBody with tools" {
     const allocator = std.testing.allocator;
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "test" },
     };
     const tools = &[_]base.ToolDefinition{
@@ -972,7 +974,7 @@ test "OpenRouter: async operation validation" {
     var provider = try OpenRouterProvider.init(allocator, "test-key");
     defer provider.deinit();
 
-    const messages = &[_]base.LLMMessage{
+    const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "test" },
     };
 
@@ -990,10 +992,10 @@ test "OpenRouter: ChatAsyncResult lifecycle" {
     const allocator = std.testing.allocator;
 
     // Test success result
-    var success_result = ChatAsyncResult{
+    var success_result: ChatAsyncResult = .{
         .request_id = "req-123",
         .success = true,
-        .response = base.LLMResponse{
+        .response = base.LlmResponse{
             .content = try allocator.dupe(u8, "Test response"),
             .tool_calls = null,
             .allocator = allocator,
@@ -1004,7 +1006,7 @@ test "OpenRouter: ChatAsyncResult lifecycle" {
     success_result.deinit(allocator);
 
     // Test error result
-    var error_result = ChatAsyncResult{
+    var error_result: ChatAsyncResult = .{
         .request_id = "req-456",
         .success = false,
         .response = null,
@@ -1038,12 +1040,12 @@ fn deinitProvider(provider: *anyopaque) void {
 /// Chat stream implementation for OpenRouter provider
 fn chatStream(
     provider: *anyopaque,
-    messages: []const base.LLMMessage,
+    messages: []const base.LlmMessage,
     model: []const u8,
     tools: []const base.ToolDefinition,
     chunk_callback: base.ChunkCallback,
     callback_ctx: ?*anyopaque,
-) !base.LLMResponse {
+) !base.LlmResponse {
     const openrouter_provider: *OpenRouterProvider = @ptrCast(@alignCast(provider));
     return openrouter_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
 }

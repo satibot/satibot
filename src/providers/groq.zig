@@ -38,6 +38,7 @@ pub const GroqProvider = struct {
     /// This should be called when the provider is no longer needed to free the HTTP client resources.
     pub fn deinit(self: *GroqProvider) void {
         self.client.deinit();
+        self.* = undefined;
     }
 
     /// Transcribe an audio file using Groq's Whisper model implementation.
@@ -130,7 +131,7 @@ pub const GroqProvider = struct {
         // Why: 'parsed.value.text' is a slice referencing 'response.body'.
         // Since 'response.body' will be freed when this function returns (via defer response.deinit),
         // we must create a copy of the text to return to the caller safely.
-        return try self.allocator.dupe(u8, parsed.value.text);
+        return self.allocator.dupe(u8, parsed.value.text);
     }
 
     /// Perform a standard chat completion request.
@@ -139,8 +140,8 @@ pub const GroqProvider = struct {
     /// - messages: A list of messages (system, user, assistant) forming the conversation history.
     /// - model: The identifier of the model to use (e.g., "llama3-70b-8192").
     ///
-    /// Returns: A base.LLMResponse containing the assistant's reply.
-    pub fn chat(self: *GroqProvider, messages: []const base.LLMMessage, model: []const u8) !base.LLMResponse {
+    /// Returns: A base.LlmResponse containing the assistant's reply.
+    pub fn chat(self: *GroqProvider, messages: []const base.LlmMessage, model: []const u8) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/chat/completions", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -205,8 +206,8 @@ pub const GroqProvider = struct {
 
         const msg = parsed.value.choices[0].message;
 
-        // Construct the generic LLMResponse.
-        return base.LLMResponse{
+        // Construct the generic LlmResponse.
+        return base.LlmResponse{
             // Duplicate the content if it exists, otherwise null.
             // Again, duplication is necessary because 'msg.content' points to 'response.body' memory.
             .content = if (msg.content) |c| try self.allocator.dupe(u8, c) else null,
@@ -260,7 +261,7 @@ pub const GroqProvider = struct {
 //     defer provider.deinit();
 //     provider.api_base = base_url;
 
-//     const messages = &[_]base.LLMMessage{
+//     const messages = &[_]base.LlmMessage{
 //         .{ .role = "user", .content = "Hi" },
 //     };
 
