@@ -9,8 +9,8 @@ pub fn main() !void {
     // Print startup banner with build timestamp
     std.debug.print("--- satibot 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
-    // Initialize general purpose allocator for memory management
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
+    // Initialize debug allocator for memory management
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

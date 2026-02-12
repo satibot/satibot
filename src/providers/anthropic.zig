@@ -63,6 +63,7 @@ pub const AnthropicProvider = struct {
 
     pub fn deinit(self: *AnthropicProvider) void {
         self.client.deinit();
+        self.* = undefined;
     }
 
     pub fn chat(self: *AnthropicProvider, messages: []const base.LLMMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LLMResponse {
@@ -124,7 +125,7 @@ pub const AnthropicProvider = struct {
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
-            var err_body = std.ArrayListUnmanaged(u8){};
+            var err_body: std.ArrayListUnmanaged(u8) = .{};
             defer err_body.deinit(self.allocator);
             var err_reader = response.reader(&head_buf);
             var buf: [1024]u8 = undefined;
@@ -155,17 +156,17 @@ pub const AnthropicProvider = struct {
             return error.ApiRequestFailed;
         }
 
-        var full_content = std.ArrayListUnmanaged(u8){};
+        var full_content: std.ArrayListUnmanaged(u8) = .{};
         errdefer full_content.deinit(self.allocator);
 
         var response_body_buf: [8192]u8 = undefined;
         var reader = response.reader(&response_body_buf);
 
-        var buffer = std.ArrayListUnmanaged(u8){};
+        var buffer: std.ArrayListUnmanaged(u8) = .{};
         defer buffer.deinit(self.allocator);
 
         // Track tool calls from content_block_start/delta events
-        var tool_calls = std.ArrayListUnmanaged(base.ToolCall){};
+        var tool_calls: std.ArrayListUnmanaged(base.ToolCall) = .{};
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
@@ -248,7 +249,7 @@ pub const AnthropicProvider = struct {
 
         const result_tool_calls: ?[]base.ToolCall = if (tool_calls.items.len > 0) try tool_calls.toOwnedSlice(self.allocator) else null;
 
-        return base.LLMResponse{
+        return .{
             .content = if (full_content.items.len > 0) try full_content.toOwnedSlice(self.allocator) else null,
             .tool_calls = result_tool_calls,
             .allocator = self.allocator,
@@ -262,11 +263,11 @@ pub const AnthropicProvider = struct {
         // - tool results are sent as user messages with tool_result content blocks
 
         var system_prompt: ?[]const u8 = null;
-        var anthropic_messages = std.ArrayListUnmanaged(AnthropicMessage){};
+        var anthropic_messages: std.ArrayListUnmanaged(AnthropicMessage) = .{};
         defer anthropic_messages.deinit(self.allocator);
 
         // We need to allocate content blocks for tool_result messages
-        var content_blocks_storage = std.ArrayListUnmanaged([]const AnthropicContentBlock){};
+        var content_blocks_storage: std.ArrayListUnmanaged([]const AnthropicContentBlock) = .{};
         defer {
             for (content_blocks_storage.items) |blocks| {
                 self.allocator.free(blocks);
@@ -300,7 +301,7 @@ pub const AnthropicProvider = struct {
         }
 
         // Build the request using a custom approach since we need dynamic struct
-        var json_buf = std.ArrayListUnmanaged(u8){};
+        var json_buf: std.ArrayListUnmanaged(u8) = .{};
         defer json_buf.deinit(self.allocator);
         const writer = json_buf.writer(self.allocator);
 
@@ -388,7 +389,7 @@ pub const AnthropicProvider = struct {
         try writer.writeAll("]");
         try writer.writeAll("}");
 
-        return try json_buf.toOwnedSlice(self.allocator);
+        return json_buf.toOwnedSlice(self.allocator);
     }
 
     fn parseResponse(self: *AnthropicProvider, body: []const u8) !base.LLMResponse {
@@ -397,10 +398,10 @@ pub const AnthropicProvider = struct {
 
         const msg = parsed.value;
 
-        var text_content = std.ArrayListUnmanaged(u8){};
+        var text_content: std.ArrayListUnmanaged(u8) = .{};
         errdefer text_content.deinit(self.allocator);
 
-        var tool_calls = std.ArrayListUnmanaged(base.ToolCall){};
+        var tool_calls: std.ArrayListUnmanaged(base.ToolCall) = .{};
         errdefer {
             for (tool_calls.items) |call| {
                 self.allocator.free(call.id);
@@ -436,7 +437,7 @@ pub const AnthropicProvider = struct {
         const result_content: ?[]u8 = if (text_content.items.len > 0) try text_content.toOwnedSlice(self.allocator) else null;
         const result_tool_calls: ?[]base.ToolCall = if (tool_calls.items.len > 0) try tool_calls.toOwnedSlice(self.allocator) else null;
 
-        return base.LLMResponse{
+        return .{
             .content = result_content,
             .tool_calls = result_tool_calls,
             .allocator = self.allocator,
@@ -701,7 +702,7 @@ fn getProviderName() []const u8 {
 
 /// Create a ProviderInterface for Anthropic
 pub fn createInterface() base.ProviderInterface {
-    return base.ProviderInterface{
+    return .{
         .ctx = undefined,
         .getApiKey = getApiKey,
         .initProvider = initProvider,

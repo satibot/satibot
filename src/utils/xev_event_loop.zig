@@ -74,7 +74,7 @@ pub const XevEventLoop = struct {
         const loop = try xev.Loop.init(.{});
         const timer = try xev.Timer.init();
 
-        const event_loop = XevEventLoop{
+        const event_loop: XevEventLoop = .{
             .allocator = allocator,
             .config = config,
             .loop = loop,

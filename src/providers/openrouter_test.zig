@@ -9,7 +9,7 @@ test "OpenRouterError: enum values" {
 }
 
 test "CompletionResponse: struct fields" {
-    const choice = openrouter.Choice{
+    const choice: openrouter.Choice = .{
         .message = .{
             .content = "Hello world",
             .role = "assistant",
@@ -17,7 +17,7 @@ test "CompletionResponse: struct fields" {
         },
     };
 
-    const response = openrouter.CompletionResponse{
+    const response: openrouter.CompletionResponse = .{
         .id = "resp_123",
         .model = "gpt-3.5-turbo",
         .choices = &[_]openrouter.Choice{choice},
@@ -30,7 +30,7 @@ test "CompletionResponse: struct fields" {
 }
 
 test "Choice: struct fields" {
-    const message = openrouter.Message{
+    const message: openrouter.Message = .{
         .content = "Test response",
         .role = "assistant",
         .tool_calls = null,
@@ -369,11 +369,13 @@ test "OpenRouterProvider: initWithEventLoop" {
 
     // Mock event loop - in real tests you'd use a proper mock
     const MockEventLoop = struct {
+        const Self = @This();
+
         pub fn init() @This() {
             return .{};
         }
         pub fn deinit(self: *@This()) void {
-            _ = self;
+            self.* = undefined;
         }
     };
 

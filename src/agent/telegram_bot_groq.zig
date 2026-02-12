@@ -568,7 +568,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
 
 test "TelegramBot lifecycle" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -585,7 +585,7 @@ test "TelegramBot lifecycle" {
 
 test "TelegramBot tick returns if no config" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -605,7 +605,7 @@ test "TelegramBot config validation" {
     const allocator = std.testing.allocator;
 
     // Test with valid config
-    const valid_config = Config{
+    const valid_config: Config = .{
         .agents = .{ .defaults = .{ .model = "claude-3-sonnet" } },
         .providers = .{
             .anthropic = .{ .apiKey = "test-key" },

@@ -296,7 +296,7 @@ test "XevEventLoop: task queue operations" {
     try std.testing.expectEqual(@as(usize, 0), event_loop.task_queue.items.len);
 
     // Test adding task (this would normally be done internally)
-    const task = xev_event_loop.Task{
+    const task: xev_event_loop.Task = .{
         .id = "test_task",
         .data = "test_data",
         .source = "test_source",

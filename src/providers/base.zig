@@ -3,6 +3,7 @@
 /// used across all LLM provider implementations (Anthropic, OpenRouter, Groq).
 const std = @import("std");
 const Config = @import("../config.zig").Config;
+const OpenRouterError = @import("../providers/openrouter.zig").OpenRouterError;
 
 /// Callback function for streaming response chunks.
 /// Takes a context pointer and the chunk content.
@@ -53,6 +54,9 @@ pub const LLMResponse = struct {
             }
             self.allocator.free(calls);
         }
+        self.content = undefined;
+        self.tool_calls = undefined;
+        self.allocator = undefined;
     }
 };
 
@@ -67,6 +71,8 @@ pub const EmbeddingResponse = struct {
             self.allocator.free(e);
         }
         self.allocator.free(self.embeddings);
+        self.embeddings = undefined;
+        self.allocator = undefined;
     }
 };
 
@@ -78,7 +84,7 @@ pub const EmbeddingRequest = struct {
 
 test "LLMResponse: deinit" {
     const allocator = std.testing.allocator;
-    var resp = LLMResponse{
+    var resp: LLMResponse = .{
         .content = try allocator.dupe(u8, "hello"),
         .tool_calls = null,
         .allocator = allocator,
@@ -94,7 +100,7 @@ test "EmbeddingResponse: deinit" {
     row[1] = 0.0;
     embeddings[0] = row;
 
-    var resp = EmbeddingResponse{
+    var resp: EmbeddingResponse = .{
         .embeddings = embeddings,
         .allocator = allocator,
     };
@@ -102,7 +108,7 @@ test "EmbeddingResponse: deinit" {
 }
 
 test "LLMMessage: creation" {
-    const msg = LLMMessage{
+    const msg: LLMMessage = .{
         .role = "user",
         .content = "hello",
     };
@@ -118,7 +124,7 @@ test "LLMMessage: with tool calls" {
         .{ .id = "call_1", .function = .{ .name = "test_func", .arguments = "{\"arg\": \"value\"}" } },
     };
 
-    const msg = LLMMessage{
+    const msg: LLMMessage = .{
         .role = "assistant",
         .content = "I'll call a tool",
         .tool_calls = tool_calls,
@@ -132,7 +138,7 @@ test "LLMMessage: with tool calls" {
 }
 
 test "LLMMessage: tool result message" {
-    const msg = LLMMessage{
+    const msg: LLMMessage = .{
         .role = "tool",
         .content = "Tool output",
         .tool_call_id = "call_123",
@@ -211,18 +217,18 @@ pub fn executeWithRetry(
             callback_ctx,
         ) catch |err| {
             // Handle specific OpenRouter errors
-            if (@import("../providers/openrouter.zig").OpenRouterError == @TypeOf(err)) {
+            if (OpenRouterError == @TypeOf(err)) {
                 switch (err) {
-                    @import("../providers/openrouter.zig").OpenRouterError.ServiceUnavailable => {
+                    OpenRouterError.ServiceUnavailable => {
                         std.debug.print("\n⚠️ Service unavailable (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
                         std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
                         continue;
                     },
-                    @import("../providers/openrouter.zig").OpenRouterError.ModelNotSupported => {
+                    OpenRouterError.ModelNotSupported => {
                         std.debug.print("\n❌ Model doesn't support tools. Please use a model that supports function calling.\n", .{});
                         return err;
                     },
-                    @import("../providers/openrouter.zig").OpenRouterError.ApiRequestFailed => {
+                    OpenRouterError.ApiRequestFailed => {
                         std.debug.print("\n⚠️ API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
                         std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
                         continue;
@@ -247,7 +253,7 @@ pub fn executeWithRetry(
 }
 
 test "ToolCall: struct fields" {
-    const call = ToolCall{
+    const call: ToolCall = .{
         .id = "call_abc",
         .function = .{
             .name = "my_function",
@@ -262,7 +268,7 @@ test "ToolCall: struct fields" {
 
 test "LLMResponse: creation with content only" {
     const allocator = std.testing.allocator;
-    var resp = LLMResponse{
+    var resp: LLMResponse = .{
         .content = try allocator.dupe(u8, "Hello world"),
         .tool_calls = null,
         .allocator = allocator,
@@ -292,7 +298,7 @@ test "LLMResponse: creation with tool calls only" {
         },
     };
 
-    var resp = LLMResponse{
+    var resp: LLMResponse = .{
         .content = null,
         .tool_calls = calls,
         .allocator = allocator,
@@ -318,7 +324,7 @@ test "LLMResponse: creation with both content and tool calls" {
         },
     };
 
-    var resp = LLMResponse{
+    var resp: LLMResponse = .{
         .content = try allocator.dupe(u8, "I'll call the function"),
         .tool_calls = calls,
         .allocator = allocator,
@@ -342,7 +348,7 @@ test "EmbeddingResponse: multiple embeddings" {
         embeddings[i] = row;
     }
 
-    var resp = EmbeddingResponse{
+    var resp: EmbeddingResponse = .{
         .embeddings = embeddings,
         .allocator = allocator,
     };
@@ -358,7 +364,7 @@ test "EmbeddingResponse: multiple embeddings" {
 test "EmbeddingRequest: creation" {
     const input = &[_][]const u8{ "text1", "text2", "text3" };
 
-    const req = EmbeddingRequest{
+    const req: EmbeddingRequest = .{
         .input = input,
         .model = "text-embedding-3-small",
     };
@@ -373,7 +379,7 @@ test "EmbeddingRequest: creation" {
 test "EmbeddingRequest: empty input" {
     const input = &[_][]const u8{};
 
-    const req = EmbeddingRequest{
+    const req: EmbeddingRequest = .{
         .input = input,
         .model = "text-embedding-3-small",
     };
@@ -386,7 +392,7 @@ test "EmbeddingResponse: empty embeddings" {
     const allocator = std.testing.allocator;
     const embeddings = try allocator.alloc([]const f32, 0);
 
-    var resp = EmbeddingResponse{
+    var resp: EmbeddingResponse = .{
         .embeddings = embeddings,
         .allocator = allocator,
     };
@@ -398,7 +404,7 @@ test "EmbeddingResponse: empty embeddings" {
 test "LLMResponse: empty content and no tool calls" {
     const allocator = std.testing.allocator;
 
-    var resp = LLMResponse{
+    var resp: LLMResponse = .{
         .content = null,
         .tool_calls = null,
         .allocator = allocator,

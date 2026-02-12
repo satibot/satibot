@@ -233,11 +233,13 @@ pub const OpenRouterProvider = struct {
 
         // Create a context structure to hold provider and callback
         const AsyncContext = struct {
+            const Self = @This();
+
             provider: *OpenRouterProvider,
             original_callback: *const fn (result: ChatAsyncResult) void,
             request_id: []const u8,
 
-            fn handleResponse(ctx: *@This(), response_body: []const u8) void {
+            fn handleResponse(ctx: *Self, response_body: []const u8) void {
                 const llm_response = parseChatResponse(ctx.provider.allocator, response_body) catch |err| {
                     const error_result = ChatAsyncResult{
                         .request_id = ctx.request_id,
@@ -256,7 +258,7 @@ pub const OpenRouterProvider = struct {
                 ctx.original_callback(success_result);
             }
 
-            fn handleError(ctx: *@This(), err_msg: []const u8) void {
+            fn handleError(ctx: *Self, err_msg: []const u8) void {
                 const error_result = ChatAsyncResult{
                     .request_id = ctx.request_id,
                     .success = false,
@@ -296,7 +298,7 @@ pub const OpenRouterProvider = struct {
             }
         }.httpCallback;
 
-        try self.async_client.?.postAsync(request_id, url, headers, body, asyncCallback, self.allocator);
+        try self.async_client.?.postAsync(self.allocator, request_id, url, headers, body, asyncCallback);
     }
 
     /// Perform streaming chat completion.
@@ -589,7 +591,7 @@ pub fn parseChatResponse(allocator: std.mem.Allocator, body: []const u8) !base.L
         }
     }
 
-    return base.LLMResponse{
+    return .{
         .content = if (msg.content) |c| try allocator.dupe(u8, c) else null,
         .tool_calls = tool_calls,
         .allocator = allocator,
@@ -637,7 +639,7 @@ pub fn parseEmbeddingsResponse(allocator: std.mem.Allocator, body: []const u8) !
         allocated += 1;
     }
 
-    return base.EmbeddingResponse{
+    return .{
         .embeddings = result,
         .allocator = allocator,
     };
@@ -645,7 +647,7 @@ pub fn parseEmbeddingsResponse(allocator: std.mem.Allocator, body: []const u8) !
 
 // Helper for stream error parsing (involves reader, so not strictly pure string input, but separate logic)
 fn parseErrorStream(allocator: std.mem.Allocator, status: std.http.Status, err_reader: anytype) ![]u8 {
-    var err_body = std.ArrayListUnmanaged(u8){};
+    var err_body: std.ArrayListUnmanaged(u8) = .{};
     defer err_body.deinit(allocator);
     var buf: [1024]u8 = undefined;
     var reader = err_reader;
@@ -673,7 +675,7 @@ fn parseErrorStream(allocator: std.mem.Allocator, status: std.http.Status, err_r
 }
 
 fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.IncomingResponse, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LLMResponse {
-    var full_content = std.ArrayListUnmanaged(u8){};
+    var full_content: std.ArrayListUnmanaged(u8) = .{};
     errdefer full_content.deinit(allocator);
 
     var response_body_buf: [8192]u8 = undefined;
@@ -695,7 +697,7 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
         tool_calls_map.deinit();
     }
 
-    var buffer = std.ArrayListUnmanaged(u8){};
+    var buffer: std.ArrayListUnmanaged(u8) = .{};
     defer buffer.deinit(allocator);
 
     while_read: while (true) {
@@ -711,7 +713,7 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
         while (true) {
             const newline_pos = std.mem.indexOfScalar(u8, buffer.items, '\n') orelse break;
             const line = buffer.items[0..newline_pos];
-            const trimmed = std.mem.trimLeft(u8, line, " \r\n");
+            const trimmed = std.mem.trimStart(u8, line, " \r\n");
 
             if (trimmed.len > 0) {
                 if (std.mem.startsWith(u8, trimmed, "data: ")) {
@@ -790,7 +792,7 @@ fn processStreamResponse(allocator: std.mem.Allocator, response: *http.Request.I
         }
     }
 
-    return base.LLMResponse{
+    return .{
         .content = if (full_content.items.len > 0) try full_content.toOwnedSlice(allocator) else null,
         .tool_calls = final_tool_calls,
         .allocator = allocator,
@@ -1053,7 +1055,7 @@ fn getProviderName() []const u8 {
 
 /// Create a ProviderInterface for OpenRouter
 pub fn createInterface() base.ProviderInterface {
-    return base.ProviderInterface{
+    return .{
         .ctx = undefined,
         .getApiKey = getApiKey,
         .initProvider = initProvider,

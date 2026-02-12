@@ -12,6 +12,7 @@ pub const AsyncResponse = struct {
     /// Free the response body memory.
     pub fn deinit(self: *AsyncResponse) void {
         self.allocator.free(self.body);
+        self.* = undefined;
     }
 };
 
@@ -34,6 +35,7 @@ pub const AsyncClient = struct {
     pub fn deinit(self: *AsyncClient) void {
         var copy = self.root_ca;
         copy.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Structure representing an in-flight async HTTP request
@@ -78,11 +80,12 @@ pub const AsyncClient = struct {
             if (self.err_msg) |_| {
                 // Error is owned by caller
             }
+            self.* = undefined;
         }
     };
 
     /// Start an async HTTP POST request
-    pub fn postAsync(self: *AsyncClient, request_id: []const u8, url: []const u8, headers: []const std.http.Header, body: []const u8, callback: *const fn (result: AsyncResult) void, allocator: std.mem.Allocator) !void {
+    pub fn postAsync(self: *AsyncClient, allocator: std.mem.Allocator, request_id: []const u8, url: []const u8, headers: []const std.http.Header, body: []const u8, callback: *const fn (result: AsyncResult) void) !void {
         const request = try allocator.create(AsyncRequest);
         request.* = .{
             .id = try allocator.dupe(u8, request_id),
@@ -105,7 +108,7 @@ pub const AsyncClient = struct {
         // This would be handled by the event loop in a real implementation
         // For demonstration, we'll process it synchronously but call the callback
         self.processRequestSync(request) catch |err| {
-            const error_result = AsyncResult{
+            const error_result: AsyncResult = .{
                 .request_id = request.id,
                 .success = false,
                 .err_msg = try std.fmt.allocPrint(allocator, "Request failed: {any}", .{err}),
@@ -138,7 +141,7 @@ pub const AsyncClient = struct {
         const response = try receiveResponse(request);
 
         // Create success result
-        const result = AsyncResult{
+        const result: AsyncResult = .{
             .request_id = request.id,
             .success = true,
             .response = response,
@@ -256,7 +259,7 @@ pub const AsyncClient = struct {
             try readFixedBody(request, len);
         }
 
-        return AsyncResponse{
+        return .{
             .status = @enumFromInt(status_code),
             .body = try request.response_body.toOwnedSlice(request.allocator),
             .allocator = request.allocator,
@@ -266,13 +269,13 @@ pub const AsyncClient = struct {
     /// Read raw data from connection
     fn readRaw(request: *AsyncRequest, buf: []u8) !usize {
         if (request.tls_state) |state| {
-            return try state.conn.read(buf);
+            return state.conn.read(buf);
         } else {
             var in_buf: [4096]u8 = undefined;
             var reader_struct = request.tcp_stream.?.reader(&in_buf);
             const rdr = reader_struct.interface();
             var bufs = [1][]u8{buf};
-            return try rdr.readVec(&bufs);
+            return rdr.readVec(&bufs);
         }
     }
 
@@ -353,7 +356,9 @@ pub const AsyncClient = struct {
 
         // Close connection
         if (request.tls_state) |state| {
-            state.conn.close() catch {};
+            state.conn.close() catch |err| {
+                std.debug.print("Warning: Failed to close TLS connection: {any}\n", .{err});
+            };
             request.allocator.destroy(state);
         }
         if (request.tcp_stream) |stream| {
