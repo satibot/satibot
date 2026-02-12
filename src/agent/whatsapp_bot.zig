@@ -29,6 +29,7 @@ pub const WhatsAppBot = struct {
 
     pub fn deinit(self: *WhatsAppBot) void {
         self.client.deinit();
+        self.* = undefined;
     }
 
     /// Process a single incoming webhook message from WhatsApp.
@@ -88,7 +89,7 @@ pub const WhatsAppBot = struct {
             const help_text =
                 \\🐸 SatiBot WhatsApp Commands:\n\\n\\/new - Start a new conversation session\n\\/help - Show this help message\n\\n\\Send any message to chat with the AI assistant.
             ;
-            try self.send_message(wa_config, from, help_text);
+            try self.sendMessage(wa_config, from, help_text);
             return;
         }
 
@@ -102,11 +103,11 @@ pub const WhatsAppBot = struct {
             new_session_id = try std.fmt.allocPrint(self.allocator, "{s}_{d}", .{ session_id, ts });
 
             if (text.len <= 4) {
-                try self.send_message(wa_config, from, "🆕 New session started! Send me a new message.");
+                try self.sendMessage(wa_config, from, "🆕 New session started! Send me a new message.");
                 return;
             }
             // If user sent "/new some prompt", start new session and process the prompt
-            actual_text = std.mem.trimLeft(u8, text[4..], " ");
+            actual_text = std.mem.trimStart(u8, text[4..], " ");
         }
 
         // Spin up a fresh Agent instance for this interaction
@@ -119,24 +120,26 @@ pub const WhatsAppBot = struct {
             std.debug.print("Error running agent: {any}\n", .{err});
             const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
             defer self.allocator.free(error_msg);
-            try self.send_message(wa_config, from, error_msg);
+            try self.sendMessage(wa_config, from, error_msg);
         };
 
         // Send the final response back to WhatsApp
-        const messages = agent.ctx.get_messages();
+        const messages = agent.ctx.getMessages();
         if (messages.len > 0) {
             const last_msg = messages[messages.len - 1];
             if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                try self.send_message(wa_config, from, last_msg.content.?);
+                try self.sendMessage(wa_config, from, last_msg.content.?);
             }
         }
 
         // Save session state to Vector/Graph DB for long-term memory
-        agent.index_conversation() catch {};
+        agent.index_conversation() catch |err| {
+            std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
+        };
     }
 
     /// Helper to send a text message back to a WhatsApp user using the Meta Cloud API.
-    fn send_message(self: *WhatsAppBot, wa_config: WhatsAppConfig, to: []const u8, text: []const u8) !void {
+    fn sendMessage(self: *WhatsAppBot, wa_config: WhatsAppConfig, to: []const u8, text: []const u8) !void {
         const url = try std.fmt.allocPrint(self.allocator, "https://graph.facebook.com/v17.0/{s}/messages", .{wa_config.phoneNumberId});
         defer self.allocator.free(url);
 
@@ -186,6 +189,7 @@ pub const WebhookServer = struct {
 
     pub fn deinit(self: *WebhookServer) void {
         self.bot.deinit();
+        self.* = undefined;
     }
 
     /// Run the webhook server (blocking)
@@ -244,7 +248,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
 
     std.debug.print("Sending startup message to {s}...\n", .{recipient});
     const startup_msg = "🐸 WhatsApp Bot is now online and ready! 🚀";
-    bot.send_message(wa_config, recipient, startup_msg) catch |err| {
+    bot.sendMessage(wa_config, recipient, startup_msg) catch |err| {
         std.debug.print("Failed to send startup message: {any}\n", .{err});
     };
 
@@ -256,7 +260,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
 
 test "WhatsAppBot lifecycle" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -274,7 +278,7 @@ test "WhatsAppBot lifecycle" {
 
 test "WhatsAppBot returns if no config" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -294,7 +298,7 @@ test "WhatsAppBot config validation" {
     const allocator = std.testing.allocator;
 
     // Test with valid config
-    const valid_config = Config{
+    const valid_config: Config = .{
         .agents = .{ .defaults = .{ .model = "claude-3-sonnet" } },
         .providers = .{
             .anthropic = .{ .apiKey = "test-key" },
@@ -376,7 +380,7 @@ test "WhatsAppBot /new with prompt extracts prompt correctly" {
     const expected_prompt = "what is zig?";
 
     // Extract prompt after /new (simulate the logic)
-    const actual_prompt = std.mem.trimLeft(u8, new_with_prompt[4..], " ");
+    const actual_prompt = std.mem.trimStart(u8, new_with_prompt[4..], " ");
 
     try std.testing.expectEqualStrings(expected_prompt, actual_prompt);
 }
@@ -441,7 +445,7 @@ test "WhatsAppBot config file template generation" {
 
 test "WhatsAppBot webhook verification" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -469,7 +473,7 @@ test "WhatsAppBot webhook verification" {
 
 test "WhatsAppBot webhook payload parsing" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{
@@ -500,7 +504,7 @@ test "WhatsAppBot webhook payload parsing" {
 
 test "WhatsAppBot WebhookServer initialization" {
     const allocator = std.testing.allocator;
-    const config = Config{
+    const config: Config = .{
         .agents = .{ .defaults = .{ .model = "test" } },
         .providers = .{},
         .tools = .{

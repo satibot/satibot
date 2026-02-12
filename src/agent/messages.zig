@@ -55,6 +55,7 @@ pub const SessionHistory = struct {
             }
         }
         self.messages.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn addMessage(self: *SessionHistory, msg: Message) !void {
@@ -320,7 +321,9 @@ fn saveSessionHistory(history: *SessionHistory, session_id: []const u8) !void {
     }
 
     // Save to session storage
-    session.save(allocator, session_id, save_messages) catch {};
+    session.save(allocator, session_id, save_messages) catch |err| {
+        std.debug.print("Warning: Failed to save session: {any}\n", .{err});
+    };
 
     // Free save messages
     for (save_messages) |msg| {
@@ -371,7 +374,7 @@ pub fn processMessage(
 
     // Copy messages to temp context
     for (history.messages.items) |msg| {
-        try temp_ctx.add_message(.{
+        try temp_ctx.addMessage(.{
             .role = msg.role,
             .content = msg.content,
             .tool_call_id = msg.tool_call_id,
@@ -419,7 +422,9 @@ pub fn processMessage(
     const chunk_callback = struct {
         fn call(ctx: ?*anyopaque, chunk: []const u8) void {
             const cb_ctx = @as(*CallbackContext, @ptrCast(@alignCast(ctx.?)));
-            cb_ctx.chunks.appendSlice(cb_ctx.allocator, chunk) catch {};
+            cb_ctx.chunks.appendSlice(cb_ctx.allocator, chunk) catch |err| {
+                std.debug.print("Warning: Failed to append chunk: {any}\n", .{err});
+            };
         }
     }.call;
 
@@ -439,7 +444,7 @@ pub fn processMessage(
         provider_interface,
         allocator,
         config,
-        temp_ctx.get_messages(),
+        temp_ctx.getMessages(),
         "openrouter", // Default model
         provider_tools.items,
         chunk_callback,
@@ -464,5 +469,7 @@ pub fn processMessage(
 /// Index conversation for RAG - pure function
 pub fn indexConversation(history: *SessionHistory, session_id: []const u8) !void {
     // Simple implementation - save to session storage
-    saveSessionHistory(history, session_id) catch {};
+    saveSessionHistory(history, session_id) catch |err| {
+        std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
+    };
 }

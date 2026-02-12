@@ -41,10 +41,10 @@ pub const Agent = struct {
         // Load history
         if (session.load(allocator, session_id)) |history| {
             for (history) |msg| {
-                self.ctx.add_message(msg) catch {};
+                self.ctx.addMessage(msg) catch {};
             }
             // Note: we should free history and its elements after adding to context
-            // But context.add_message dupes them.
+            // But context.addMessage dupes them.
             // So we need to free the history we loaded.
             for (history) |msg| {
                 allocator.free(msg.role);
@@ -202,7 +202,7 @@ pub const Agent = struct {
     /// Ensure a system prompt exists in the conversation context.
     /// If not present, adds a default prompt that describes the bot and its tools.
     pub fn ensure_system_prompt(self: *Agent) !void {
-        const messages = self.ctx.get_messages();
+        const messages = self.ctx.getMessages();
         for (messages) |msg| {
             if (std.mem.eql(u8, msg.role, "system")) return;
         }
@@ -217,7 +217,7 @@ pub const Agent = struct {
             }
         }
 
-        try self.ctx.add_message(.{ .role = "system", .content = prompt_builder.items });
+        try self.ctx.addMessage(.{ .role = "system", .content = prompt_builder.items });
     }
 
     pub fn deinit(self: *Agent) void {
@@ -265,7 +265,7 @@ pub const Agent = struct {
 
         try subagent.run(task);
 
-        const messages = subagent.ctx.get_messages();
+        const messages = subagent.ctx.getMessages();
         if (messages.len > 0) {
             const last_msg = messages[messages.len - 1];
             if (last_msg.content) |content| {
@@ -278,7 +278,7 @@ pub const Agent = struct {
     pub fn run(self: *Agent, message: []const u8) !void {
         try self.ensure_system_prompt();
 
-        try self.ctx.add_message(.{ .role = "user", .content = message });
+        try self.ctx.addMessage(.{ .role = "user", .content = message });
 
         const model = self.config.agents.defaults.model;
 
@@ -334,7 +334,7 @@ pub const Agent = struct {
             // Rebuild filtered_messages each iteration so tool results are included
             var filtered_messages = std.ArrayListUnmanaged(base.LLMMessage){};
             defer filtered_messages.deinit(self.allocator);
-            for (self.ctx.get_messages()) |msg| {
+            for (self.ctx.getMessages()) |msg| {
                 if (std.mem.eql(u8, msg.role, "assistant")) {
                     if (msg.content == null and (msg.tool_calls == null or msg.tool_calls.?.len == 0)) {
                         continue; // Skip invalid assistant message
@@ -450,7 +450,7 @@ pub const Agent = struct {
             defer response.deinit();
 
             // Add assistant response to history
-            try self.ctx.add_message(.{
+            try self.ctx.addMessage(.{
                 .role = "assistant",
                 .content = response.content,
                 .tool_calls = response.tool_calls,
@@ -483,7 +483,7 @@ pub const Agent = struct {
                             const error_msg = try std.fmt.allocPrint(self.allocator, "Error executing tool {s}: {any}", .{ call.function.name, err });
                             defer self.allocator.free(error_msg);
                             std.debug.print("{s}\n", .{error_msg});
-                            try self.ctx.add_message(.{
+                            try self.ctx.addMessage(.{
                                 .role = "tool",
                                 .content = error_msg,
                                 .tool_call_id = call.id,
@@ -493,7 +493,7 @@ pub const Agent = struct {
                         defer self.allocator.free(result);
 
                         std.debug.print("Tool Result: {s}\n", .{result});
-                        try self.ctx.add_message(.{
+                        try self.ctx.addMessage(.{
                             .role = "tool",
                             .content = result,
                             .tool_call_id = call.id,
@@ -502,7 +502,7 @@ pub const Agent = struct {
                         const error_msg = try std.fmt.allocPrint(self.allocator, "Error: Tool {s} not found", .{call.function.name});
                         defer self.allocator.free(error_msg);
                         std.debug.print("{s}\n", .{error_msg});
-                        try self.ctx.add_message(.{
+                        try self.ctx.addMessage(.{
                             .role = "tool",
                             .content = error_msg,
                             .tool_call_id = call.id,
@@ -517,14 +517,14 @@ pub const Agent = struct {
             break;
         }
 
-        try session.save(self.allocator, self.session_id, self.ctx.get_messages());
+        try session.save(self.allocator, self.session_id, self.ctx.getMessages());
     }
 
     pub fn index_conversation(self: *Agent) !void {
         if (self.config.agents.defaults.disableRag) {
             return;
         }
-        const messages = self.ctx.get_messages();
+        const messages = self.ctx.getMessages();
         if (messages.len < 2) return;
 
         const tool_ctx = tools.ToolContext{
@@ -606,14 +606,14 @@ test "Agent: message context management" {
     defer agent.deinit();
 
     // Initially should have empty context (except possibly loaded from session)
-    const initial_messages = agent.ctx.get_messages();
+    const initial_messages = agent.ctx.getMessages();
     _ = initial_messages;
 
     // Test that we can add messages through the context
-    try agent.ctx.add_message(.{ .role = "user", .content = "Hello" });
-    try agent.ctx.add_message(.{ .role = "assistant", .content = "Hi there!" });
+    try agent.ctx.addMessage(.{ .role = "user", .content = "Hello" });
+    try agent.ctx.addMessage(.{ .role = "assistant", .content = "Hi there!" });
 
-    const messages = agent.ctx.get_messages();
+    const messages = agent.ctx.getMessages();
     try std.testing.expect(messages.len >= 2);
     if (messages.len >= 2) {
         try std.testing.expectEqualStrings("user", messages[messages.len - 2].role);
@@ -721,8 +721,8 @@ test "Agent: conversation indexing" {
     defer agent.deinit();
 
     // Add some messages to the context
-    try agent.ctx.add_message(.{ .role = "user", .content = "What is Zig?" });
-    try agent.ctx.add_message(.{ .role = "assistant", .content = "Zig is a programming language." });
+    try agent.ctx.addMessage(.{ .role = "user", .content = "What is Zig?" });
+    try agent.ctx.addMessage(.{ .role = "assistant", .content = "Zig is a programming language." });
 
     // Test that index_conversation runs without error
     // Note: This will try to call vector_upsert which may fail in test environment
@@ -750,7 +750,7 @@ test "Agent: respect disableRag flag" {
     var agent = Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
-    try agent.ctx.add_message(.{ .role = "user", .content = "What is Zig?" });
+    try agent.ctx.addMessage(.{ .role = "user", .content = "What is Zig?" });
 
     // This should return immediately and not fail even if dependencies are missing,
     // because it checks the flag first.

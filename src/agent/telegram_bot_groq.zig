@@ -245,8 +245,8 @@ pub const TelegramBot = struct {
                             const help_text =
                                 \\🐸 SatiBot Commands:
                                 \\
-                                \/new - Start a new conversation session
-                                \/help - Show this help message
+                                \\/new - Start a new conversation session
+                                \\/help - Show this help message
                                 \\
                                 \\Send any message to chat with the AI assistant.
                             ;
@@ -650,36 +650,33 @@ test "TelegramBot command detection - /new" {
 
 test "TelegramBot /new generates timestamp-based session ID" {
     const allocator = std.testing.allocator;
-    
+
     // Test that /new creates a new session ID with timestamp
     const base_session_id = "tg_123456789";
     const ts1 = std.time.milliTimestamp();
     const new_session_id1 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts1 });
     defer allocator.free(new_session_id1);
-    
+
     // Verify new session ID contains timestamp
     try std.testing.expect(std.mem.indexOf(u8, new_session_id1, base_session_id) != null);
     try std.testing.expect(std.mem.indexOf(u8, new_session_id1, "_") != null);
-    
+
     // Test with different timestamp
     const ts2 = ts1 + 1000;
     const new_session_id2 = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base_session_id, ts2 });
     defer allocator.free(new_session_id2);
-    
+
     // Verify they are different
     try std.testing.expect(!std.mem.eql(u8, new_session_id1, new_session_id2));
 }
 
 test "TelegramBot /new with prompt extracts prompt correctly" {
-    const allocator = std.testing.allocator;
-    
     const new_with_prompt = "/new what is zig?";
-    const expected_prompt = "what is zig?";
-    
+
     // Extract prompt after /new (simulate the logic)
     const actual_prompt = std.mem.trimLeft(u8, new_with_prompt[4..], " ");
-    
-    try std.testing.expectEqualStrings(expected_prompt, actual_prompt);
+
+    try std.testing.expectEqualStrings("what is zig?", actual_prompt);
 }
 
 test "TelegramBot message JSON serialization" {

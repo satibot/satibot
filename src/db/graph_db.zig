@@ -45,10 +45,11 @@ pub const Graph = struct {
             self.allocator.free(edge.relation);
         }
         self.edges.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Add a node with the given ID and label.
-    pub fn add_node(self: *Graph, id: []const u8, label: []const u8) !void {
+    pub fn addNode(self: *Graph, id: []const u8, label: []const u8) !void {
         if (self.nodes.contains(id)) return;
         try self.nodes.put(try self.allocator.dupe(u8, id), .{
             .id = try self.allocator.dupe(u8, id),
@@ -57,7 +58,7 @@ pub const Graph = struct {
     }
 
     /// Add a directed edge between two nodes with the given relation.
-    pub fn add_edge(self: *Graph, from: []const u8, to: []const u8, relation: []const u8) !void {
+    pub fn addEdge(self: *Graph, from: []const u8, to: []const u8, relation: []const u8) !void {
         try self.edges.append(self.allocator, .{
             .from = try self.allocator.dupe(u8, from),
             .to = try self.allocator.dupe(u8, to),
@@ -94,10 +95,10 @@ pub const Graph = struct {
         const file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
 
-        const export_data = struct {
+        const export_data: struct {
             nodes: []Node,
             edges: []Edge,
-        }{
+        } = .{
             .nodes = try self.allocator.alloc(Node, self.nodes.count()),
             .edges = self.edges.items,
         };
@@ -131,10 +132,10 @@ pub const Graph = struct {
         defer parsed.deinit();
 
         for (parsed.value.nodes) |node| {
-            try self.add_node(node.id, node.label);
+            try self.addNode(node.id, node.label);
         }
         for (parsed.value.edges) |edge| {
-            try self.add_edge(edge.from, edge.to, edge.relation);
+            try self.addEdge(edge.from, edge.to, edge.relation);
         }
     }
 };
@@ -144,12 +145,12 @@ test "Graph: add nodes and query" {
     var g = Graph.init(allocator);
     defer g.deinit();
 
-    try g.add_node("user", "Person");
-    try g.add_node("bot", "Agent");
-    try g.add_edge("user", "bot", "talks_to");
+    try g.addNode("user", "Person");
+    try g.addNode("bot", "Agent");
+    try g.addEdge("user", "bot", "talks_to");
 
     // Test duplicate node (should be ignored)
-    try g.add_node("user", "Duplicate");
+    try g.addNode("user", "Duplicate");
     try std.testing.expectEqual(@as(usize, 2), g.nodes.count());
     const user_node = g.nodes.get("user").?;
     try std.testing.expectEqualStrings("Person", user_node.label);
@@ -190,11 +191,11 @@ test "Graph: save and load" {
     {
         var g = Graph.init(allocator);
         defer g.deinit();
-        try g.add_node("A", "Node");
-        try g.add_node("B", "Node");
-        try g.add_node("C", "Node");
-        try g.add_edge("A", "B", "points");
-        try g.add_edge("B", "C", "points_to");
+        try g.addNode("A", "Node");
+        try g.addNode("B", "Node");
+        try g.addNode("C", "Node");
+        try g.addEdge("A", "B", "points");
+        try g.addEdge("B", "C", "points_to");
         try g.save(file_path);
     }
 
@@ -214,13 +215,13 @@ test "Graph: complex relations" {
     var g = Graph.init(allocator);
     defer g.deinit();
 
-    try g.add_node("A", "TypeA");
-    try g.add_node("B", "TypeB");
-    try g.add_node("C", "TypeC");
+    try g.addNode("A", "TypeA");
+    try g.addNode("B", "TypeB");
+    try g.addNode("C", "TypeC");
 
-    try g.add_edge("A", "B", "rel1");
-    try g.add_edge("B", "C", "rel2");
-    try g.add_edge("C", "A", "rel3");
+    try g.addEdge("A", "B", "rel1");
+    try g.addEdge("B", "C", "rel2");
+    try g.addEdge("C", "A", "rel3");
 
     const res_a = try g.query("A");
     defer allocator.free(res_a);
@@ -239,8 +240,8 @@ test "Graph: add duplicate node" {
     var g = Graph.init(allocator);
     defer g.deinit();
 
-    try g.add_node("A", "TypeA");
-    try g.add_node("A", "TypeA"); // Should not error, just skip
+    try g.addNode("A", "TypeA");
+    try g.addNode("A", "TypeA"); // Should not error, just skip
 
     try std.testing.expectEqual(@as(usize, 1), g.nodes.count());
 }
@@ -250,8 +251,8 @@ test "Graph: query non-existent node" {
     var g = Graph.init(allocator);
     defer g.deinit();
 
-    try g.add_node("A", "TypeA");
-    try g.add_edge("A", "B", "rel1");
+    try g.addNode("A", "TypeA");
+    try g.addEdge("A", "B", "rel1");
 
     const res = try g.query("Z");
     defer allocator.free(res);
@@ -259,7 +260,7 @@ test "Graph: query non-existent node" {
 }
 
 test "Graph: Node struct" {
-    const node = Node{
+    const node: Node = .{
         .id = "node1",
         .label = "Person",
     };
@@ -268,7 +269,7 @@ test "Graph: Node struct" {
 }
 
 test "Graph: Edge struct" {
-    const edge = Edge{
+    const edge: Edge = .{
         .from = "A",
         .to = "B",
         .relation = "knows",

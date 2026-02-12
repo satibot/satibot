@@ -19,7 +19,11 @@ pub fn saveLastChatId(chat_id: i64) void {
     // Ensure directory exists
     const bots_dir = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots" }) catch return;
     defer std.heap.page_allocator.free(bots_dir);
-    std.fs.makeDirAbsolute(bots_dir) catch {};
+    std.fs.makeDirAbsolute(bots_dir) catch |err| {
+        if (err != error.PathAlreadyExists) {
+            std.debug.print("Warning: Failed to create bots directory: {any}\n", .{err});
+        }
+    };
 
     // Write chat_id to file (atomically - write to temp then rename)
     const temp_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt.tmp" }) catch return;

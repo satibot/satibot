@@ -6,7 +6,6 @@ const std = @import("std");
 const Config = @import("../config.zig").Config;
 const base = @import("../providers/base.zig");
 const vector_db = @import("../db/vector_db.zig");
-const graph_db = @import("../db/graph_db.zig");
 
 /// Context passed to tool functions containing allocator, config, and helper functions.
 pub const ToolContext = struct {
@@ -373,17 +372,17 @@ fn get_db_path(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
 
 pub fn vector_upsert(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     if (ctx.config.agents.defaults.disableRag) {
-        return try ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
+        return ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
     }
     const parsed = try std.json.parseFromSlice(struct { text: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    const get_embeddings = ctx.get_embeddings orelse return try ctx.allocator.dupe(u8, "Error: Embedding service not available.");
+    const get_embeddings = ctx.get_embeddings orelse return ctx.allocator.dupe(u8, "Error: Embedding service not available.");
 
     var resp = try get_embeddings(ctx.allocator, ctx.config, &.{parsed.value.text});
     defer resp.deinit();
 
-    if (resp.embeddings.len == 0) return try ctx.allocator.dupe(u8, "Error: No embeddings generated.");
+    if (resp.embeddings.len == 0) return ctx.allocator.dupe(u8, "Error: No embeddings generated.");
 
     var store = vector_db.VectorStore.init(ctx.allocator);
     defer store.deinit();
@@ -395,22 +394,22 @@ pub fn vector_upsert(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     try store.add(parsed.value.text, resp.embeddings[0]);
     try store.save(path);
 
-    return try ctx.allocator.dupe(u8, "Vector upserted successfully");
+    return ctx.allocator.dupe(u8, "Vector upserted successfully");
 }
 
 pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     if (ctx.config.agents.defaults.disableRag) {
-        return try ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
+        return ctx.allocator.dupe(u8, "Error: RAG is globally disabled in configuration.");
     }
     const parsed = try std.json.parseFromSlice(struct { query: []const u8, top_k: ?usize = 3 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    const get_embeddings = ctx.get_embeddings orelse return try ctx.allocator.dupe(u8, "Error: Embedding service not available.");
+    const get_embeddings = ctx.get_embeddings orelse return ctx.allocator.dupe(u8, "Error: Embedding service not available.");
 
     var resp = try get_embeddings(ctx.allocator, ctx.config, &.{parsed.value.query});
     defer resp.deinit();
 
-    if (resp.embeddings.len == 0) return try ctx.allocator.dupe(u8, "Error: No embeddings generated.");
+    if (resp.embeddings.len == 0) return ctx.allocator.dupe(u8, "Error: No embeddings generated.");
 
     var store = vector_db.VectorStore.init(ctx.allocator);
     defer store.deinit();
@@ -422,7 +421,7 @@ pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const results = try store.search(resp.embeddings[0], parsed.value.top_k.?);
     defer ctx.allocator.free(results);
 
-    var result_text = std.ArrayListUnmanaged(u8){};
+    var result_text: std.ArrayListUnmanaged(u8) = .{};
     errdefer result_text.deinit(ctx.allocator);
 
     const writer = result_text.writer(ctx.allocator);
@@ -431,7 +430,7 @@ pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         try writer.print("- {s}\n", .{res.text});
     }
 
-    if (results.len == 0) return try ctx.allocator.dupe(u8, "No similar vectors found.");
+    if (results.len == 0) return ctx.allocator.dupe(u8, "No similar vectors found.");
 
     return result_text.toOwnedSlice(ctx.allocator);
 }
@@ -542,8 +541,6 @@ pub fn vector_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
 //     return try ctx.allocator.dupe(u8, "Message sent to WhatsApp successfully");
 // }
-
-const cron = @import("cron.zig");
 
 // pub fn cron_add(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //     const parsed = try std.json.parseFromSlice(struct {
@@ -784,14 +781,14 @@ test "Tools: vector_upsert and vector_search" {
                 emb[1] = 0.0;
                 embeddings[i] = emb;
             }
-            return base.EmbeddingResponse{
+            return .{
                 .embeddings = embeddings,
                 .allocator = all,
             };
         }
     }.exec;
 
-    const ctx = ToolContext{
+    const ctx: ToolContext = .{
         .allocator = allocator,
         .config = undefined,
         .get_embeddings = mock_embeddings,
@@ -822,7 +819,7 @@ test "Tools: ToolRegistry basic operations" {
     var registry = ToolRegistry.init(allocator);
     defer registry.deinit();
 
-    const test_tool = Tool{
+    const test_tool: Tool = .{
         .name = "test_tool",
         .description = "A test tool",
         .parameters = "{}",
@@ -903,7 +900,7 @@ test "Tools: ToolRegistry overwrite tool" {
     var registry = ToolRegistry.init(allocator);
     defer registry.deinit();
 
-    const tool1 = Tool{
+    const tool1: Tool = .{
         .name = "my_tool",
         .description = "Original description",
         .parameters = "{}",
@@ -916,7 +913,7 @@ test "Tools: ToolRegistry overwrite tool" {
         }.exec,
     };
 
-    const tool2 = Tool{
+    const tool2: Tool = .{
         .name = "my_tool",
         .description = "Updated description",
         .parameters = "{\"type\": \"object\"}",
@@ -1091,7 +1088,7 @@ test "Tools: JSON argument parsing" {
 
 test "Tools: respect disableRag flag" {
     const allocator = std.testing.allocator;
-    const ctx = ToolContext{
+    const ctx: ToolContext = .{
         .allocator = allocator,
         .config = Config{
             .agents = .{ .defaults = .{ .model = "test", .disableRag = true } },

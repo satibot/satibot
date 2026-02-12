@@ -15,8 +15,8 @@
 /// ```
 const std = @import("std");
 const Config = @import("../config.zig").Config;
+const config_load = @import("../config.zig").load;
 const Agent = @import("../agent.zig").Agent;
-const http = @import("../http.zig");
 const xev_event_loop = @import("../utils/xev_event_loop.zig");
 const XevEventLoop = xev_event_loop.XevEventLoop;
 
@@ -72,7 +72,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
             return;
         }
         // If user sent "/new some prompt", start new session and process the prompt
-        actual_text = std.mem.trimLeft(u8, actual_text[4..], " ");
+        actual_text = std.mem.trimStart(u8, actual_text[4..], " ");
     }
 
     // Handle /help command
@@ -116,7 +116,9 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     }
 
     // Index for RAG
-    agent.index_conversation() catch {};
+    agent.index_conversation() catch |err| {
+        std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
+    };
 }
 
 /// Session counter to generate unique session IDs when /new is used
@@ -154,6 +156,7 @@ pub const MockBot = struct {
         self.event_loop.deinit();
         self.allocator.destroy(self);
         global_mock_context = null;
+        self.* = undefined;
     }
 
     /// Read from console and add task to loop
@@ -194,7 +197,7 @@ pub const MockBot = struct {
 
         // Setup signal handlers
         global_event_loop = &self.event_loop;
-        const sa = std.posix.Sigaction{
+        const sa: std.posix.Sigaction = .{
             .handler = .{ .handler = signalHandler },
             .mask = std.mem.zeroes(std.posix.sigset_t),
             .flags = 0,
@@ -234,7 +237,7 @@ test "MockBot logic test" {
     const allocator = std.testing.allocator;
 
     // Load config
-    const config = try @import("../config.zig").load(allocator);
+    const config = try config_load(allocator);
     defer config.deinit();
 
     const bot = try MockBot.init(allocator, config.value);
@@ -254,7 +257,7 @@ test "MockBot /new command increments session counter" {
     mock_session_counter = 0;
 
     // Load config
-    const config = try @import("../config.zig").load(allocator);
+    const config = try config_load(allocator);
     defer config.deinit();
 
     const bot = try MockBot.init(allocator, config.value);
@@ -279,7 +282,7 @@ test "MockBot /new with prompt processes prompt after incrementing counter" {
     mock_session_counter = 0;
 
     // Load config
-    const config = try @import("../config.zig").load(allocator);
+    const config = try config_load(allocator);
     defer config.deinit();
 
     const bot = try MockBot.init(allocator, config.value);

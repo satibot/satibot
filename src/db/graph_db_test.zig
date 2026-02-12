@@ -2,7 +2,7 @@ const std = @import("std");
 const graph_db = @import("graph_db.zig");
 
 test "Node: struct creation and access" {
-    const node = graph_db.Node{
+    const node: graph_db.Node = .{
         .id = "user_123",
         .label = "Person",
     };
@@ -12,7 +12,7 @@ test "Node: struct creation and access" {
 }
 
 test "Node: empty strings" {
-    const node = graph_db.Node{
+    const node: graph_db.Node = .{
         .id = "",
         .label = "",
     };
@@ -22,7 +22,7 @@ test "Node: empty strings" {
 }
 
 test "Edge: struct creation and access" {
-    const edge = graph_db.Edge{
+    const edge: graph_db.Edge = .{
         .from = "node_a",
         .to = "node_b",
         .relation = "connected_to",
@@ -34,7 +34,7 @@ test "Edge: struct creation and access" {
 }
 
 test "Edge: self-referencing" {
-    const edge = graph_db.Edge{
+    const edge: graph_db.Edge = .{
         .from = "self_node",
         .to = "self_node",
         .relation = "references",

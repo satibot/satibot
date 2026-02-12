@@ -47,13 +47,14 @@ pub const Context = struct {
             }
         }
         self.messages.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Add a message to the conversation context.
     /// Creates deep copies of all strings to ensure memory safety.
     /// Handles both regular messages and messages with tool calls.
-    pub fn add_message(self: *Context, msg: base.LLMMessage) !void {
-        var new_msg = base.LLMMessage{
+    pub fn addMessage(self: *Context, msg: base.LLMMessage) !void {
+        var new_msg: base.LLMMessage = .{
             .role = try self.allocator.dupe(u8, msg.role),
             .content = if (msg.content) |c| try self.allocator.dupe(u8, c) else null,
             .tool_call_id = if (msg.tool_call_id) |id| try self.allocator.dupe(u8, id) else null,
@@ -79,22 +80,22 @@ pub const Context = struct {
     }
 
     /// Get all messages in the conversation as a slice.
-    pub fn get_messages(self: *Context) []const base.LLMMessage {
+    pub fn getMessages(self: *Context) []base.LLMMessage {
         return self.messages.items;
     }
 };
 
-test "Context: init and add_message" {
+test "Context: init and addMessage" {
     const allocator = std.testing.allocator;
     var ctx = Context.init(allocator);
     defer ctx.deinit();
 
-    try ctx.add_message(.{
+    try ctx.addMessage(.{
         .role = "user",
         .content = "hello",
     });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 1), messages.len);
     try std.testing.expectEqualStrings("user", messages[0].role);
     try std.testing.expectEqualStrings("hello", messages[0].content.?);
@@ -115,13 +116,13 @@ test "Context: tool calls" {
         },
     };
 
-    try ctx.add_message(.{
+    try ctx.addMessage(.{
         .role = "assistant",
         .content = "thinking",
         .tool_calls = tool_calls,
     });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 1), messages.len);
     try std.testing.expect(messages[0].tool_calls != null);
     try std.testing.expectEqual(@as(usize, 1), messages[0].tool_calls.?.len);
@@ -134,12 +135,12 @@ test "Context: multiple messages" {
     defer ctx.deinit();
 
     // Add multiple messages
-    try ctx.add_message(.{ .role = "system", .content = "You are a helpful assistant." });
-    try ctx.add_message(.{ .role = "user", .content = "Hello!" });
-    try ctx.add_message(.{ .role = "assistant", .content = "Hi there!" });
-    try ctx.add_message(.{ .role = "user", .content = "How are you?" });
+    try ctx.addMessage(.{ .role = "system", .content = "You are a helpful assistant." });
+    try ctx.addMessage(.{ .role = "user", .content = "Hello!" });
+    try ctx.addMessage(.{ .role = "assistant", .content = "Hi there!" });
+    try ctx.addMessage(.{ .role = "user", .content = "How are you?" });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 4), messages.len);
 
     try std.testing.expectEqualStrings("system", messages[0].role);
@@ -160,13 +161,13 @@ test "Context: message with null content" {
     var ctx = Context.init(allocator);
     defer ctx.deinit();
 
-    try ctx.add_message(.{
+    try ctx.addMessage(.{
         .role = "tool",
         .tool_call_id = "call_123",
         .content = null,
     });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 1), messages.len);
     try std.testing.expectEqualStrings("tool", messages[0].role);
     try std.testing.expect(messages[0].content == null);
@@ -184,13 +185,13 @@ test "Context: multiple tool calls" {
         .{ .id = "call_3", .function = .{ .name = "write_file", .arguments = "{\"path\": \"out.txt\", \"content\": \"hello\"}" } },
     };
 
-    try ctx.add_message(.{
+    try ctx.addMessage(.{
         .role = "assistant",
         .content = "I'll help you with that.",
         .tool_calls = tool_calls,
     });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 1), messages.len);
     try std.testing.expectEqual(@as(usize, 3), messages[0].tool_calls.?.len);
 
@@ -210,7 +211,7 @@ test "Context: empty context" {
     var ctx = Context.init(allocator);
     defer ctx.deinit();
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 0), messages.len);
 }
 
@@ -223,14 +224,14 @@ test "Context: message with all fields" {
         .{ .id = "call_abc", .function = .{ .name = "test_func", .arguments = "{\"arg\": \"value\"}" } },
     };
 
-    try ctx.add_message(.{
+    try ctx.addMessage(.{
         .role = "assistant",
         .content = "I'm calling a tool",
         .tool_call_id = null,
         .tool_calls = tool_calls,
     });
 
-    const messages = ctx.get_messages();
+    const messages = ctx.getMessages();
     try std.testing.expectEqual(@as(usize, 1), messages.len);
     try std.testing.expectEqualStrings("assistant", messages[0].role);
     try std.testing.expectEqualStrings("I'm calling a tool", messages[0].content.?);

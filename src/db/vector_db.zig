@@ -1,7 +1,6 @@
 /// Vector database module for semantic search using embeddings.
 /// Stores text with vector embeddings and supports similarity search.
 const std = @import("std");
-const base = @import("../providers/base.zig");
 const Config = @import("../config.zig").Config;
 
 /// Entry containing text and its vector embedding.
@@ -29,6 +28,7 @@ pub const VectorStore = struct {
             self.allocator.free(entry.embedding);
         }
         self.entries.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Add a text entry with its embedding vector.
@@ -175,7 +175,7 @@ test "VectorStore: search with top_k larger than entries" {
 }
 
 test "VectorStore: VectorEntry struct" {
-    const entry = VectorEntry{
+    const entry: VectorEntry = .{
         .text = "test text",
         .embedding = &.{ 0.1, 0.2, 0.3 },
     };

@@ -8,7 +8,7 @@ test "Session: struct creation" {
         .{ .role = "assistant", .content = "Hi there!" },
     };
 
-    const sess = session.Session{
+    const sess: session.Session = .{
         .messages = @constCast(messages),
     };
 
@@ -22,7 +22,7 @@ test "Session: struct creation" {
 test "Session: empty session" {
     const messages = &[_]base.LLMMessage{};
 
-    const sess = session.Session{
+    const sess: session.Session = .{
         .messages = @constCast(messages),
     };
 
@@ -414,7 +414,7 @@ test "dupe_tool_calls: empty array" {
 test "dupe_tool_calls: complex arguments" {
     const allocator = std.testing.allocator;
 
-    const complex_args = 
+    const complex_args =
         \\{
         \\  "param1": "value1",
         \\  "param2": 42,

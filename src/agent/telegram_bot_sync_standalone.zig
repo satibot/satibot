@@ -1,11 +1,11 @@
 const std = @import("std");
 
 // Global HOME directory for file operations
-var HOME_DIR: []const u8 = undefined;
+var Home_Dir: []const u8 = undefined;
 
-// Initialize HOME_DIR at runtime
+// Initialize Home_Dir at runtime
 fn initHomeDir() void {
-    HOME_DIR = std.posix.getenv("HOME") orelse "/tmp";
+    Home_Dir = std.posix.getenv("HOME") orelse "/tmp";
 }
 
 /// Configuration data - immutable after creation
@@ -54,13 +54,15 @@ const BotState = struct {
 
 /// Save last_chat_id to file for persistence across restarts
 fn saveLastChatId(chat_id: i64) void {
-    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return;
+    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ Home_Dir, ".bots", "last_chat_id.txt" }) catch return;
     defer std.heap.page_allocator.free(file_path);
 
     // Ensure directory exists
-    const bots_dir = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots" }) catch return;
+    const bots_dir = std.fs.path.join(std.heap.page_allocator, &.{ Home_Dir, ".bots" }) catch return;
     defer std.heap.page_allocator.free(bots_dir);
-    std.fs.makeDirAbsolute(bots_dir) catch {};
+    std.fs.makeDirAbsolute(bots_dir) catch |err| {
+        std.debug.print("Warning: Failed to create bots directory: {any}\n", .{err});
+    };
 
     // Write chat_id to file
     const file = std.fs.createFileAbsolute(file_path, .{ .truncate = true }) catch |err| {
@@ -78,7 +80,7 @@ fn saveLastChatId(chat_id: i64) void {
 
 /// Read last_chat_id from file
 fn readLastChatId() ?i64 {
-    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return null;
+    const file_path = std.fs.path.join(std.heap.page_allocator, &.{ Home_Dir, ".bots", "last_chat_id.txt" }) catch return null;
     defer std.heap.page_allocator.free(file_path);
 
     const file = std.fs.openFileAbsolute(file_path, .{}) catch return null;
@@ -115,7 +117,7 @@ fn parseUpdate(value: std.json.Value) ?TelegramUpdate {
         }
     }
 
-    return TelegramUpdate{
+    return .{
         .update_id = update_id.integer,
         .message = message,
     };
@@ -152,14 +154,14 @@ fn processMessageText(allocator: std.mem.Allocator, text: []const u8) !ProcessRe
     // Handle /new command
     if (std.mem.startsWith(u8, text, "/new")) {
         if (text.len <= 4) {
-            return ProcessResult{
+            return .{
                 .response_text = try allocator.dupe(u8, "🆕 Session cleared! Send me a new message."),
                 .should_continue = false,
             };
         }
         // Process the text after /new
-        const actual_text = std.mem.trimLeft(u8, text[4..], " ");
-        return ProcessResult{
+        const actual_text = std.mem.trimStart(u8, text[4..], " ");
+        return .{
             .response_text = try allocator.dupe(u8, actual_text),
             .should_continue = true,
         };
@@ -167,7 +169,7 @@ fn processMessageText(allocator: std.mem.Allocator, text: []const u8) !ProcessRe
 
     // Default: echo the message (in real implementation, this would call LLM)
     const response = try std.fmt.allocPrint(allocator, "Hello from sync bot! I received: {s}", .{text});
-    return ProcessResult{
+    return .{
         .response_text = response,
         .should_continue = true,
     };
@@ -211,7 +213,7 @@ const SimpleHttpClient = struct {
 
     /// Perform GET request
     fn get(self: SimpleHttpClient, url: []const u8) !Response {
-        var client = std.http.Client{ .allocator = self.allocator };
+        const client: std.http.Client = .{ .allocator = self.allocator };
         defer client.deinit();
 
         const response = try client.fetch(.{
@@ -220,7 +222,7 @@ const SimpleHttpClient = struct {
         });
         defer response.deinit();
 
-        return Response{
+        return .{
             .body = try self.allocator.dupe(u8, response.payload.?.body),
             .allocator = self.allocator,
         };
@@ -228,7 +230,7 @@ const SimpleHttpClient = struct {
 
     /// Perform POST request
     fn post(self: SimpleHttpClient, url: []const u8, body: []const u8) !void {
-        var client = std.http.Client{ .allocator = self.allocator };
+        const client: std.http.Client = .{ .allocator = self.allocator };
         defer client.deinit();
 
         var headers = std.http.Headers.init(self.allocator);
@@ -380,7 +382,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
 // =============================================================================
 
 pub fn run(allocator: std.mem.Allocator, config: Config) !void {
-    // Initialize HOME_DIR at runtime
+    // Initialize Home_Dir at runtime
     initHomeDir();
 
     const tg_config = config.tools.telegram orelse {
@@ -391,7 +393,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     const client = SimpleHttpClient.init(allocator);
     defer client.deinit();
 
-    var state = BotState{ .offset = 0, .last_chat_id = null };
+    const state: BotState = .{ .offset = 0, .last_chat_id = null };
 
     // Try to restore last_chat_id from file
     if (readLastChatId()) |saved_chat_id| {
@@ -400,7 +402,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config) !void {
     }
 
     // Setup signal handlers
-    const sa = std.posix.Sigaction{
+    const sa: std.posix.Sigaction = .{
         .handler = .{ .handler = signalHandler },
         .mask = std.mem.zeroes(std.posix.sigset_t),
         // SA_RESTART is needed for proper signal handling
@@ -563,13 +565,13 @@ test "buildSendMessageBody" {
 test "extractUpdates with valid and invalid updates" {
     const allocator = std.testing.allocator;
 
-    var valid_update = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const valid_update: std.json.Value = .{ .object = std.json.ObjectMap.init(allocator) };
     defer valid_update.object.deinit();
-    try valid_update.object.put("update_id", std.json.Value{ .integer = 100 });
+    try valid_update.object.put("update_id", .{ .integer = 100 });
 
-    var invalid_update = std.json.Value{ .object = std.json.ObjectMap.init(allocator) };
+    const invalid_update: std.json.Value = .{ .object = std.json.ObjectMap.init(allocator) };
     defer invalid_update.object.deinit();
-    try invalid_update.object.put("other_field", std.json.Value{ .string = "value" });
+    try invalid_update.object.put("other_field", .{ .string = "value" });
 
     var input = [_]std.json.Value{ valid_update, invalid_update };
     const updates = try extractUpdates(allocator, &input);
@@ -593,15 +595,20 @@ test "saveLastChatId and readLastChatId" {
 }
 
 test "readLastChatId with non-existent file" {
-    // Initialize HOME_DIR for test
+    // Initialize Home_Dir for test
     initHomeDir();
 
     // Clean up any existing test file
-    const file_path = std.fs.path.join(std.testing.allocator, &.{ HOME_DIR, ".bots", "last_chat_id.txt" }) catch return;
+    const file_path = std.fs.path.join(std.testing.allocator, &.{ Home_Dir, ".bots", "last_chat_id.txt" }) catch return;
     defer std.testing.allocator.free(file_path);
 
     // Try to delete the file (ignore error if it doesn't exist)
-    std.fs.deleteFileAbsolute(file_path) catch {};
+    std.fs.deleteFileAbsolute(file_path) catch |err| {
+        // Ignore file not found errors, but log others
+        if (err != error.FileNotFound) {
+            std.debug.print("Warning: Failed to delete test file: {any}\n", .{err});
+        }
+    };
 
     // Should return null when file doesn't exist
     const read_chat_id = readLastChatId();

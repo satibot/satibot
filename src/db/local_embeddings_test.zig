@@ -1,9 +1,8 @@
 const std = @import("std");
 const local_embeddings = @import("local_embeddings.zig");
-const base = @import("../providers/base.zig");
 
 test "LocalEmbedder: VECTOR_SIZE constant" {
-    try std.testing.expectEqual(@as(usize, 1024), local_embeddings.LocalEmbedder.VECTOR_SIZE);
+    try std.testing.expectEqual(@as(usize, 1024), local_embeddings.LocalEmbedder.vector_size);
 }
 
 test "LocalEmbedder: generate single embedding" {

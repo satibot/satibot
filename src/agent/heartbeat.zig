@@ -19,7 +19,7 @@ pub const HeartbeatService = struct {
     }
 
     /// Check if enough time has passed since last tick to trigger heartbeat.
-    pub fn should_tick(self: *HeartbeatService) bool {
+    pub fn shouldTick(self: *HeartbeatService) bool {
         const now = std.time.milliTimestamp();
         if (self.last_tick_ms == 0) {
             self.last_tick_ms = now;
@@ -30,12 +30,12 @@ pub const HeartbeatService = struct {
 
     /// Get the prompt for heartbeat processing.
     /// Reads HEARTBEAT.md from workspace if it exists and has content.
-    pub fn get_prompt(self: *HeartbeatService) !?[]const u8 {
+    pub fn getPrompt(self: *HeartbeatService) ![]const u8 {
         const path = try std.fs.path.join(self.allocator, &.{ self.workspace_path, "HEARTBEAT.md" });
         defer self.allocator.free(path);
 
         const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-            if (err == error.FileNotFound) return null;
+            if (err == error.FileNotFound) return self.allocator.dupe(u8, "");
             return err;
         };
         defer file.close();
@@ -47,16 +47,16 @@ pub const HeartbeatService = struct {
 
         defer self.allocator.free(content);
 
-        if (self.is_empty(content)) return null;
+        if (self.isEmpty(content)) return self.allocator.dupe(u8, "");
 
-        return try self.allocator.dupe(u8,
+        return self.allocator.dupe(u8,
             \\Read HEARTBEAT.md in your workspace.
             \\Follow any instructions or tasks listed there.
             \\If nothing needs attention, reply with just: HEARTBEAT_OK
         );
     }
 
-    fn is_empty(self: *HeartbeatService, content: []const u8) bool {
+    fn isEmpty(self: *HeartbeatService, content: []const u8) bool {
         _ = self;
         var iter = std.mem.tokenizeScalar(u8, content, '\n');
         while (iter.next()) |line| {
@@ -68,7 +68,7 @@ pub const HeartbeatService = struct {
         return true;
     }
 
-    pub fn record_tick(self: *HeartbeatService) void {
+    pub fn recordTick(self: *HeartbeatService) void {
         self.last_tick_ms = std.time.milliTimestamp();
     }
 };
@@ -88,25 +88,27 @@ test "HeartbeatService: tick logic and prompt" {
 
     // First call to should_tick initializes last_tick_ms and returns false
     // This prevents immediate tick on service startup
-    try std.testing.expect(!service.should_tick());
+    try std.testing.expect(!service.shouldTick());
 
     // Wait longer than the 1-second interval to trigger next tick
     // Using 1.1 seconds to ensure we exceed the interval
     std.Thread.sleep(std.time.ns_per_s + std.time.ns_per_ms * 100);
-    try std.testing.expect(service.should_tick());
+    try std.testing.expect(service.shouldTick());
 
     // Example: Test get_prompt with empty HEARTBEAT.md file
     // An empty file should return null (no prompt needed)
     const hb_file = try tmp.dir.createFile("HEARTBEAT.md", .{});
     hb_file.close();
-    try std.testing.expect((try service.get_prompt()) == null);
+    const prompt = try service.getPrompt();
+    try std.testing.expectEqualStrings("", prompt);
+    allocator.free(prompt); // Clean up allocated prompt string
 
     // Example: Test get_prompt with content in HEARTBEAT.md
     // A file with content should return a prompt string
     const hb_file2 = try tmp.dir.createFile("HEARTBEAT.md", .{});
     try hb_file2.writeAll("Do something\n");
     hb_file2.close();
-    const prompt = try service.get_prompt();
-    try std.testing.expect(prompt != null);
-    allocator.free(prompt.?); // Clean up allocated prompt string
+    const prompt2 = try service.getPrompt();
+    try std.testing.expect(prompt2.len > 0);
+    allocator.free(prompt2); // Clean up allocated prompt string
 }

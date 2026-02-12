@@ -73,6 +73,7 @@ pub const TelegramBot = struct {
 
     pub fn deinit(self: *TelegramBot) void {
         self.client.deinit();
+        self.* = undefined;
     }
 
     /// Single polling iteration - fetches and processes one batch of updates.
@@ -162,7 +163,9 @@ pub const TelegramBot = struct {
                         const home = std.posix.getenv("HOME") orelse "/tmp";
                         const session_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(self.allocator, "{s}.json", .{session_id}) });
                         defer self.allocator.free(session_path);
-                        std.fs.deleteFileAbsolute(session_path) catch {};
+                        std.fs.deleteFileAbsolute(session_path) catch |err| {
+                            std.debug.print("Warning: Failed to delete session file: {any}\n", .{err});
+                        };
 
                         // If user sent "/new" without additional text, clear session and confirm
                         if (final_text.len <= 4) {
@@ -170,7 +173,7 @@ pub const TelegramBot = struct {
                             continue;
                         }
                         // If user sent "/new <prompt>", clear session but process the prompt
-                        actual_text = std.mem.trimLeft(u8, final_text[4..], " ");
+                        actual_text = std.mem.trimStart(u8, final_text[4..], " ");
                     }
 
                     // Create a fresh Agent instance for this interaction
@@ -181,7 +184,7 @@ pub const TelegramBot = struct {
 
                     // Send typing indicator to show user that bot is processing
                     // This appears while waiting for LLM response (can take several seconds)
-                    self.send_chat_action(tg_config.botToken, chat_id_str) catch |err| {
+                    self.sendChatAction(tg_config.botToken, chat_id_str) catch |err| {
                         std.debug.print("Warning: Failed to send typing indicator: {any}\n", .{err});
                         // Continue processing even if typing indicator fails
                     };
@@ -193,7 +196,7 @@ pub const TelegramBot = struct {
                         std.debug.print("Error running agent: {any}\n", .{err});
                         const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
                         defer self.allocator.free(error_msg);
-                        try self.send_message(tg_config.botToken, chat_id_str, error_msg);
+                        try self.sendMessage(tg_config.botToken, chat_id_str, error_msg);
                     };
 
                     // Send the agent's response back to Telegram
@@ -203,7 +206,7 @@ pub const TelegramBot = struct {
                     if (messages.len > 0) {
                         const last_msg = messages[messages.len - 1];
                         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                            try self.send_message(tg_config.botToken, chat_id_str, last_msg.content.?);
+                            try self.sendMessage(tg_config.botToken, chat_id_str, last_msg.content.?);
                         }
                     }
 
@@ -227,7 +230,7 @@ pub const TelegramBot = struct {
     ///   - token: Bot token for authentication
     ///   - chat_id: Target chat ID as string
     ///   - text: Message content to send
-    fn send_message(self: *TelegramBot, token: []const u8, chat_id: []const u8, text: []const u8) !void {
+    fn sendMessage(self: *TelegramBot, token: []const u8, chat_id: []const u8, text: []const u8) !void {
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
         defer self.allocator.free(url);
 
@@ -253,7 +256,7 @@ pub const TelegramBot = struct {
     /// Args:
     ///   - token: Bot token for authentication
     ///   - chat_id: Target chat ID as string
-    fn send_chat_action(self: *TelegramBot, token: []const u8, chat_id: []const u8) !void {
+    fn sendChatAction(self: *TelegramBot, token: []const u8, chat_id: []const u8) !void {
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendChatAction", .{token});
         defer self.allocator.free(url);
 

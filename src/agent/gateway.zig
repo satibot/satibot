@@ -45,6 +45,7 @@ pub const Gateway = struct {
     pub fn deinit(self: *Gateway) void {
         if (self.tg_bot) |*bot| bot.deinit();
         self.cron.deinit();
+        self.* = undefined;
     }
 
     pub fn run(self: *Gateway) !void {

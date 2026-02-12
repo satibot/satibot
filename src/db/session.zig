@@ -36,7 +36,7 @@ pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []co
     const file = try std.fs.createFileAbsolute(path, .{});
     defer file.close();
 
-    const session = Session{ .messages = @constCast(messages) };
+    const session: Session = .{ .messages = @constCast(messages) };
 
     var out = std.io.Writer.Allocating.init(allocator);
     defer out.deinit();
@@ -53,12 +53,12 @@ pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LLMMes
     const filename = try std.fmt.allocPrint(allocator, "{s}.json", .{session_id});
     defer allocator.free(filename);
     const path = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions", filename });
-    return load_internal(allocator, path);
+    return loadInternal(allocator, path);
 }
 
 /// Internal function to load messages from a file path.
 /// Returns empty array if file not found.
-fn load_internal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMessage {
+fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMessage {
     defer allocator.free(path);
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
         if (err == error.FileNotFound) return &[_]base.LLMMessage{};
@@ -77,7 +77,7 @@ fn load_internal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMess
             .role = try allocator.dupe(u8, msg.role),
             .content = if (msg.content) |c| try allocator.dupe(u8, c) else null,
             .tool_call_id = if (msg.tool_call_id) |id| try allocator.dupe(u8, id) else null,
-            .tool_calls = if (msg.tool_calls) |calls| try dupe_tool_calls(allocator, calls) else null,
+            .tool_calls = if (msg.tool_calls) |calls| try dupeToolCalls(allocator, calls) else null,
         };
     }
     parsed.deinit();
@@ -86,7 +86,7 @@ fn load_internal(allocator: std.mem.Allocator, path: []const u8) ![]base.LLMMess
 
 /// Deep copy tool calls array.
 /// Creates independent copies of all tool call data.
-fn dupe_tool_calls(allocator: std.mem.Allocator, calls: []const base.ToolCall) ![]base.ToolCall {
+fn dupeToolCalls(allocator: std.mem.Allocator, calls: []const base.ToolCall) ![]base.ToolCall {
     const new_calls = try allocator.alloc(base.ToolCall, calls.len);
     for (calls, 0..) |call, i| {
         new_calls[i] = .{
@@ -117,7 +117,7 @@ test "Session: save and load" {
 
     try saveToPath(allocator, try allocator.dupe(u8, path), messages);
 
-    const loaded = try load_internal(allocator, try allocator.dupe(u8, path));
+    const loaded = try loadInternal(allocator, try allocator.dupe(u8, path));
     defer {
         for (loaded) |msg| {
             allocator.free(msg.role);
@@ -172,7 +172,7 @@ test "Session: save and load with tool calls" {
 
     try saveToPath(allocator, try allocator.dupe(u8, path), messages);
 
-    const loaded = try load_internal(allocator, try allocator.dupe(u8, path));
+    const loaded = try loadInternal(allocator, try allocator.dupe(u8, path));
     defer {
         for (loaded) |msg| {
             allocator.free(msg.role);
@@ -214,7 +214,7 @@ test "Session: save and load with tool calls" {
 
 test "Session: load non-existent file" {
     const allocator = std.testing.allocator;
-    const loaded = try load_internal(allocator, try allocator.dupe(u8, "/non/existent/path.json"));
+    const loaded = try loadInternal(allocator, try allocator.dupe(u8, "/non/existent/path.json"));
     try std.testing.expectEqual(@as(usize, 0), loaded.len);
 }
 
@@ -231,7 +231,7 @@ test "Session: save and load empty messages" {
 
     try saveToPath(allocator, try allocator.dupe(u8, path), messages);
 
-    const loaded = try load_internal(allocator, try allocator.dupe(u8, path));
+    const loaded = try loadInternal(allocator, try allocator.dupe(u8, path));
     defer {
         for (loaded) |msg| {
             allocator.free(msg.role);
@@ -252,7 +252,7 @@ test "Session: save and load empty messages" {
     try std.testing.expectEqual(@as(usize, 0), loaded.len);
 }
 
-test "Session: dupe_tool_calls function" {
+test "Session: dupeToolCalls function" {
     const allocator = std.testing.allocator;
 
     const original_calls = &[_]base.ToolCall{
@@ -260,7 +260,7 @@ test "Session: dupe_tool_calls function" {
         .{ .id = "call_2", .type = "function", .function = .{ .name = "func2", .arguments = "{\"b\": 2}" } },
     };
 
-    const duped = try dupe_tool_calls(allocator, original_calls);
+    const duped = try dupeToolCalls(allocator, original_calls);
     defer {
         for (duped) |call| {
             allocator.free(call.id);

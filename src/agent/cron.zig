@@ -3,6 +3,7 @@
 /// Jobs are persisted to disk and survive application restarts.
 const std = @import("std");
 const Config = @import("../config.zig").Config;
+const Agent = @import("../agent.zig").Agent;
 
 /// Schedule types: one-time "at" a specific time, or recurring "every" N milliseconds.
 pub const CronScheduleKind = enum {
@@ -53,6 +54,7 @@ pub const CronJob = struct {
         if (self.payload.to) |t| allocator.free(t);
         if (self.state.last_status) |s| allocator.free(s);
         if (self.state.last_error) |e| allocator.free(e);
+        self.* = undefined;
     }
 };
 
@@ -74,6 +76,7 @@ pub const CronStore = struct {
             job.deinit(self.allocator);
         }
         self.jobs.deinit(self.allocator);
+        self.* = undefined;
     }
 
     pub fn load(self: *CronStore, path: []const u8) !void {
@@ -105,7 +108,7 @@ pub const CronStore = struct {
     }
 
     fn cloneJob(allocator: std.mem.Allocator, job: CronJob) !CronJob {
-        return CronJob{
+        return .{
             .id = try allocator.dupe(u8, job.id),
             .name = try allocator.dupe(u8, job.name),
             .enabled = job.enabled,
@@ -127,7 +130,7 @@ pub const CronStore = struct {
         };
     }
 
-    pub fn add_job(self: *CronStore, name: []const u8, schedule: CronSchedule, message: []const u8) ![]const u8 {
+    pub fn addJob(self: *CronStore, name: []const u8, schedule: CronSchedule, message: []const u8) ![]const u8 {
         const id = try std.fmt.allocPrint(self.allocator, "{d}", .{std.time.milliTimestamp()});
         const now = std.time.milliTimestamp();
 
@@ -162,13 +165,13 @@ pub const CronStore = struct {
             if (!job.enabled) continue;
             if (job.state.next_run_at_ms) |next_run| {
                 if (now >= next_run) {
-                    try self.run_job(job, config);
+                    try self.runJob(job, config);
                 }
             }
         }
     }
 
-    fn run_job(self: *CronStore, job: *CronJob, config: Config) !void {
+    fn runJob(self: *CronStore, job: *CronJob, config: Config) !void {
         std.debug.print("⏳ Running cron job: {s} ({s})\n", .{ job.name, job.id });
 
         const now = std.time.milliTimestamp();
@@ -178,7 +181,6 @@ pub const CronStore = struct {
         const session_id = try std.fmt.allocPrint(self.allocator, "cron_{s}", .{job.id});
         defer self.allocator.free(session_id);
 
-        const Agent = @import("../agent.zig").Agent;
         var agent = Agent.init(self.allocator, config, session_id);
         defer agent.deinit();
 
@@ -220,7 +222,7 @@ test "CronStore: init, add, save, and load" {
     const job_msg = "test_message";
     const schedule = CronSchedule{ .kind = .every, .every_ms = 1000 };
 
-    const id = try store.add_job(job_name, schedule, job_msg);
+    const id = try store.addJob(job_name, schedule, job_msg);
     try std.testing.expect(id.len > 0);
     try std.testing.expectEqual(@as(usize, 1), store.jobs.items.len);
 
@@ -305,16 +307,16 @@ test "CronStore: multiple jobs" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    const id1 = try store.add_job("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
+    const id1 = try store.addJob("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
 
     // Small delay to ensure different timestamps (1 millisecond)
     std.Thread.sleep(1000000); // 1ms in nanoseconds
 
-    const id2 = try store.add_job("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
+    const id2 = try store.addJob("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
 
     std.Thread.sleep(1000000);
 
-    const id3 = try store.add_job("job3", CronSchedule{ .kind = .at, .at_ms = 9999999999 }, "msg3");
+    const id3 = try store.addJob("job3", CronSchedule{ .kind = .at, .at_ms = 9999999999 }, "msg3");
 
     try std.testing.expectEqual(@as(usize, 3), store.jobs.items.len);
 
@@ -336,8 +338,8 @@ test "CronStore: remove_job" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    _ = try store.add_job("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
-    _ = try store.add_job("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
+    _ = try store.addJob("job1", CronSchedule{ .kind = .every, .every_ms = 1000 }, "msg1");
+    _ = try store.addJob("job2", CronSchedule{ .kind = .every, .every_ms = 2000 }, "msg2");
 
     try std.testing.expectEqual(@as(usize, 2), store.jobs.items.len);
 
@@ -366,12 +368,12 @@ test "CronJob: default state" {
     var store = CronStore.init(allocator);
     defer store.deinit();
 
-    _ = try store.add_job("test_job", CronSchedule{ .kind = .every, .every_ms = 1000 }, "test_msg");
+    _ = try store.addJob("test_job", CronSchedule{ .kind = .every, .every_ms = 1000 }, "test_msg");
 
     const job = store.jobs.items[0];
     try std.testing.expectEqualStrings("test_job", job.name);
     try std.testing.expectEqual(true, job.enabled);
-    // next_run_at_ms is calculated and set during add_job for 'every' schedules
+    // next_run_at_ms is calculated and set during addJob for 'every' schedules
     try std.testing.expect(job.state.next_run_at_ms != null);
     try std.testing.expect(job.state.last_run_at_ms == null);
     try std.testing.expect(job.state.last_status == null);

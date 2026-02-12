@@ -3,7 +3,7 @@ const vector_db = @import("vector_db.zig");
 
 test "VectorEntry: struct creation and access" {
     const embedding = &[_]f32{ 0.1, 0.2, 0.3, 0.4 };
-    const entry = vector_db.VectorEntry{
+    const entry: vector_db.VectorEntry = .{
         .text = "test text",
         .embedding = embedding,
     };
@@ -16,7 +16,7 @@ test "VectorEntry: struct creation and access" {
 
 test "VectorEntry: empty text and zero embedding" {
     const embedding = &[_]f32{ 0.0, 0.0, 0.0 };
-    const entry = vector_db.VectorEntry{
+    const entry: vector_db.VectorEntry = .{
         .text = "",
         .embedding = embedding,
     };
