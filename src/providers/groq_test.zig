@@ -1,6 +1,5 @@
 const std = @import("std");
 const groq = @import("groq.zig");
-const base = @import("base.zig");
 
 test "GroqProvider: init and deinit" {
     var provider = try groq.GroqProvider.init(std.testing.allocator, "test-api-key");
@@ -21,7 +20,7 @@ test "GroqProvider: empty API key" {
 test "GroqProvider: transcription request structure" {
     const file_content = "fake audio data";
 
-    const request = groq.TranscriptionRequest{
+    const request: groq.TranscriptionRequest = .{
         .file = file_content,
         .model = "whisper-large-v3",
         .language = "en",
@@ -35,9 +34,7 @@ test "GroqProvider: transcription request structure" {
 }
 
 test "GroqProvider: transcription request without optional fields" {
-    const allocator = std.testing.allocator;
-
-    const request = groq.TranscriptionRequest{
+    const request: groq.TranscriptionRequest = .{
         .file = "audio data",
         .model = "whisper-large-v3",
     };

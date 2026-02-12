@@ -133,7 +133,7 @@ pub const WhatsAppBot = struct {
         }
 
         // Save session state to Vector/Graph DB for long-term memory
-        agent.index_conversation() catch |err| {
+        agent.indexConversation() catch |err| {
             std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
         };
     }

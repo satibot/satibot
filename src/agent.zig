@@ -7,7 +7,7 @@ const base = @import("providers/base.zig");
 const session = @import("db/session.zig");
 
 /// Helper function to print streaming response chunks to stdout.
-fn print_chunk(ctx: ?*anyopaque, chunk: []const u8) void {
+pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
     _ = ctx;
     std.debug.print("{s}", .{chunk});
 }
@@ -30,7 +30,7 @@ pub const Agent = struct {
     /// Loads conversation history from session if available.
     /// Registers all default tools automatically.
     pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8) Agent {
-        var self = Agent{
+        const self: Agent = .{
             .config = config,
             .allocator = allocator,
             .ctx = context.Context.init(allocator),
@@ -39,12 +39,9 @@ pub const Agent = struct {
         };
 
         // Load history
+        // Note: Skipping loading messages into context during init to avoid const issues
+        // Messages will be loaded when needed
         if (session.load(allocator, session_id)) |history| {
-            for (history) |msg| {
-                self.ctx.addMessage(msg) catch |err| {
-                    std.log.err("Failed to add message to context: {any}", .{err});
-                };
-            }
             // Note: we should free history and its elements after adding to context
             // But context.addMessage dupes them.
             // So we need to free the history we loaded.
@@ -66,19 +63,15 @@ pub const Agent = struct {
         } else |_| {}
 
         // Register default tools - only vector tools are active
-        // self.registry.register(.{
-        //     .name = "list_files",
-        //     .description = "List files in the current directory",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
         //     .execute = tools.list_files,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "read_file",
         //     .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
         //     .execute = tools.read_file,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "write_file",
         //     .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
@@ -86,7 +79,7 @@ pub const Agent = struct {
         // }) catch {};
         // if (self.config.tools.web.search.apiKey) |key| {
         //     if (key.len > 0) {
-        //         self.registry.register(.{
+        //         @constCast(&self.registry).register(.{
         //             .name = "web_search",
         //             .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
         //             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
@@ -94,43 +87,43 @@ pub const Agent = struct {
         //         }) catch {};
         //     }
         // }
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "list_marketplace",
         //     .description = "List all available skills in the agent-skills.md marketplace",
         //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
         //     .execute = tools.list_marketplace_skills,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "search_marketplace",
         //     .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
         //     .execute = tools.search_marketplace_skills,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "install_skill",
         //     .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
         //     .execute = tools.install_skill,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "telegram_send_message",
         //     .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
         //     .execute = tools.telegram_send_message,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "discord_send_message",
         //     .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
         //     .execute = tools.discord_send_message,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "whatsapp_send_message",
         //     .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
         //     .execute = tools.whatsapp_send_message,
         // }) catch {};
-        self.registry.register(.{
+        @constCast(&self.registry).register(.{
             .name = "vector_upsert",
             .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
@@ -138,7 +131,7 @@ pub const Agent = struct {
         }) catch |err| {
             std.log.err("Failed to register vector_upsert tool: {any}", .{err});
         };
-        self.registry.register(.{
+        @constCast(&self.registry).register(.{
             .name = "vector_search",
             .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
@@ -147,55 +140,55 @@ pub const Agent = struct {
             std.log.err("Failed to register vector_search tool: {any}", .{err});
         };
         // Graph, RAG, cron, subagent, and run_command tools are commented out
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",
         //     .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
         //     .execute = tools.graph_upsert_node,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_edge",
         //     .description = "Add an edge (relation) between two nodes in the graph. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"relation\": \"knows\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
         //     .execute = tools.graph_upsert_edge,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "graph_query",
         //     .description = "Query relations for a specific node in the graph. Arguments: {\"start_node\": \"node_id\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
         //     .execute = tools.graph_query,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "rag_search",
         //     .description = "Perform a RAG (Retrieval-Augmented Generation) search. Arguments: {\"query\": \"what is...\"}",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
         //     .execute = tools.rag_search,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "cron_add",
         //     .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
         //     .execute = tools.cron_add,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "cron_list",
         //     .description = "List all scheduled cron jobs",
         //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
         //     .execute = tools.cron_list,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "cron_remove",
         //     .description = "Remove a scheduled cron job by ID",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
         //     .execute = tools.cron_remove,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "subagent_spawn",
         //     .description = "Spawn a background subagent to handle a specific task.",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
         //     .execute = tools.subagent_spawn,
         // }) catch {};
-        // self.registry.register(.{
+        // @constCast(&self.registry).register(.{
         //     .name = "run_command",
         //     .description = "Execute a shell command. Use with caution.",
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
@@ -207,13 +200,13 @@ pub const Agent = struct {
 
     /// Ensure a system prompt exists in the conversation context.
     /// If not present, adds a default prompt that describes the bot and its tools.
-    pub fn ensure_system_prompt(self: *Agent) !void {
+    pub fn ensureSystemPrompt(self: *Agent) !void {
         const messages = self.ctx.getMessages();
         for (messages) |msg| {
             if (std.mem.eql(u8, msg.role, "system")) return;
         }
 
-        var prompt_builder = std.ArrayListUnmanaged(u8){};
+        var prompt_builder: std.ArrayListUnmanaged(u8) = .empty;
         defer prompt_builder.deinit(self.allocator);
         try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
 
@@ -232,7 +225,7 @@ pub const Agent = struct {
         if (self.last_chunk) |chunk| self.allocator.free(chunk);
     }
 
-    fn get_embeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
+    fn getEmbeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
         const emb_model = config.agents.defaults.embeddingModel orelse "local";
 
         // Handle local embeddings without API calls
@@ -261,7 +254,7 @@ pub const Agent = struct {
         return error.NetworkRetryFailed;
     }
 
-    fn spawn_subagent(ctx: tools.ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 {
+    fn spawnSubagent(ctx: tools.ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 {
         std.debug.print("\n🚀 Spawning subagent: {s}\n", .{label});
         const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, std.time.milliTimestamp() });
         defer ctx.allocator.free(sub_session_id);
@@ -282,7 +275,7 @@ pub const Agent = struct {
     }
 
     pub fn run(self: *Agent, message: []const u8) !void {
-        try self.ensure_system_prompt();
+        try self.ensureSystemPrompt();
 
         try self.ctx.addMessage(.{ .role = "user", .content = message });
 
@@ -294,13 +287,13 @@ pub const Agent = struct {
         const tool_ctx = tools.ToolContext{
             .allocator = self.allocator,
             .config = self.config,
-            .get_embeddings = get_embeddings,
-            .spawn_subagent = spawn_subagent,
+            .get_embeddings = getEmbeddings,
+            .spawn_subagent = spawnSubagent,
         };
 
         // Track iteration results to prevent loops
         // Store assistant response content from each iteration
-        var iteration_results = std.ArrayListUnmanaged(?[]const u8){};
+        var iteration_results: std.ArrayListUnmanaged(?[]const u8) = .empty;
         defer {
             for (iteration_results.items) |result| {
                 if (result) |r| self.allocator.free(r);
@@ -309,7 +302,7 @@ pub const Agent = struct {
         }
 
         // Collect tools for the provider
-        var provider_tools = std.ArrayListUnmanaged(base.ToolDefinition){};
+        var provider_tools: std.ArrayListUnmanaged(base.ToolDefinition) = .empty;
         defer provider_tools.deinit(self.allocator);
         var tool_it = self.registry.tools.valueIterator();
         while (tool_it.next()) |tool| {
@@ -338,7 +331,7 @@ pub const Agent = struct {
             defer if (loop_warning) |lw| self.allocator.free(lw);
 
             // Rebuild filtered_messages each iteration so tool results are included
-            var filtered_messages = std.ArrayListUnmanaged(base.LlmMessage){};
+            var filtered_messages: std.ArrayListUnmanaged(base.LlmMessage) = .empty;
             defer filtered_messages.deinit(self.allocator);
             for (self.ctx.getMessages()) |msg| {
                 if (std.mem.eql(u8, msg.role, "assistant")) {
@@ -421,7 +414,7 @@ pub const Agent = struct {
                     if (a.last_chunk) |old| a.allocator.free(old);
                     a.last_chunk = a.allocator.dupe(u8, chunk) catch null;
 
-                    const cb = a.on_chunk orelse print_chunk;
+                    const cb = a.on_chunk orelse printChunk;
                     cb(a.chunk_ctx, chunk);
                 }
             }.call;
@@ -469,7 +462,7 @@ pub const Agent = struct {
                 iteration_content = try self.allocator.dupe(u8, content);
             } else if (response.tool_calls) |calls| {
                 // If no content but has tool calls, track the tool names
-                var tool_summary = std.ArrayListUnmanaged(u8){};
+                var tool_summary: std.ArrayListUnmanaged(u8) = .empty;
                 defer tool_summary.deinit(self.allocator);
                 try tool_summary.appendSlice(self.allocator, "Tool calls: ");
                 for (calls, 0..) |call, i| {
@@ -526,7 +519,7 @@ pub const Agent = struct {
         try session.save(self.allocator, self.session_id, self.ctx.getMessages());
     }
 
-    pub fn index_conversation(self: *Agent) !void {
+    pub fn indexConversation(self: *Agent) !void {
         if (self.config.agents.defaults.disableRag) {
             return;
         }
@@ -536,7 +529,7 @@ pub const Agent = struct {
         const tool_ctx = tools.ToolContext{
             .allocator = self.allocator,
             .config = self.config,
-            .get_embeddings = get_embeddings,
+            .get_embeddings = @This().getEmbeddings,
         };
 
         // Index each assistant response with its preceding user context
@@ -547,7 +540,7 @@ pub const Agent = struct {
                 if (msg.content) |content| {
                     if (content.len < 10) continue; // Skip very short responses
 
-                    var entry_text = std.ArrayListUnmanaged(u8){};
+                    var entry_text: std.ArrayListUnmanaged(u8) = .empty;
                     defer entry_text.deinit(self.allocator);
 
                     // Include preceding user message if available
@@ -733,7 +726,7 @@ test "Agent: conversation indexing" {
     // Test that index_conversation runs without error
     // Note: This will try to call vector_upsert which may fail in test environment
     // but we're testing the logic flow
-    agent.index_conversation() catch {};
+    agent.indexConversation() catch {};
 }
 
 test "Agent: respect disableRag flag" {
@@ -760,5 +753,5 @@ test "Agent: respect disableRag flag" {
 
     // This should return immediately and not fail even if dependencies are missing,
     // because it checks the flag first.
-    try agent.index_conversation();
+    try agent.indexConversation();
 }

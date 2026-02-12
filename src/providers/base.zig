@@ -57,6 +57,7 @@ pub const LlmResponse = struct {
         self.content = undefined;
         self.tool_calls = undefined;
         self.allocator = undefined;
+        self.* = undefined;
     }
 };
 
@@ -73,6 +74,7 @@ pub const EmbeddingResponse = struct {
         self.allocator.free(self.embeddings);
         self.embeddings = undefined;
         self.allocator = undefined;
+        self.* = undefined;
     }
 };
 
@@ -418,7 +420,7 @@ test "LlmResponse: empty content and no tool calls" {
 test "ToolCall: creation and validation" {
     _ = @as(std.mem.Allocator, undefined); // Mark as used
 
-    const tool_call = ToolCall{
+    const tool_call: ToolCall = .{
         .id = "test_call_123",
         .type = "function",
         .function = .{
@@ -436,7 +438,7 @@ test "ToolCall: creation and validation" {
 test "ToolDefinition: validation" {
     _ = @as(std.mem.Allocator, undefined); // Mark as used
 
-    const tool_def = ToolDefinition{
+    const tool_def: ToolDefinition = .{
         .name = "search_web",
         .description = "Search the web for information",
         .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
@@ -456,7 +458,7 @@ test "EmbeddingRequest: creation with allocated inputs" {
     input_texts[0] = "Hello world";
     input_texts[1] = "How are you?";
 
-    const request = EmbeddingRequest{
+    const request: EmbeddingRequest = .{
         .input = input_texts,
         .model = "text-embedding-ada-002",
     };

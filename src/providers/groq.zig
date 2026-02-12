@@ -207,7 +207,7 @@ pub const GroqProvider = struct {
         const msg = parsed.value.choices[0].message;
 
         // Construct the generic LlmResponse.
-        return base.LlmResponse{
+        return .base.LlmResponse{
             // Duplicate the content if it exists, otherwise null.
             // Again, duplication is necessary because 'msg.content' points to 'response.body' memory.
             .content = if (msg.content) |c| try self.allocator.dupe(u8, c) else null,
