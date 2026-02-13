@@ -5,6 +5,7 @@ const tools = @import("agent/tools.zig");
 const providers = @import("root.zig");
 const base = @import("providers/base.zig");
 const session = @import("db/session.zig");
+const local_embeddings = @import("db/local_embeddings.zig");
 
 /// Helper function to print streaming response chunks to stdout.
 pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
@@ -231,7 +232,7 @@ pub const Agent = struct {
 
         // Handle local embeddings without API calls
         if (std.mem.eql(u8, emb_model, "local")) {
-            return @import("db/local_embeddings.zig").LocalEmbedder.generate(allocator, input);
+            return local_embeddings.LocalEmbedder.generate(allocator, input);
         }
 
         const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
@@ -527,11 +528,10 @@ pub const Agent = struct {
         const messages = self.ctx.getMessages();
         if (messages.len < 2) return;
 
-        const AgentType = @This();
         const tool_ctx: tools.ToolContext = .{
             .allocator = self.allocator,
             .config = self.config,
-            .get_embeddings = AgentType.getEmbeddings,
+            .get_embeddings = Agent.getEmbeddings,
         };
 
         // Index each assistant response with its preceding user context

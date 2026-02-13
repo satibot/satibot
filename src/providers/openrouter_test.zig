@@ -369,7 +369,7 @@ test "OpenRouterProvider: initWithEventLoop" {
 
     // Mock event loop - in real tests you'd use a proper mock
     const MockEventLoop = struct {
-        const Self = @This();
+        pub const Self = @This();
 
         pub fn init() Self {
             return .{};

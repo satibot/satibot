@@ -4,8 +4,8 @@ const telegram = @import("chat_apps/telegram/telegram.zig");
 
 pub fn main() !void {
     // Initialize allocator
-    const gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
+    var gpa = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer gpa.deinit();
     const allocator = gpa.allocator();
 
     // Load configuration

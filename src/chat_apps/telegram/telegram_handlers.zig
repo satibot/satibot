@@ -350,10 +350,11 @@ fn handleGetRequest(allocator: std.mem.Allocator, ctx: *TelegramContext, url: []
     std.debug.print("GET request URL: {s}\n", .{url});
 
     // Create a temporary HTTP client for this request
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const temp_allocator = arena.allocator();
 
-    var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
+    var temp_client = try http.Client.initWithSettings(temp_allocator, .{
         .request_timeout_ms = 60000,
         .keep_alive = true,
     });
@@ -396,7 +397,7 @@ fn handleGetRequest(allocator: std.mem.Allocator, ctx: *TelegramContext, url: []
                 text: []const u8,
             },
         },
-    }, gpa.allocator(), response.body, .{ .ignore_unknown_fields = true }) catch |err| {
+    }, temp_allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
         std.debug.print("Failed to parse Telegram response: {any}\n", .{err});
         return;
     };
@@ -438,10 +439,11 @@ fn handlePostRequest(ctx: *TelegramContext, url: []const u8, body: []const u8) !
     std.debug.print("POST request (ctx: {*}) to URL: {s}\n", .{ ctx, url });
 
     // Create a temporary HTTP client for this request
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const temp_allocator = arena.allocator();
 
-    var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
+    var temp_client = try http.Client.initWithSettings(temp_allocator, .{
         .request_timeout_ms = 60000,
         .keep_alive = true,
     });
@@ -532,10 +534,11 @@ fn handleGetRequestDirect(allocator: std.mem.Allocator, ctx: *TelegramContext, u
     std.debug.print("GET request URL: {s}\n", .{url});
 
     // Create a temporary HTTP client for this request
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
-    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const temp_allocator = arena.allocator();
 
-    var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
+    var temp_client = try http.Client.initWithSettings(temp_allocator, .{
         .request_timeout_ms = 60000,
         .keep_alive = true,
     });
@@ -578,7 +581,7 @@ fn handleGetRequestDirect(allocator: std.mem.Allocator, ctx: *TelegramContext, u
                 text: []const u8,
             },
         },
-    }, gpa.allocator(), response.body, .{ .ignore_unknown_fields = true }) catch |err| {
+    }, temp_allocator, response.body, .{ .ignore_unknown_fields = true }) catch |err| {
         std.debug.print("Failed to parse Telegram response: {any}\n", .{err});
         return;
     };

@@ -154,7 +154,7 @@ pub const Request = struct {
         request: *Request,
         head: ResponseHead,
 
-        pub fn reader(self: *IncomingResponse, buffer: []u8) Reader {
+        pub fn reader(self: *IncomingResponse, buffer: []u8) Request.Reader {
             _ = buffer;
             return self.request.reader();
         }
@@ -298,7 +298,7 @@ pub const Request = struct {
             .rate_limit_reset = rate_limit_reset,
         };
         self.response_head = head;
-        return IncomingResponse{
+        return .{
             .request = self,
             .head = head,
         };
@@ -400,7 +400,7 @@ pub const Request = struct {
 };
 
 test "HTTP: ConnectionSettings defaults" {
-    const settings = ConnectionSettings{};
+    const settings: ConnectionSettings = .{};
     try std.testing.expectEqual(@as(u64, 30000), settings.connect_timeout_ms);
     try std.testing.expectEqual(@as(u64, 120000), settings.request_timeout_ms);
     try std.testing.expectEqual(@as(u64, 60000), settings.read_timeout_ms);
