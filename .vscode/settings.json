@@ -8,6 +8,7 @@
     "cSpell.words": [
         "Clawd",
         "deinit",
+        "deiniting",
         "Doptimize",
         "Dtarget",
         "getenv",
@@ -17,6 +18,8 @@
         "Pico",
         "satibot",
         "Sigaction",
-        "sigset"
+        "sigset",
+        "zigdoc",
+        "ziglint"
     ]
 }

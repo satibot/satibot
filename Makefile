@@ -42,7 +42,7 @@ SHELL         := /usr/bin/env bash
 help: ## Show the help messages for all targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' Makefile | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-10s %s\n", $$1, $$2}'
 
-all: build test lint doc  ## build, test, lint, and doc
+all: build test lint format doc  ## build, test, lint, format, and doc
 
 build: ## Build project (Mode=$(BUILD_TYPE))
 	@echo "Building project in $(BUILD_TYPE) mode with $(JOBS) concurrent jobs..."
@@ -76,6 +76,7 @@ clean: ## Remove docs, build artifacts, and cache directories
 
 lint: ## Check code style and formatting of Zig files
 	@echo "Running code style checks..."
+	@ziglint
 	$(ZIG) fmt --check $(SRC_DIR)
 
 format: ## Format Zig files

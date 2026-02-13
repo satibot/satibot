@@ -35,6 +35,17 @@ Build and run tests:
 zig build test
 ```
 
+Install `ziglint`:
+
+```bash
+git clone git@github.com:rockorager/ziglint.git
+cd ziglint
+zig build -Doptimize=ReleaseFast --prefix $HOME/.local
+
+# run lint
+ziglint
+```
+
 ### Common Tasks (Makefile)
 
 This project uses a `Makefile` to simplify common development commands.
