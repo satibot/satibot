@@ -583,7 +583,7 @@ test "ProviderInterface: function pointer compatibility" {
             _ = tools;
             _ = chunk_callback;
             _ = callback_ctx;
-            return LlmResponse{
+            return .{
                 .content = "test response",
                 .tool_calls = null,
                 .allocator = std.testing.allocator,

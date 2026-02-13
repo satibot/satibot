@@ -25,6 +25,7 @@ pub const Response = struct {
     /// Free the response body memory.
     pub fn deinit(self: *Response) void {
         self.allocator.free(self.body);
+        self.* = undefined;
     }
 };
 
@@ -37,7 +38,7 @@ pub const Client = struct {
 
     /// Initialize client with default connection settings.
     pub fn init(allocator: std.mem.Allocator) !Client {
-        return try initWithSettings(allocator, .{});
+        return initWithSettings(allocator, .{});
     }
 
     /// Initialize client with custom connection settings.
@@ -55,6 +56,7 @@ pub const Client = struct {
     pub fn deinit(self: *Client) void {
         var copy = self.root_ca;
         copy.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Send POST request and return full response.
@@ -77,7 +79,7 @@ pub const Client = struct {
             try response_body.appendSlice(self.allocator, buf[0..n]);
         }
 
-        return Response{
+        return .{
             .status = resp.head.status,
             .body = try response_body.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
@@ -95,7 +97,7 @@ pub const Client = struct {
     /// Start streaming POST request.
     /// Returns Request object for incremental reading of response.
     pub fn postStream(self: *Client, url: []const u8, headers: []const std.http.Header, body: []const u8) !Request {
-        return try self.request(.POST, url, headers, body);
+        return self.request(.POST, url, headers, body);
     }
 
     /// Internal method to create HTTP request with method, URL, headers, and body.
@@ -169,10 +171,13 @@ pub const Request = struct {
 
     pub fn deinit(self: *Request) void {
         if (self.tls_state) |state| {
-            state.conn.close() catch {};
+            state.conn.close() catch |err| {
+                std.debug.print("Failed to close TLS connection: {any}\n", .{err});
+            };
             self.allocator.destroy(state);
         }
         self.tcp.close();
+        self.* = undefined;
     }
 
     pub fn upgradeToTls(self: *Request, host: []const u8, root_ca: tls.config.cert.Bundle) !void {
@@ -284,7 +289,7 @@ pub const Request = struct {
             }
         }
 
-        const head = ResponseHead{
+        const head: ResponseHead = .{
             .status = @enumFromInt(status_code),
             .content_length = content_length,
             .chunked = chunked,
@@ -301,9 +306,9 @@ pub const Request = struct {
 
     fn rawRead(self: *Request, buf: []u8) !usize {
         if (self.tls_state) |state| {
-            return try state.conn.read(buf);
+            return state.conn.read(buf);
         } else {
-            return try self.tcp.read(buf);
+            return self.tcp.read(buf);
         }
     }
 
@@ -404,7 +409,7 @@ test "HTTP: ConnectionSettings defaults" {
 
 test "HTTP: Response deinit" {
     const allocator = std.testing.allocator;
-    var response = Response{
+    var response: Response = .{
         .status = .ok,
         .body = try allocator.dupe(u8, "test body"),
         .allocator = allocator,
@@ -424,7 +429,7 @@ test "HTTP: Client init" {
 
 test "HTTP: Client initWithSettings" {
     const allocator = std.testing.allocator;
-    const settings = ConnectionSettings{
+    const settings: ConnectionSettings = .{
         .connect_timeout_ms = 60000,
         .keep_alive = true,
     };
@@ -471,7 +476,7 @@ test "HTTP: Header parsing" {
 }
 
 test "HTTP: ChunkedState" {
-    const state = Request.Reader.ChunkedState{
+    const state: Request.Reader.ChunkedState = .{
         .remaining = 100,
         .done = false,
     };

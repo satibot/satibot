@@ -316,7 +316,7 @@ test "Agent: last_chunk tracking" {
     try std.testing.expectEqualStrings(test_chunk, test_agent.last_chunk.?);
 }
 
-test "Agent: index_conversation with disableRag" {
+test "Agent: indexConversation with disableRag" {
     const allocator = std.testing.allocator;
     const config_json =
         \\{
@@ -341,10 +341,10 @@ test "Agent: index_conversation with disableRag" {
     try test_agent.ctx.add_message(.{ .role = "assistant", .content = "Zig is a programming language." });
 
     // Should not error even with RAG disabled
-    try test_agent.index_conversation();
+    try test_agent.indexConversation();
 }
 
-test "Agent: index_conversation with insufficient messages" {
+test "Agent: indexConversation with insufficient messages" {
     const allocator = std.testing.allocator;
     const config_json =
         \\{
@@ -363,7 +363,7 @@ test "Agent: index_conversation with insufficient messages" {
     try test_agent.ctx.add_message(.{ .role = "user", .content = "Hello" });
 
     // Should not error with insufficient messages
-    try test_agent.index_conversation();
+    try test_agent.indexConversation();
 }
 
 test "Agent: memory management in deinit" {

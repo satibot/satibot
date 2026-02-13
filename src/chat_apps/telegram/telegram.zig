@@ -79,7 +79,7 @@ fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_
 }
 
 fn setupSignalHandlers() void {
-    const sa = std.posix.Sigaction{
+    const sa: std.posix.Sigaction = .{
         .handler = .{ .handler = signalHandler },
         .mask = std.mem.zeroes(std.posix.sigset_t),
         .flags = 0,
@@ -123,7 +123,7 @@ pub const TelegramBot = struct {
         });
 
         // Create the bot struct first
-        var bot = TelegramBot{
+        var bot: TelegramBot = .{
             .allocator = allocator,
             .config = config,
             .event_loop = event_loop,
@@ -158,6 +158,7 @@ pub const TelegramBot = struct {
         self.tg_ctx.deinit();
         self.http_client.deinit();
         self.event_loop.deinit();
+        self.* = undefined;
     }
 
     /// Single polling iteration.
@@ -196,7 +197,7 @@ pub const TelegramBot = struct {
 
         // Setup signal handlers
         global_event_loop = &self.event_loop;
-        const sa = std.posix.Sigaction{
+        const sa: std.posix.Sigaction = .{
             .handler = .{ .handler = signalHandler },
             .mask = std.mem.zeroes(std.posix.sigset_t),
             .flags = 0,

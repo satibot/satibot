@@ -206,7 +206,7 @@ pub const Agent = struct {
             if (std.mem.eql(u8, msg.role, "system")) return;
         }
 
-        var prompt_builder: std.ArrayListUnmanaged(u8) = .empty;
+        var prompt_builder: std.ArrayList(u8) = .empty;
         defer prompt_builder.deinit(self.allocator);
         try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
 
@@ -223,6 +223,7 @@ pub const Agent = struct {
         self.ctx.deinit();
         self.registry.deinit();
         if (self.last_chunk) |chunk| self.allocator.free(chunk);
+        self.* = undefined;
     }
 
     fn getEmbeddings(allocator: std.mem.Allocator, config: Config, input: []const []const u8) anyerror!base.EmbeddingResponse {
@@ -268,10 +269,10 @@ pub const Agent = struct {
         if (messages.len > 0) {
             const last_msg = messages[messages.len - 1];
             if (last_msg.content) |content| {
-                return try ctx.allocator.dupe(u8, content);
+                return ctx.allocator.dupe(u8, content);
             }
         }
-        return try ctx.allocator.dupe(u8, "Subagent completed with no summary.");
+        return ctx.allocator.dupe(u8, "Subagent completed with no summary.");
     }
 
     pub fn run(self: *Agent, message: []const u8) !void {
@@ -284,7 +285,7 @@ pub const Agent = struct {
         var iterations: usize = 0;
         const max_iterations = 10;
 
-        const tool_ctx = tools.ToolContext{
+        const tool_ctx: tools.ToolContext = .{
             .allocator = self.allocator,
             .config = self.config,
             .get_embeddings = getEmbeddings,
@@ -293,7 +294,7 @@ pub const Agent = struct {
 
         // Track iteration results to prevent loops
         // Store assistant response content from each iteration
-        var iteration_results: std.ArrayListUnmanaged(?[]const u8) = .empty;
+        var iteration_results: std.ArrayList(?[]const u8) = .empty;
         defer {
             for (iteration_results.items) |result| {
                 if (result) |r| self.allocator.free(r);
@@ -302,7 +303,7 @@ pub const Agent = struct {
         }
 
         // Collect tools for the provider
-        var provider_tools: std.ArrayListUnmanaged(base.ToolDefinition) = .empty;
+        var provider_tools: std.ArrayList(base.ToolDefinition) = .empty;
         defer provider_tools.deinit(self.allocator);
         var tool_it = self.registry.tools.valueIterator();
         while (tool_it.next()) |tool| {
@@ -331,7 +332,7 @@ pub const Agent = struct {
             defer if (loop_warning) |lw| self.allocator.free(lw);
 
             // Rebuild filtered_messages each iteration so tool results are included
-            var filtered_messages: std.ArrayListUnmanaged(base.LlmMessage) = .empty;
+            var filtered_messages: std.ArrayList(base.LlmMessage) = .empty;
             defer filtered_messages.deinit(self.allocator);
             for (self.ctx.getMessages()) |msg| {
                 if (std.mem.eql(u8, msg.role, "assistant")) {
@@ -462,7 +463,7 @@ pub const Agent = struct {
                 iteration_content = try self.allocator.dupe(u8, content);
             } else if (response.tool_calls) |calls| {
                 // If no content but has tool calls, track the tool names
-                var tool_summary: std.ArrayListUnmanaged(u8) = .empty;
+                var tool_summary: std.ArrayList(u8) = .empty;
                 defer tool_summary.deinit(self.allocator);
                 try tool_summary.appendSlice(self.allocator, "Tool calls: ");
                 for (calls, 0..) |call, i| {
@@ -526,10 +527,11 @@ pub const Agent = struct {
         const messages = self.ctx.getMessages();
         if (messages.len < 2) return;
 
-        const tool_ctx = tools.ToolContext{
+        const AgentType = @This();
+        const tool_ctx: tools.ToolContext = .{
             .allocator = self.allocator,
             .config = self.config,
-            .get_embeddings = @This().getEmbeddings,
+            .get_embeddings = AgentType.getEmbeddings,
         };
 
         // Index each assistant response with its preceding user context
@@ -540,7 +542,7 @@ pub const Agent = struct {
                 if (msg.content) |content| {
                     if (content.len < 10) continue; // Skip very short responses
 
-                    var entry_text: std.ArrayListUnmanaged(u8) = .empty;
+                    var entry_text: std.ArrayList(u8) = .empty;
                     defer entry_text.deinit(self.allocator);
 
                     // Include preceding user message if available
@@ -726,7 +728,10 @@ test "Agent: conversation indexing" {
     // Test that index_conversation runs without error
     // Note: This will try to call vector_upsert which may fail in test environment
     // but we're testing the logic flow
-    agent.indexConversation() catch {};
+    agent.indexConversation() catch |err| {
+        // Expected to fail in test environment due to missing vector DB
+        std.debug.print("Indexing error (expected in test): {any}\n", .{err});
+    };
 }
 
 test "Agent: respect disableRag flag" {

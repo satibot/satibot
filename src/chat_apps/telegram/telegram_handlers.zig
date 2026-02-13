@@ -1,13 +1,13 @@
 /// Telegram-specific handlers for the generic event loop
 const std = @import("std");
-const xev = @import("xev");
 const xev_event_loop = @import("../../utils/xev_event_loop.zig");
 const messages = @import("../../agent/messages.zig");
 const Config = @import("../../config.zig").Config;
 const http = @import("../../http.zig");
+const ConfigModule = @import("../../config.zig");
 
 /// Session history cache - simple HashMap for performance
-const SessionCache = struct {
+pub const SessionCache = struct {
     allocator: std.mem.Allocator,
     sessions: std.StringHashMap(messages.SessionHistory),
     last_used: std.StringHashMap(i64),
@@ -36,6 +36,8 @@ const SessionCache = struct {
             self.allocator.free(entry.key_ptr.*);
         }
         self.last_used.deinit();
+
+        self.* = undefined;
     }
 
     pub fn getOrCreateSession(self: *SessionCache, session_id: []const u8) !*messages.SessionHistory {
@@ -70,7 +72,9 @@ const SessionCache = struct {
         var it = self.last_used.iterator();
         while (it.next()) |entry| {
             if (now - entry.value_ptr.* > max_idle_seconds) {
-                keys_to_remove.append(self.allocator, entry.key_ptr.*) catch {};
+                keys_to_remove.append(self.allocator, entry.key_ptr.*) catch |append_err| {
+                    std.debug.print("Failed to append key for removal: {any}\n", .{append_err});
+                };
             }
         }
 
@@ -129,6 +133,7 @@ pub const TelegramContext = struct {
         if (self.session_cache) |*cache| {
             cache.deinit();
         }
+        self.* = undefined;
     }
 };
 
@@ -144,7 +149,7 @@ fn parseTelegramTask(allocator: std.mem.Allocator, task: xev_event_loop.Task) !T
     const chat_id = try std.fmt.parseInt(i64, chat_id_str, 10);
     const message_id = try std.fmt.parseInt(i64, message_id_str, 10);
 
-    return TelegramTaskData{
+    return .{
         .chat_id = chat_id,
         .message_id = message_id,
         .text = try allocator.dupe(u8, text),
@@ -170,12 +175,12 @@ fn handleOpenrouterCommand(ctx: *TelegramContext, tg_data: TelegramTaskData) !vo
         defer ctx.allocator.free(chat_id_str);
 
         const tg_config = ctx.config.tools.telegram orelse return;
-        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, ctx.allocator) catch {};
+        sendMessage(ctx.allocator, ctx.client, tg_config.botToken, chat_id_str, error_msg) catch |send_err| {
+            std.debug.print("Failed to send error message: {any}\n", .{send_err});
+        };
         return;
     }
 
-    // Load current config from file
-    const ConfigModule = @import("../../config.zig");
     var loaded_config = try ConfigModule.load(ctx.allocator);
     defer loaded_config.deinit();
 
@@ -193,7 +198,9 @@ fn handleOpenrouterCommand(ctx: *TelegramContext, tg_data: TelegramTaskData) !vo
         defer ctx.allocator.free(chat_id_str);
 
         const tg_config = ctx.config.tools.telegram orelse return;
-        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, ctx.allocator) catch {};
+        sendMessage(ctx.allocator, ctx.client, tg_config.botToken, chat_id_str, error_msg) catch |send_err| {
+            std.debug.print("Failed to save config error message: {any}\n", .{send_err});
+        };
         return;
     };
 
@@ -205,7 +212,9 @@ fn handleOpenrouterCommand(ctx: *TelegramContext, tg_data: TelegramTaskData) !vo
     defer ctx.allocator.free(chat_id_str);
 
     const tg_config = ctx.config.tools.telegram orelse return;
-    sendMessage(ctx.client, tg_config.botToken, chat_id_str, success_msg, ctx.allocator) catch {};
+    sendMessage(ctx.allocator, ctx.client, tg_config.botToken, chat_id_str, success_msg) catch |err| {
+        std.debug.print("Failed to send success message: {any}\n", .{err});
+    };
 
     std.debug.print("Updated model from '{s}' to '{s}'\n", .{ old_model, model_name });
 }
@@ -253,7 +262,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{tg_data.chat_id});
     defer allocator.free(chat_id_str);
 
-    sendChatAction(ctx.client, tg_config.botToken, chat_id_str, "typing", allocator) catch |err| {
+    sendChatAction(allocator, ctx.client, tg_config.botToken, chat_id_str, "typing") catch |err| {
         std.debug.print("Failed to send typing action: {any}\n", .{err});
     };
     std.debug.print("Sent typing action\n", .{});
@@ -265,7 +274,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
 
         const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
         defer allocator.free(error_msg);
-        try sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, allocator);
+        try sendMessage(allocator, ctx.client, tg_config.botToken, chat_id_str, error_msg);
         return;
     };
     defer @constCast(&result.history).deinit();
@@ -275,13 +284,13 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     // Send response or error message
     if (result.response) |response| {
         std.debug.print("Sending response to Telegram...\n", .{});
-        sendMessage(ctx.client, tg_config.botToken, chat_id_str, response, allocator) catch |err| {
+        sendMessage(allocator, ctx.client, tg_config.botToken, chat_id_str, response) catch |err| {
             std.debug.print("Failed to send message: {any}\n", .{err});
         };
         std.debug.print("Response sent successfully\n", .{});
     } else if (result.error_msg) |error_msg| {
         std.debug.print("Sending error message to Telegram...\n", .{});
-        sendMessage(ctx.client, tg_config.botToken, chat_id_str, error_msg, allocator) catch |err| {
+        sendMessage(allocator, ctx.client, tg_config.botToken, chat_id_str, error_msg) catch |err| {
             std.debug.print("Failed to send error message: {any}\n", .{err});
         };
         std.debug.print("Error message sent successfully\n", .{});
@@ -289,11 +298,13 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
 
     // Save session state to Vector/Graph DB for long-term memory.
     // This enables RAG (Retrieval-Augmented Generation) functionality.
-    messages.indexConversation(@constCast(&result.history), session_id) catch {};
+    messages.indexConversation(@constCast(&result.history), session_id) catch |err| {
+        std.debug.print("Failed to index conversation: {any}\n", .{err});
+    };
 }
 
 /// Handle HTTP requests for Telegram API
-fn handleHttpRequest(ctx: *TelegramContext, task: xev_event_loop.Task, allocator: std.mem.Allocator) !void {
+fn handleHttpRequest(allocator: std.mem.Allocator, ctx: *TelegramContext, task: xev_event_loop.Task) !void {
     // Debug: Check if ctx and allocator are valid
     std.debug.print("handleHttpRequest: ctx={*}, allocator={any}\n", .{ ctx, allocator });
 
@@ -335,11 +346,11 @@ fn handleHttpRequest(ctx: *TelegramContext, task: xev_event_loop.Task, allocator
 }
 
 /// Handle GET requests
-fn handleGetRequest(ctx: *TelegramContext, url: []const u8, allocator: std.mem.Allocator) !void {
+fn handleGetRequest(allocator: std.mem.Allocator, ctx: *TelegramContext, url: []const u8) !void {
     std.debug.print("GET request URL: {s}\n", .{url});
 
     // Create a temporary HTTP client for this request
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
 
     var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
@@ -427,7 +438,7 @@ fn handlePostRequest(ctx: *TelegramContext, url: []const u8, body: []const u8) !
     std.debug.print("POST request (ctx: {*}) to URL: {s}\n", .{ ctx, url });
 
     // Create a temporary HTTP client for this request
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
 
     var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
@@ -461,7 +472,7 @@ fn globalTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) !v
     if (std.mem.eql(u8, task.source, "telegram_http")) {
         // For HTTP requests, we need to process them but can't add tasks from here
         // since we're in a worker thread. Instead, we'll process directly.
-        try handleHttpRequestDirect(ctx, task, allocator);
+        try handleHttpRequestDirect(allocator, ctx, task);
         return;
     }
 
@@ -475,7 +486,7 @@ fn globalTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) !v
 }
 
 /// Handle HTTP requests for Telegram API (direct processing without adding tasks)
-fn handleHttpRequestDirect(ctx: *TelegramContext, task: xev_event_loop.Task, allocator: std.mem.Allocator) !void {
+fn handleHttpRequestDirect(allocator: std.mem.Allocator, ctx: *TelegramContext, task: xev_event_loop.Task) !void {
     // Debug: Check if ctx and allocator are valid
     std.debug.print("handleHttpRequestDirect: ctx={*}, allocator={any}\n", .{ ctx, allocator });
 
@@ -493,7 +504,7 @@ fn handleHttpRequestDirect(ctx: *TelegramContext, task: xev_event_loop.Task, all
     if (std.mem.eql(u8, method, "GET")) {
         // For GET, the entire rest is the URL
         std.debug.print("Parsing HTTP request: method='{s}', task_data='{s}'\n", .{ method, task.data });
-        try handleGetRequestDirect(ctx, rest, allocator);
+        try handleGetRequestDirect(allocator, ctx, rest);
     } else if (std.mem.eql(u8, method, "POST")) {
         // For POST, we need to split URL and body
         // Find the colon that separates URL from body
@@ -517,11 +528,11 @@ fn handleHttpRequestDirect(ctx: *TelegramContext, task: xev_event_loop.Task, all
 }
 
 /// Handle GET requests directly without adding new tasks
-fn handleGetRequestDirect(ctx: *TelegramContext, url: []const u8, allocator: std.mem.Allocator) !void {
+fn handleGetRequestDirect(allocator: std.mem.Allocator, ctx: *TelegramContext, url: []const u8) !void {
     std.debug.print("GET request URL: {s}\n", .{url});
 
     // Create a temporary HTTP client for this request
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
 
     var temp_client = try http.Client.initWithSettings(gpa.allocator(), .{
@@ -586,7 +597,7 @@ fn handleGetRequestDirect(ctx: *TelegramContext, url: []const u8, allocator: std
                 std.debug.print("Processing message directly: chat_id={d}, text={s}\n", .{ msg.chat.id, msg.text });
 
                 // Create TelegramTaskData directly
-                const tg_data = TelegramTaskData{
+                const tg_data: TelegramTaskData = .{
                     .chat_id = msg.chat.id,
                     .message_id = msg.message_id,
                     .text = try allocator.dupe(u8, msg.text),
@@ -627,7 +638,9 @@ pub fn handleTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loop.E
                 // Schedule next cleanup
                 if (ctx.event_loop) |el| {
                     const cleanup_interval_ms = 30 * 60 * 1000; // 30 minutes
-                    el.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms) catch {};
+                    el.scheduleEvent("session_cache_cleanup", .custom, null, cleanup_interval_ms) catch |err| {
+                        std.debug.print("Failed to schedule cleanup event: {any}\n", .{err});
+                    };
                 }
             }
         }
@@ -644,7 +657,7 @@ pub fn handleTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loop.E
 }
 
 /// Send message to Telegram
-fn sendMessage(client: *const http.Client, bot_token: []const u8, chat_id: []const u8, text: []const u8, allocator: std.mem.Allocator) !void {
+fn sendMessage(allocator: std.mem.Allocator, client: *const http.Client, bot_token: []const u8, chat_id: []const u8, text: []const u8) !void {
     const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
     defer allocator.free(url);
 
@@ -660,7 +673,7 @@ fn sendMessage(client: *const http.Client, bot_token: []const u8, chat_id: []con
 }
 
 /// Send chat action (e.g., "typing")
-fn sendChatAction(client: *const http.Client, bot_token: []const u8, chat_id: []const u8, action: []const u8, allocator: std.mem.Allocator) !void {
+fn sendChatAction(allocator: std.mem.Allocator, client: *const http.Client, bot_token: []const u8, chat_id: []const u8, action: []const u8) !void {
     const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendChatAction", .{bot_token});
     defer allocator.free(url);
 

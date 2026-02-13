@@ -212,7 +212,7 @@ pub const TelegramBot = struct {
 
                     // Save conversation to Vector/Graph DB for long-term memory
                     // This enables RAG (Retrieval-Augmented Generation) in future conversations
-                    agent.index_conversation() catch |err| {
+                    agent.indexConversation() catch |err| {
                         // Log indexing error but don't fail the response
                         std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
                     };

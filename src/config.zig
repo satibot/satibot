@@ -269,7 +269,7 @@ test "Config: save and reload" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const original_config = Config{
+    const original_config: Config = .{
         .agents = .{
             .defaults = .{
                 .model = "test-model-saved",
@@ -332,7 +332,7 @@ test "Config save and load roundtrip with openrouter model" {
     const path = try tmp.dir.realpathAlloc(allocator, "config.json");
     defer allocator.free(path);
 
-    const original_config = Config{
+    const original_config: Config = .{
         .agents = .{
             .defaults = .{
                 .model = "tngtech/deepseek-r1t2-chimera:free",
@@ -359,7 +359,7 @@ test "Config save and load roundtrip with openrouter model" {
     try std.testing.expectEqualStrings("tngtech/deepseek-r1t2-chimera:free", loaded.value.agents.defaults.model);
 
     // Update model to z-ai/glm-4.5-air:free
-    const updated_config = Config{
+    const updated_config: Config = .{
         .agents = .{
             .defaults = .{
                 .model = "z-ai/glm-4.5-air:free",

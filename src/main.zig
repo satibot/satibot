@@ -9,10 +9,10 @@ pub fn main() !void {
     // Print startup banner with build timestamp
     std.debug.print("--- satibot 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
-    // Initialize debug allocator for memory management
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .empty;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    // Initialize arena allocator for memory management
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
     // Parse command line arguments
     const args = try std.process.argsAlloc(allocator);
@@ -462,7 +462,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
             // Save conversation to RAG if enabled
             if (save_to_rag) {
-                agent.index_conversation() catch |err| {
+                agent.indexConversation() catch |err| {
                     std.debug.print("Index Error: {any}\n", .{err});
                 };
             }
@@ -484,7 +484,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
     // Save to RAG if enabled
     if (save_to_rag) {
-        try agent.index_conversation();
+        try agent.indexConversation();
     }
 }
 
@@ -507,7 +507,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     defer provider.deinit();
 
     // Create test message
-    const messages = &[_]satibot.base.LLMMessage{
+    const messages = &[_]satibot.base.LlmMessage{
         .{ .role = "user", .content = "Say hello from Zig!" },
     };
 

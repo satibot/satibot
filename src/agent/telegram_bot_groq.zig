@@ -411,7 +411,7 @@ pub const TelegramBot = struct {
 
                         // Save session state to Vector/Graph DB for long-term memory.
                         // This enables RAG (Retrieval-Augmented Generation) functionality.
-                        agent.index_conversation() catch |err| {
+                        agent.indexConversation() catch |err| {
                             std.debug.print("Failed to index conversation: {any}\n", .{err});
                         };
                     }

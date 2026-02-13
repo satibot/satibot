@@ -116,7 +116,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     }
 
     // Index for RAG
-    agent.index_conversation() catch |err| {
+    agent.indexConversation() catch |err| {
         std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
     };
 }

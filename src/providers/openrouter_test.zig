@@ -374,7 +374,7 @@ test "OpenRouterProvider: initWithEventLoop" {
         pub fn init() Self {
             return .{};
         }
-        pub fn deinit(self: *@This()) void {
+        pub fn deinit(self: *Self) void {
             self.* = undefined;
         }
     };

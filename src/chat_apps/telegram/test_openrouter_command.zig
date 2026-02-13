@@ -33,7 +33,7 @@ test "handleOpenrouterCommand: valid model update" {
     defer client.deinit();
 
     // Create Telegram context with mock config
-    const mock_config = config.Config{
+    const mock_config: config.Config = .{
         .agents = .{
             .defaults = .{
                 .model = "old-model",
@@ -66,7 +66,7 @@ test "handleOpenrouterCommand: valid model update" {
     try std.posix.setenv("HOME", temp_home);
 
     // Create test data
-    const tg_data = telegram_handlers.TelegramTaskData{
+    const tg_data: telegram_handlers.TelegramTaskData = .{
         .chat_id = 12345,
         .message_id = 67890,
         .text = "/openrouter z-ai/glm-4.5-air:free",
@@ -88,7 +88,7 @@ test "handleOpenrouterCommand: empty model name" {
     var client = try http.Client.init(allocator);
     defer client.deinit();
 
-    const mock_config = config.Config{
+    const mock_config: config.Config = .{
         .agents = .{
             .defaults = .{
                 .model = "old-model",
@@ -109,7 +109,7 @@ test "handleOpenrouterCommand: empty model name" {
     var ctx = telegram_handlers.TelegramContext.init(allocator, mock_config, &client);
     defer ctx.deinit();
 
-    const tg_data = telegram_handlers.TelegramTaskData{
+    const tg_data: telegram_handlers.TelegramTaskData = .{
         .chat_id = 12345,
         .message_id = 67890,
         .text = "/openrouter ",
@@ -125,7 +125,7 @@ test "handleOpenrouterCommand: no config file" {
     var client = try http.Client.init(allocator);
     defer client.deinit();
 
-    const mock_config = config.Config{
+    const mock_config: config.Config = .{
         .agents = .{
             .defaults = .{
                 .model = "old-model",
@@ -155,7 +155,7 @@ test "handleOpenrouterCommand: no config file" {
     };
     try std.posix.setenv("HOME", "/non/existent/path");
 
-    const tg_data = telegram_handlers.TelegramTaskData{
+    const tg_data: telegram_handlers.TelegramTaskData = .{
         .chat_id = 12345,
         .message_id = 67890,
         .text = "/openrouter z-ai/glm-4.5-air:free",
@@ -176,7 +176,7 @@ test "Config save and load roundtrip" {
     const path = try tmp.dir.realpathAlloc(allocator, "config.json");
     defer allocator.free(path);
 
-    const original_config = config.Config{
+    const original_config: config.Config = .{
         .agents = .{
             .defaults = .{
                 .model = "test-model-roundtrip",
