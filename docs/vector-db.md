@@ -8,14 +8,14 @@
 
 ```bash
 # Show vector DB statistics
-satibot vector-db stats
+sati vector-db stats
 # Output: Total entries, embedding dimension, DB path
 ```
 
 Example output:
 
 ```text
---- satibot 🐸 (build: 2026-02-06 17:13:57 UTC) ---
+--- sati 🐸 (build: 2026-02-06 17:13:57 UTC) ---
 Vector DB Statistics:
   Total entries: 53
   Embedding dimension: 2
@@ -24,18 +24,18 @@ Vector DB Statistics:
 
 ```bash
 # List all entries
-satibot vector-db list
+sati vector-db list
 ```
 
 ```bash
 # Search vector DB (semantic similarity)
-satibot vector-db search "your query" [top_k]
+sati vector-db search "your query" [top_k]
 # Example
-satibot vector-db search "sati" 5
-satibot vector-db search "programming language" 5
+sati vector-db search "sati" 5
+sati vector-db search "programming language" 5
 
 # Add text to vector DB
-satibot vector-db add "my name is John"
+sati vector-db add "my name is John"
 ```
 
 ### How It Works

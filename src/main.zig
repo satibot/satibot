@@ -3,11 +3,11 @@ const satibot = @import("satibot");
 // Import build options (contains build timestamp)
 const build_options = @import("build_options");
 
-/// Main entry point for satibot application
+/// Main entry point for sati application
 /// Handles command line arguments and dispatches to appropriate handlers
 pub fn main() !void {
     // Print startup banner with build timestamp
-    std.debug.print("--- satibot 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
+    std.debug.print("--- sati 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
     // Initialize arena allocator for memory management
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -25,7 +25,7 @@ pub fn main() !void {
             return;
         }
         if (std.mem.eql(u8, args[1], "--version") or std.mem.eql(u8, args[1], "-v") or std.mem.eql(u8, args[1], "version")) {
-            std.debug.print("satibot version {s} (build: {s})\n", .{ build_options.version, build_options.build_time_str });
+            std.debug.print("sati version {s} (build: {s})\n", .{ build_options.version, build_options.build_time_str });
             return;
         }
     }
@@ -41,7 +41,7 @@ pub fn main() !void {
             allocator.free(telegram_args);
         }
 
-        telegram_args[0] = try allocator.dupeZ(u8, "satibot");
+        telegram_args[0] = try allocator.dupeZ(u8, "sati");
         telegram_args[1] = try allocator.dupeZ(u8, "telegram");
         telegram_args[2] = try allocator.dupeZ(u8, "openrouter");
 
@@ -79,10 +79,10 @@ pub fn main() !void {
         // Run WhatsApp bot
         try runWhatsAppBot(allocator, args);
     } else if (std.mem.eql(u8, command, "in")) {
-        // Handle "satibot in <platform>" command format
+        // Handle "sati in <platform>" command format
         // This auto-creates config for the specified platform before running
         if (args.len < 3) {
-            std.debug.print("Usage: satibot in <platform>\nPlatforms:\n  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n", .{});
+            std.debug.print("Usage: sati in <platform>\nPlatforms:\n  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n", .{});
             return;
         }
         const platform = args[2];
@@ -119,19 +119,19 @@ pub fn main() !void {
 /// Print usage information for all available commands
 fn usage() !void {
     const help_text =
-        \\🐸 satibot - AI Chatbot Framework
+        \\🐸 sati - AI Chatbot Framework
         \\
         \\USAGE:
-        \\  satibot <command> [options] [args...]
-        \\  satibot help <command>    Show detailed help for a command
+        \\  sati <command> [options] [args...]
+        \\  sati help <command>    Show detailed help for a command
         \\
         \\COMMANDS:
         \\  help          Show this help message
         \\  agent         Run AI agent in interactive or single message mode
         \\  console       Run console-based interactive bot
-        \\  telegram      Run satibot as a Telegram bot (async version)
-        \\  telegram-sync Run satibot as a Telegram bot (sync version)
-        \\  whatsapp      Run satibot as a WhatsApp bot
+        \\  telegram      Run sati as a Telegram bot (async version)
+        \\  telegram-sync Run sati as a Telegram bot (sync version)
+        \\  whatsapp      Run sati as a WhatsApp bot
         \\  gateway       Run gateway service (Telegram + Cron + Heartbeat)
         \\  vector-db     Manage vector database for RAG functionality
         \\  status        Display system status and configuration
@@ -145,31 +145,31 @@ fn usage() !void {
         \\
         \\EXAMPLES:
         \\  # Interactive agent mode
-        \\  satibot agent
+        \\  sati agent
         \\
         \\  # Single message with session
-        \\  satibot agent -m "Hello, how are you?" -s chat123
+        \\  sati agent -m "Hello, how are you?" -s chat123
         \\
         \\  # Console-based interactive bot
-        \\  satibot console
+        \\  sati console
         \\
         \\  # Run Telegram bot with OpenRouter validation
-        \\  satibot telegram openrouter
+        \\  sati telegram openrouter
         \\
         \\  # Quick start WhatsApp (auto-creates config)
-        \\  satibot in whatsapp
+        \\  sati in whatsapp
         \\
         \\  # Vector database operations
-        \\  satibot vector-db list
-        \\  satibot vector-db add "Your text here"
-        \\  satibot vector-db search "query text"
+        \\  sati vector-db list
+        \\  sati vector-db add "Your text here"
+        \\  sati vector-db search "query text"
         \\
         \\  # Check system status
-        \\  satibot status
+        \\  sati status
         \\
         \\  # Get help for specific command
-        \\  satibot help agent
-        \\  satibot help vector-db
+        \\  sati help agent
+        \\  sati help vector-db
         \\
         \\CONFIGURATION:
         \\  Configuration files are stored in ~/.bots/
@@ -184,7 +184,7 @@ fn usage() !void {
         \\  OPENAI_API_KEY       OpenAI API key
         \\  GROQ_API_KEY         Groq API key
         \\
-        \\For more information, visit: https://github.com/satibot/satibot
+        \\For more information, visit: https://github.com/sati/sati
         \\
     ;
 
@@ -198,7 +198,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\AGENT COMMAND
             \\
             \\USAGE:
-            \\  satibot agent [options]
+            \\  sati agent [options]
             \\
             \\OPTIONS:
             \\  -m "message"        Send a single message and exit
@@ -208,10 +208,10 @@ fn showCommandHelp(command: []const u8) !void {
             \\  openrouter         Validate OpenRouter configuration
             \\
             \\EXAMPLES:
-            \\  satibot agent                           # Interactive mode
-            \\  satibot agent -m "Hello"                # Single message
-            \\  satibot agent -s chat123 -m "Hello"     # With session
-            \\  satibot agent --no-rag                  # Disable RAG
+            \\  sati agent                           # Interactive mode
+            \\  sati agent -m "Hello"                # Single message
+            \\  sati agent -s chat123 -m "Hello"     # With session
+            \\  sati agent --no-rag                  # Disable RAG
             \\
         ;
         std.debug.print("{s}\n", .{help_text});
@@ -221,10 +221,10 @@ fn showCommandHelp(command: []const u8) !void {
             \\CONSOLE COMMAND
             \\
             \\USAGE:
-            \\  satibot console
+            \\  sati console
             \\
             \\DESCRIPTION:
-            \\  Runs satibot as a console-based interactive bot. This provides
+            \\  Runs sati as a console-based interactive bot. This provides
             \\  a simple terminal interface for chatting with the AI agent.
             \\  Uses the same agent logic and memory system as other platforms.
             \\
@@ -235,7 +235,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\  quit     Exit the console bot
             \\
             \\EXAMPLE:
-            \\  satibot console
+            \\  sati console
             \\
         ;
         std.debug.print("{s}", .{help_text});
@@ -245,7 +245,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\VECTOR-DB COMMAND
             \\
             \\USAGE:
-            \\  satibot vector-db <subcommand> [args...]
+            \\  sati vector-db <subcommand> [args...]
             \\
             \\SUBCOMMANDS:
             \\  list              List all entries in vector DB
@@ -254,11 +254,11 @@ fn showCommandHelp(command: []const u8) !void {
             \\  stats             Show vector DB statistics
             \\
             \\EXAMPLES:
-            \\  satibot vector-db list
-            \\  satibot vector-db add "Your text here"
-            \\  satibot vector-db search "query text"
-            \\  satibot vector-db search "query" 5    # Top 5 results
-            \\  satibot vector-db stats
+            \\  sati vector-db list
+            \\  sati vector-db add "Your text here"
+            \\  sati vector-db search "query text"
+            \\  sati vector-db search "query" 5    # Top 5 results
+            \\  sati vector-db stats
             \\
         ;
         std.debug.print("{s}", .{help_text});
@@ -268,13 +268,13 @@ fn showCommandHelp(command: []const u8) !void {
             \\TELEGRAM COMMAND
             \\
             \\USAGE:
-            \\  satibot telegram [options]
+            \\  sati telegram [options]
             \\
             \\OPTIONS:
             \\  openrouter         Validate OpenRouter configuration
             \\
             \\DESCRIPTION:
-            \\  Runs satibot as a Telegram bot. The bot will listen for messages
+            \\  Runs sati as a Telegram bot. The bot will listen for messages
             \\  and respond using the configured AI model.
             \\
             \\CONFIGURATION:
@@ -289,13 +289,13 @@ fn showCommandHelp(command: []const u8) !void {
             \\TELEGRAM-SYNC COMMAND
             \\
             \\USAGE:
-            \\  satibot telegram-sync [options]
+            \\  sati telegram-sync [options]
             \\
             \\OPTIONS:
             \\  openrouter         Validate OpenRouter configuration
             \\
             \\DESCRIPTION:
-            \\  Runs satibot as a synchronous Telegram bot. This version processes
+            \\  Runs sati as a synchronous Telegram bot. This version processes
             \\  messages one at a time, making it simple and reliable.
             \\
             \\CHARACTERISTICS:
@@ -316,13 +316,13 @@ fn showCommandHelp(command: []const u8) !void {
             \\WHATSAPP COMMAND
             \\
             \\USAGE:
-            \\  satibot whatsapp [options]
+            \\  sati whatsapp [options]
             \\
             \\OPTIONS:
             \\  openrouter         Validate OpenRouter configuration
             \\
             \\DESCRIPTION:
-            \\  Runs satibot as a WhatsApp bot using the Meta Graph API.
+            \\  Runs sati as a WhatsApp bot using the Meta Graph API.
             \\
             \\CONFIGURATION:
             \\  Uses ~/.bots/config.json configuration file
@@ -336,7 +336,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\GATEWAY COMMAND
             \\
             \\USAGE:
-            \\  satibot gateway
+            \\  sati gateway
             \\
             \\DESCRIPTION:
             \\  Runs the gateway service that manages multiple components:
@@ -354,7 +354,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\STATUS COMMAND
             \\
             \\USAGE:
-            \\  satibot status
+            \\  sati status
             \\
             \\DESCRIPTION:
             \\  Displays system status including:
@@ -372,7 +372,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\IN COMMAND (Quick Start)
             \\
             \\USAGE:
-            \\  satibot in <platform>
+            \\  sati in <platform>
             \\
             \\PLATFORMS:
             \\  whatsapp   Auto-create WhatsApp config and run
@@ -648,7 +648,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Show usage if no subcommand provided
     if (args.len < 3) {
         const out =
-            \\Usage: satibot vector-db <command> [args...]
+            \\Usage: sati vector-db <command> [args...]
             \\Commands:
             \\  list              List all entries in vector DB
             \\  search <query>    Search vector DB with query
@@ -705,7 +705,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             return;
         }
         if (args.len < 4) {
-            std.debug.print("Usage: satibot vector-db search <query> [top_k]\n", .{});
+            std.debug.print("Usage: sati vector-db search <query> [top_k]\n", .{});
             return;
         }
         const query = args[3];
@@ -750,7 +750,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
             return;
         }
         if (args.len < 4) {
-            std.debug.print("Usage: satibot vector-db add <text>\n", .{});
+            std.debug.print("Usage: sati vector-db add <text>\n", .{});
             return;
         }
         // Combine all remaining args as text (handles spaces)
@@ -814,7 +814,7 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Display header and model info
-    std.debug.print("\n--- satibot Status 🐸 ---\nDefault Model: {s}\n", .{config.agents.defaults.model});
+    std.debug.print("\n--- sati Status 🐸 ---\nDefault Model: {s}\n", .{config.agents.defaults.model});
 
     // Display provider status
     std.debug.print("\nProviders:\n", .{});
@@ -913,7 +913,7 @@ fn runUpgrade(allocator: std.mem.Allocator) !void {
         },
     }
 
-    std.debug.print("✅ Upgrade complete! Restart satibot to use the new version.\n", .{});
+    std.debug.print("✅ Upgrade complete! Restart sati to use the new version.\n", .{});
 }
 
 /// Auto-create WhatsApp configuration in main config file
