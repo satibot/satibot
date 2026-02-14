@@ -1,7 +1,12 @@
 const std = @import("std");
 const satibot = @import("satibot");
-// Import build options (contains build timestamp)
 const build_options = @import("build_options");
+const logging = @import("log.zig");
+
+const log = std.log.scoped(.main);
+
+// Export std_options from log.zig
+pub const std_options = logging.std_options;
 
 /// Main entry point for satibot application
 /// Handles command line arguments and dispatches to appropriate handlers
@@ -18,20 +23,50 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
+    // Check for debug flag first
+    var filtered_args = try allocator.alloc([]const u8, args.len);
+    defer allocator.free(filtered_args);
+    var filtered_len: usize = 0;
+
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--debug") or std.mem.eql(u8, arg, "-D")) {
+            logging.enableDebug();
+            log.debug("Debug mode enabled", .{});
+        } else {
+            filtered_args[filtered_len] = arg;
+            filtered_len += 1;
+        }
+    }
+
+    // Create null-terminated args for function calls
+    var final_args = try allocator.alloc([:0]u8, filtered_len);
+    defer {
+        for (final_args) |arg| {
+            allocator.free(arg);
+        }
+        allocator.free(final_args);
+    }
+
+    for (filtered_args[0..filtered_len], 0..) |arg, i| {
+        final_args[i] = try allocator.dupeZ(u8, arg);
+    }
+
+    log.debug("After filtering, have {d} arguments", .{final_args.len});
+
     // Handle help and version flags (only when no additional arguments)
-    if (args.len >= 2) {
-        if (args.len == 2 and (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h"))) {
+    if (final_args.len >= 2) {
+        if (final_args.len == 2 and (std.mem.eql(u8, final_args[1], "--help") or std.mem.eql(u8, final_args[1], "-h"))) {
             try usage();
             return;
         }
-        if (std.mem.eql(u8, args[1], "--version") or std.mem.eql(u8, args[1], "-v") or std.mem.eql(u8, args[1], "version")) {
+        if (std.mem.eql(u8, final_args[1], "--version") or std.mem.eql(u8, final_args[1], "-v") or std.mem.eql(u8, final_args[1], "version")) {
             std.debug.print("satibot version {s} (build: {s})\n", .{ build_options.version, build_options.build_time_str });
             return;
         }
     }
 
     // If no command is provided, default to running telegram bot with openrouter
-    if (args.len < 2) {
+    if (final_args.len < 2) {
         // Create args array for telegram with openrouter
         const telegram_args = try allocator.alloc([:0]u8, 3);
         defer {
@@ -50,19 +85,20 @@ pub fn main() !void {
     }
 
     // Get the command argument and dispatch to appropriate handler
-    const command = args[1];
+    const command = final_args[1];
+    log.debug("Dispatching command: {s}", .{command});
     if (std.mem.eql(u8, command, "help")) {
         // Show help information
-        if (args.len >= 3) {
+        if (final_args.len >= 3) {
             // Show help for specific command
-            try showCommandHelp(args[2]);
+            try showCommandHelp(final_args[2]);
         } else {
             // Show general help
             try usage();
         }
     } else if (std.mem.eql(u8, command, "agent")) {
         // Run interactive agent or single message mode
-        try runAgent(allocator, args);
+        try runAgent(allocator, final_args);
     } else if (std.mem.eql(u8, command, "console")) {
         // Run console-based Console bot
         try runConsole(allocator);
@@ -71,29 +107,29 @@ pub fn main() !void {
         try runTestLlm(allocator);
     } else if (std.mem.eql(u8, command, "telegram")) {
         // Run Telegram bot
-        try runTelegramBot(allocator, args);
+        try runTelegramBot(allocator, final_args);
     } else if (std.mem.eql(u8, command, "telegram-sync")) {
         // Run synchronous Telegram bot
-        try runTelegramBotSync(allocator, args);
+        try runTelegramBotSync(allocator, final_args);
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         // Run WhatsApp bot
-        try runWhatsAppBot(allocator, args);
+        try runWhatsAppBot(allocator, final_args);
     } else if (std.mem.eql(u8, command, "in")) {
         // Handle "satibot in <platform>" command format
         // This auto-creates config for the specified platform before running
-        if (args.len < 3) {
+        if (final_args.len < 3) {
             std.debug.print("Usage: satibot in <platform>\nPlatforms:\n  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n", .{});
             return;
         }
-        const platform = args[2];
+        const platform = final_args[2];
         if (std.mem.eql(u8, platform, "whatsapp")) {
             // Create WhatsApp config if it doesn't exist and run bot
             try autoCreateWhatsAppConfig(allocator);
-            try runWhatsAppBot(allocator, args);
+            try runWhatsAppBot(allocator, final_args);
         } else if (std.mem.eql(u8, platform, "telegram")) {
             // Create Telegram config if it doesn't exist and run bot
             try autoCreateTelegramConfig(allocator);
-            try runTelegramBot(allocator, args);
+            try runTelegramBot(allocator, final_args);
         } else {
             std.debug.print("Unknown platform: {s}\n", .{platform});
         }
@@ -102,7 +138,7 @@ pub fn main() !void {
         try runGateway(allocator);
     } else if (std.mem.eql(u8, command, "vector-db")) {
         // Manage vector database operations (list, search, add, stats)
-        try runVectorDb(allocator, args);
+        try runVectorDb(allocator, final_args);
     } else if (std.mem.eql(u8, command, "status")) {
         // Show system status and configuration
         try runStatus(allocator);
@@ -142,6 +178,7 @@ fn usage() !void {
         \\OPTIONS:
         \\  --help, -h    Show this help message
         \\  --version, -v Show version information
+        \\  --debug, -D   Enable debug logging (shows detailed debug information)
         \\
         \\EXAMPLES:
         \\  # Interactive agent mode
@@ -806,7 +843,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 /// - Provider configurations (OpenRouter, Anthropic, OpenAI, Groq)
 /// - Channel configurations (Telegram, Discord, WhatsApp)
 /// - Data directory location
-/// - Active cron jobs
+/// Show system status and configuration
 fn runStatus(allocator: std.mem.Allocator) !void {
     // Load configuration
     const parsed_config = try satibot.config.load(allocator);

@@ -32,6 +32,7 @@
 /// 2. Tracking max update_id in polling response handler
 /// 3. Calling event_loop.updateOffset() after processing
 const std = @import("std");
+const log = std.log.scoped(.telegram_bot);
 const Config = @import("../../config.zig").Config;
 const http = @import("../../http.zig");
 const XevEventLoop = @import("../../utils/xev_event_loop.zig").XevEventLoop;
@@ -52,6 +53,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
     std.debug.print("\n🛑 Shutdown signal received, stopping event loop...\n", .{});
     shutdown_requested.store(true, .seq_cst);
     if (global_event_loop) |el| {
+        log.debug("Requesting event loop shutdown", .{});
         el.requestShutdown();
     }
 }
@@ -232,15 +234,19 @@ pub const TelegramBot = struct {
 
         // Main thread handles Telegram polling
         while (!shutdown_requested.load(.seq_cst)) {
+            log.debug("Starting tick cycle", .{});
             self.tick() catch |err| {
+                log.debug("Tick completed with error: {any}", .{err});
                 std.debug.print("Error in tick: {any}\n", .{err});
                 // Continue running even if there's an error
             };
 
             // Small delay to prevent excessive polling
+            log.debug("Sleeping for 100ms", .{});
             std.Thread.sleep(100 * std.time.ns_per_ms);
         }
 
+        log.debug("Event loop stopped", .{});
         std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});
     }
 };

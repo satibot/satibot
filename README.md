@@ -130,6 +130,15 @@ satibot telegram-sync
 # satibot telegram
 ```
 
+### Debug Mode
+
+For detailed debugging information and troubleshooting, see [DEBUGGING.md](docs/DEBUGGING.md).
+
+```bash
+satibot --debug <command>
+satibot -D <command>
+```
+
 ### Telegram Bot Versions
 
 satibot offers two Telegram bot implementations:
@@ -230,6 +239,7 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 |[**Configuration**](docs/CONFIGURATION.md)|Complete config guide for providers & tools|
 |[**Architecture**](docs/ARCHITECTURE.md)|Technical guide to Agent Loop & Functional Architecture|
 |[**Functional Design**](docs/FUNCTIONAL_DESIGN.md)|Pure functional approach and session cache|
+|[**Debugging**](docs/DEBUGGING.md)|Debug mode, troubleshooting, and development guide|
 |[**Telegram Guide**](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
 |[**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
 |[**RAG Guide**](docs/RAG.md)|Understanding the memory system|
