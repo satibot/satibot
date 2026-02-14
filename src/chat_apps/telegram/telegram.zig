@@ -34,6 +34,7 @@ const http = @import("../../http.zig");
 const XevEventLoop = @import("../../utils/xev_event_loop.zig").XevEventLoop;
 const telegram_handlers = @import("telegram_handlers.zig");
 const providers = @import("../../root.zig").providers;
+const constants = @import("../../constants.zig");
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received
@@ -56,6 +57,22 @@ fn signalHandler(sig: i32) callconv(.c) void {
 /// Static message sender function that uses the event loop's HTTP client
 /// Sends a text message to a Telegram chat
 fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
+    // Telegram rejects text payloads longer than 4096 UTF-8 characters.
+    // Split into valid chunks so startup/shutdown notices remain deliverable.
+    if (text.len == 0) {
+        try sendMessageChunkToTelegram(event_loop, bot_token, chat_id, text);
+        return;
+    }
+
+    var start: usize = 0;
+    while (start < text.len) {
+        const end = nextTelegramChunkEnd(text, start);
+        try sendMessageChunkToTelegram(event_loop, bot_token, chat_id, text[start..end]);
+        start = end;
+    }
+}
+
+fn sendMessageChunkToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_id: i64, text_chunk: []const u8) !void {
     const chat_id_str = try std.fmt.allocPrint(event_loop.allocator, "{d}", .{chat_id});
     defer event_loop.allocator.free(chat_id_str);
 
@@ -66,7 +83,7 @@ fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_
     // Create JSON payload with chat_id and message text
     const body = try std.json.Stringify.valueAlloc(event_loop.allocator, .{
         .chat_id = chat_id_str,
-        .text = text,
+        .text = text_chunk,
     }, .{});
     defer event_loop.allocator.free(body);
 
@@ -76,6 +93,30 @@ fn sendMessageToTelegram(event_loop: *XevEventLoop, bot_token: []const u8, chat_
 
     // Add HTTP task to event loop
     try event_loop.addTask(try std.fmt.allocPrint(event_loop.allocator, "tg_send_{d}", .{chat_id}), task_data, "telegram_http");
+}
+
+fn nextTelegramChunkEnd(text: []const u8, start: usize) usize {
+    var cursor = start;
+    var char_count: usize = 0;
+
+    while (cursor < text.len and char_count < constants.TELEGRAM_MAX_TEXT_CHARS) {
+        const sequence_len = std.unicode.utf8ByteSequenceLength(text[cursor]) catch {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        };
+
+        if (cursor + sequence_len > text.len) {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        }
+
+        cursor += sequence_len;
+        char_count += 1;
+    }
+
+    return cursor;
 }
 
 fn setupSignalHandlers() void {

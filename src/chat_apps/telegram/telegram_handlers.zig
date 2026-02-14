@@ -5,6 +5,7 @@ const messages = @import("../../agent/messages.zig");
 const Config = @import("../../config.zig").Config;
 const http = @import("../../http.zig");
 const ConfigModule = @import("../../config.zig");
+const constants = @import("../../constants.zig");
 
 /// Session history cache - simple HashMap for performance
 pub const SessionCache = struct {
@@ -661,18 +662,58 @@ pub fn handleTelegramEvent(allocator: std.mem.Allocator, event: xev_event_loop.E
 
 /// Send message to Telegram
 fn sendMessage(allocator: std.mem.Allocator, client: *const http.Client, bot_token: []const u8, chat_id: []const u8, text: []const u8) !void {
+    // Telegram rejects text payloads longer than 4096 UTF-8 characters,
+    // so we split on UTF-8 codepoint boundaries and send sequential chunks.
+    if (text.len == 0) {
+        try sendMessageChunk(allocator, client, bot_token, chat_id, text);
+        return;
+    }
+
+    var start: usize = 0;
+    while (start < text.len) {
+        const end = nextTelegramChunkEnd(text, start);
+        try sendMessageChunk(allocator, client, bot_token, chat_id, text[start..end]);
+        start = end;
+    }
+}
+
+fn sendMessageChunk(allocator: std.mem.Allocator, client: *const http.Client, bot_token: []const u8, chat_id: []const u8, text_chunk: []const u8) !void {
     const url = try std.fmt.allocPrint(allocator, "https://api.telegram.org/bot{s}/sendMessage", .{bot_token});
     defer allocator.free(url);
 
     const body = try std.json.Stringify.valueAlloc(allocator, .{
         .chat_id = chat_id,
-        .text = text,
+        .text = text_chunk,
         .parse_mode = "Markdown",
     }, .{});
     defer allocator.free(body);
 
     const response = try @constCast(client).post(url, &.{}, body);
     defer @constCast(&response).deinit();
+}
+
+fn nextTelegramChunkEnd(text: []const u8, start: usize) usize {
+    var cursor = start;
+    var char_count: usize = 0;
+
+    while (cursor < text.len and char_count < constants.TELEGRAM_MAX_TEXT_CHARS) {
+        const sequence_len = std.unicode.utf8ByteSequenceLength(text[cursor]) catch {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        };
+
+        if (cursor + sequence_len > text.len) {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        }
+
+        cursor += sequence_len;
+        char_count += 1;
+    }
+
+    return cursor;
 }
 
 /// Send chat action (e.g., "typing")

@@ -1,4 +1,5 @@
 const std = @import("std");
+const constants = @import("../constants.zig");
 
 // Global HOME directory for file operations
 var Home_Dir: []const u8 = undefined;
@@ -264,10 +265,26 @@ const Response = struct {
 
 /// Send a message to Telegram
 fn sendMessage(allocator: std.mem.Allocator, client: SimpleHttpClient, bot_token: []const u8, chat_id: i64, text: []const u8) !void {
+    // Telegram rejects text payloads longer than 4096 UTF-8 characters.
+    // Split responses on codepoint boundaries to avoid API rejections.
+    if (text.len == 0) {
+        try sendMessageChunk(allocator, client, bot_token, chat_id, text);
+        return;
+    }
+
+    var start: usize = 0;
+    while (start < text.len) {
+        const end = nextTelegramChunkEnd(text, start);
+        try sendMessageChunk(allocator, client, bot_token, chat_id, text[start..end]);
+        start = end;
+    }
+}
+
+fn sendMessageChunk(allocator: std.mem.Allocator, client: SimpleHttpClient, bot_token: []const u8, chat_id: i64, text_chunk: []const u8) !void {
     const url = try buildSendMessageUrl(allocator, bot_token);
     defer allocator.free(url);
 
-    const body = try buildSendMessageBody(allocator, chat_id, text);
+    const body = try buildSendMessageBody(allocator, chat_id, text_chunk);
     defer allocator.free(body);
 
     try client.post(url, body);
@@ -375,6 +392,30 @@ var shutdown_requested = std.atomic.Value(bool).init(false);
 fn signalHandler(sig: i32) callconv(.c) void {
     _ = sig;
     shutdown_requested.store(true, .seq_cst);
+}
+
+fn nextTelegramChunkEnd(text: []const u8, start: usize) usize {
+    var cursor = start;
+    var char_count: usize = 0;
+
+    while (cursor < text.len and char_count < constants.TELEGRAM_MAX_TEXT_CHARS) {
+        const sequence_len = std.unicode.utf8ByteSequenceLength(text[cursor]) catch {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        };
+
+        if (cursor + sequence_len > text.len) {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        }
+
+        cursor += sequence_len;
+        char_count += 1;
+    }
+
+    return cursor;
 }
 
 // =============================================================================

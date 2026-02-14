@@ -3,6 +3,7 @@ const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("../http.zig");
 const groq_provider = @import("../root.zig").providers.groq.GroqProvider;
+const constants = @import("../constants.zig");
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received
@@ -448,6 +449,22 @@ pub const TelegramBot = struct {
     /// Helper to send a text message back to a chat using the Telegram API.
     /// This is the primary method for sending bot responses to users.
     fn sendMessage(self: *TelegramBot, token: []const u8, chat_id: []const u8, text: []const u8) !void {
+        // Telegram rejects text payloads longer than 4096 UTF-8 characters.
+        // Splitting here keeps response delivery reliable for long LLM outputs.
+        if (text.len == 0) {
+            try self.sendMessageChunk(token, chat_id, text);
+            return;
+        }
+
+        var start: usize = 0;
+        while (start < text.len) {
+            const end = nextTelegramChunkEnd(text, start);
+            try self.sendMessageChunk(token, chat_id, text[start..end]);
+            start = end;
+        }
+    }
+
+    fn sendMessageChunk(self: *TelegramBot, token: []const u8, chat_id: []const u8, text_chunk: []const u8) !void {
         // Build the API URL for sending messages
         const url = try std.fmt.allocPrint(self.allocator, "https://api.telegram.org/bot{s}/sendMessage", .{token});
         defer self.allocator.free(url);
@@ -455,7 +472,7 @@ pub const TelegramBot = struct {
         // Create JSON payload with chat_id and message text
         const body = try std.json.Stringify.valueAlloc(self.allocator, .{
             .chat_id = chat_id,
-            .text = text,
+            .text = text_chunk,
         }, .{});
         defer self.allocator.free(body);
 
@@ -469,6 +486,30 @@ pub const TelegramBot = struct {
         @constCast(&response).deinit();
     }
 };
+
+fn nextTelegramChunkEnd(text: []const u8, start: usize) usize {
+    var cursor = start;
+    var char_count: usize = 0;
+
+    while (cursor < text.len and char_count < constants.TELEGRAM_MAX_TEXT_CHARS) {
+        const sequence_len = std.unicode.utf8ByteSequenceLength(text[cursor]) catch {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        };
+
+        if (cursor + sequence_len > text.len) {
+            cursor += 1;
+            char_count += 1;
+            continue;
+        }
+
+        cursor += sequence_len;
+        char_count += 1;
+    }
+
+    return cursor;
+}
 
 /// Main entry point for the Telegram Bot service.
 /// Initializes the bot and enters an infinite polling loop.

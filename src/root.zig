@@ -17,6 +17,7 @@ pub const heartbeat = @import("agent/heartbeat.zig");
 pub const gateway = @import("agent/gateway.zig");
 
 pub const config = @import("config.zig");
+pub const constants = @import("constants.zig");
 pub const http = @import("http.zig");
 // providers
 pub const base = @import("providers/base.zig");
