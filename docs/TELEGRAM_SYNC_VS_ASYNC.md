@@ -98,7 +98,7 @@ zig build telegram-sync
 ./zig-out/bin/telegram-sync
 
 # Or via main CLI
-satibot telegram-sync
+sati telegram-sync
 ```
 
 ### Async Version
@@ -109,7 +109,7 @@ zig build telegram
 ./zig-out/bin/xev-telegram-bot
 
 # Or via main CLI
-satibot telegram
+sati telegram
 ```
 
 ## 📊 Feature Comparison

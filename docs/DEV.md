@@ -109,11 +109,11 @@ To run the agent with arguments, use `zig build run` or execute the binary direc
 zig build run -- agent -m "Hello world"
 
 # Or run the binary directly after building
-# (Binary location: ./zig-out/bin/satibot)
-./zig-out/bin/satibot agent -m "Hello world"
+# (Binary location: ./zig-out/bin/sati)
+./zig-out/bin/sati agent -m "Hello world"
 
 # Build with debug info
-zig build-exe src/main.zig --name satibot -femit-bin=debug/satibot
+zig build-exe src/main.zig --name sati -femit-bin=debug/sati
 ```
 
 Test:

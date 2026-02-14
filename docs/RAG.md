@@ -8,10 +8,10 @@ This document provides an overview of the Retrieval-Augmented Generation (RAG) c
 
 ```bash
 # Example: Teaching the agent something to remember via VectorDB
-./satibot -m "Remember that the secret code for the vault is 42."
+./sati -m "Remember that the secret code for the vault is 42."
 
 # Later, you can ask it:
-./satibot -m "What was the secret code for the vault?"
+./sati -m "What was the secret code for the vault?"
 # The agent will call vector_search/rag_search to find the answer.
 ```
 
