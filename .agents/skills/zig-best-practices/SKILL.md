@@ -19,6 +19,7 @@ Types define the contract before implementation. Follow this workflow:
 Use Zig's type system to prevent invalid states at compile time.
 
 **Tagged unions for mutually exclusive states:**
+
 ```zig
 // Good: only valid combinations possible
 const RequestState = union(enum) {
@@ -46,6 +47,7 @@ const RequestState = struct {
 ```
 
 **Explicit error sets for failure modes:**
+
 ```zig
 // Good: documents exactly what can fail
 const ParseError = error{
@@ -65,6 +67,7 @@ fn parse(input: []const u8) anyerror!Ast {
 ```
 
 **Distinct types for domain concepts:**
+
 ```zig
 // Prevent mixing up IDs of different types
 const UserId = enum(u64) { _ };
@@ -80,6 +83,7 @@ fn createUserId(raw: u64) UserId {
 ```
 
 **Comptime validation for invariants:**
+
 ```zig
 fn Buffer(comptime size: usize) type {
     if (size == 0) {
@@ -96,6 +100,7 @@ fn Buffer(comptime size: usize) type {
 ```
 
 **Non-exhaustive enums for extensibility:**
+
 ```zig
 // External enum that may gain variants
 const Status = enum(u8) {
@@ -133,6 +138,7 @@ Larger cohesive files are idiomatic in Zig. Keep related code together: tests al
 ## Examples
 
 Explicit failure for unimplemented logic:
+
 ```zig
 fn buildWidget(widget_type: []const u8) !Widget {
     return error.NotImplemented;
@@ -140,6 +146,7 @@ fn buildWidget(widget_type: []const u8) !Widget {
 ```
 
 Propagate errors with try:
+
 ```zig
 fn readConfig(path: []const u8) !Config {
     const file = try std.fs.cwd().openFile(path, .{});
@@ -150,6 +157,7 @@ fn readConfig(path: []const u8) !Config {
 ```
 
 Resource cleanup with errdefer:
+
 ```zig
 fn createResource(allocator: std.mem.Allocator) !*Resource {
     const resource = try allocator.create(Resource);
@@ -161,6 +169,7 @@ fn createResource(allocator: std.mem.Allocator) !*Resource {
 ```
 
 Exhaustive switch with explicit default:
+
 ```zig
 fn processStatus(status: Status) ![]const u8 {
     return switch (status) {
@@ -172,6 +181,7 @@ fn processStatus(status: Status) ![]const u8 {
 ```
 
 Testing with memory leak detection:
+
 ```zig
 const std = @import("std");
 
@@ -195,6 +205,7 @@ test "widget creation" {
 ### Examples
 
 Allocator as explicit parameter:
+
 ```zig
 fn processData(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     const result = try allocator.alloc(u8, input.len * 2);
@@ -206,6 +217,7 @@ fn processData(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 ```
 
 Arena allocator for batch operations:
+
 ```zig
 fn processBatch(items: []const Item) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -220,6 +232,113 @@ fn processBatch(items: []const Item) !void {
 }
 ```
 
+### General Purpose Allocator (GPA) vs Arena Allocator
+
+TL;DR: Zig’s General Purpose Allocator (GPA) and a classic Arena Allocator serve different goals. GPA is flexible and safe for general use but slower; an Arena is simple, very fast, and ideal for scoped lifetimes with bulk free.
+
+#### What each allocator is
+
+Zig GPA (General Purpose Allocator)
+
+Zig’s GPA is the allocator you use when you want a general-purpose, robust, and flexible heap allocator. It supports normal dynamic allocation/deallocation patterns — alloc, free, resize, etc.
+
+What it gives you:
+
+- Correct handling of arbitrary free orders
+- Ability to resize blocks
+- Minimizes fragmentation compared to naive allocators
+- Works well for typical application workloads
+- Can be backed by a system allocator or custom strategy
+
+When to use it: general dynamic memory needs — structures whose lifetime isn’t just “all at once and then teardown.”
+
+Arena Allocator
+
+An Arena is much simpler: you allocate large chunks of memory and dole them out in linear order. You don’t individually free allocations; you free everything at once.
+
+What it gives you:
+
+- Extremely fast allocation
+- No per-allocation bookkeeping
+- No defined free for individual objects
+- Works great for temporary or scoped workloads
+
+When to use it:
+
+- Parsing data where everything dies at the end
+- Game frame scratch memory
+- Bulk objects with the same lifetime
+- Anything where you can free all at once
+
+#### Comparing by common criteria
+
+Performance
+
+- Arena: very fast, pointer bumping
+- GPA: slower but nice for general use
+
+Fragmentation
+
+- Arena: none (because no frees until reset)
+- GPA: tries to reduce fragmentation
+
+Deallocation:
+
+- Arena: no per-allocation free, bulk free at end
+- GPA: individual frees required
+
+Memory lifetime model
+
+- Arena: single lifetime for all objects
+- GPA: individual lifetimes
+
+Use-case
+
+- Arena: scoped/ephemeral memory
+- GPA: long-lived and complex
+
+Complexity
+
+- Arena: simple
+- GPA: complex, handles diverse patterns
+
+#### Zig example patterns
+
+Arena code (conceptual):
+
+```zig
+var arena = std.heap.ArenaAllocator.init(&buffer);
+defer arena.deinit();
+
+const ptr = arena.alloc(u32, 100) catch unreachable;
+```
+
+GPA usage:
+
+```zig
+const gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var alloc = gpa.allocator();
+const ptr = alloc.alloc(u32, 100) catch unreachable;
+alloc.free(ptr);
+```
+
+Arena doesn’t require individual frees; GPA does.
+
+When each wins
+
+If you’re building a game engine frame scratch pool, or parse once and discard, the Arena is clearly superior––simplicity + speed.
+
+If you need persistent data with individual frees, or you’re writing library code that must interoperate with arbitrary lifetime patterns, use GPA or a blend (Arena for short-lived parts + GPA for long-lived).
+
+#### Summary
+
+- Zig GPA = general-purpose, flexible, correct, slower.
+- Arena = simple, fast, lifespan-scoped, no per-allocation free.
+
+For most real programs, you’ll often combine them: use arenas for scoped temporary allocations and a GPA for the rest.
+
+Would you like a practical Zig snippet showing how to use both together in a real project?
+
 ## Logging
 
 - Use `std.log.scoped` to create namespaced loggers; each module should define its own scoped logger for filtering.
@@ -229,6 +348,7 @@ fn processBatch(items: []const Item) !void {
 ### Examples
 
 Scoped logger for a module:
+
 ```zig
 const std = @import("std");
 const log = std.log.scoped(.widgets);
@@ -247,6 +367,7 @@ pub fn deleteWidget(id: u32) void {
 ```
 
 Multiple scopes in a codebase:
+
 ```zig
 // In src/db.zig
 const log = std.log.scoped(.db);
@@ -267,6 +388,7 @@ const log = std.log.scoped(.auth);
 ### Examples
 
 Generic function with comptime type:
+
 ```zig
 fn max(comptime T: type, a: T, b: T) T {
     return if (a > b) a else b;
@@ -274,6 +396,7 @@ fn max(comptime T: type, a: T, b: T) T {
 ```
 
 Compile-time validation:
+
 ```zig
 fn createBuffer(comptime size: usize) [size]u8 {
     if (size == 0) {
@@ -292,6 +415,7 @@ fn createBuffer(comptime size: usize) [size]u8 {
 ### Examples
 
 Prefer explicit comptime type (good):
+
 ```zig
 fn sum(comptime T: type, items: []const T) T {
     var total: T = 0;
@@ -303,6 +427,7 @@ fn sum(comptime T: type, items: []const T) T {
 ```
 
 Avoid anytype when type is known (bad):
+
 ```zig
 // Unclear what types are valid; error messages will be confusing
 fn sum(items: anytype) @TypeOf(items[0]) {
@@ -311,6 +436,7 @@ fn sum(items: anytype) @TypeOf(items[0]) {
 ```
 
 Acceptable anytype for callbacks:
+
 ```zig
 /// Calls `callback` for each item. Callback must accept (T) and return void.
 fn forEach(comptime T: type, items: []const T, callback: anytype) void {
@@ -321,6 +447,7 @@ fn forEach(comptime T: type, items: []const T, callback: anytype) void {
 ```
 
 Using @TypeOf when anytype is necessary:
+
 ```zig
 fn debugPrint(value: anytype) void {
     const T = @TypeOf(value);
@@ -341,6 +468,7 @@ fn debugPrint(value: anytype) void {
 ### Examples
 
 Specific error set:
+
 ```zig
 const ConfigError = error{
     FileNotFound,
@@ -354,6 +482,7 @@ fn loadConfig(path: []const u8) ConfigError!Config {
 ```
 
 Error handling with catch block:
+
 ```zig
 const value = operation() catch |err| {
     std.log.err("operation failed: {}", .{err});
@@ -370,6 +499,7 @@ const value = operation() catch |err| {
 ### Examples
 
 Typed config struct:
+
 ```zig
 const std = @import("std");
 
@@ -406,6 +536,7 @@ pub fn loadConfig() !Config {
 ### Examples
 
 Safe optional handling:
+
 ```zig
 fn findWidget(id: u32) ?*Widget {
     // lookup implementation
@@ -418,6 +549,7 @@ fn processWidget(id: u32) !void {
 ```
 
 Optional with if unwrapping:
+
 ```zig
 if (maybeValue) |value| {
     try processValue(value);
@@ -442,6 +574,7 @@ Reference these guides for specialized patterns:
 In 0.15.2, `std.ArrayList(T)` returns an unmanaged list. It does not store the allocator. All methods that allocate or free memory now require an explicit `Allocator` argument.
 
 **Good (0.15.2):**
+
 ```zig
 var list = std.ArrayList(u8).empty;
 defer list.deinit(allocator);
@@ -452,6 +585,7 @@ defer allocator.free(slice);
 ```
 
 **Bad (0.15.2 - will not compile):**
+
 ```zig
 var list = std.ArrayList(u8).init(allocator); // error: no member named 'init'
 defer list.deinit(); // error: expected 1 argument, found 0
@@ -462,6 +596,7 @@ defer list.deinit(); // error: expected 1 argument, found 0
 The top-level `std.json.stringify` has been replaced by `std.json.Stringify.value`. It requires a pointer to a `std.io.Writer` interface. For dynamically growing buffers, use `std.io.Writer.Allocating`.
 
 **Good (0.15.2):**
+
 ```zig
 var out = std.io.Writer.Allocating.init(allocator);
 defer out.deinit();
@@ -472,6 +607,7 @@ defer allocator.free(body);
 ```
 
 **Bad (0.15.2):**
+
 ```zig
 try std.json.stringify(payload, .{}, writer); // error: no member named 'stringify'
 ```
@@ -481,6 +617,7 @@ try std.json.stringify(payload, .{}, writer); // error: no member named 'stringi
 The HTTP client API has been significantly updated. `open` is now `request`, and body handling is more explicit.
 
 **Good (0.15.2):**
+
 ```zig
 var client = std.http.Client{ .allocator = allocator };
 defer client.deinit();
@@ -519,6 +656,7 @@ defer allocator.free(response_body);
 CLI tool for browsing Zig std library and project dependency docs.
 
 **Install:**
+
 ```bash
 git clone https://github.com/rockorager/zigdoc
 cd zigdoc
@@ -526,6 +664,7 @@ zig build install -Doptimize=ReleaseFast --prefix $HOME/.local
 ```
 
 **Usage:**
+
 ```bash
 zigdoc std.ArrayList       # std lib symbol
 zigdoc std.mem.Allocator   # nested symbol
@@ -538,6 +677,7 @@ zigdoc @init               # create AGENTS.md with API patterns
 Linter for Zig source code enforcing coding standards.
 
 **Install:**
+
 ```bash
 git clone https://github.com/rockorager/ziglint
 cd ziglint
@@ -545,6 +685,7 @@ zig build install -Doptimize=ReleaseFast --prefix $HOME/.local
 ```
 
 **Usage:**
+
 ```bash
 ziglint                    # lint current directory (uses .ziglint.zon if present)
 ziglint src build.zig      # lint specific paths
@@ -552,6 +693,7 @@ ziglint --ignore Z001      # suppress specific rule
 ```
 
 **Configuration (`.ziglint.zon`):**
+
 ```zig
 .{
     .paths = .{ "src", "build.zig" },
@@ -563,13 +705,14 @@ ziglint --ignore Z001      # suppress specific rule
 ```
 
 **Inline suppression:**
+
 ```zig
 fn MyBadName() void {} // ziglint-ignore: Z001
 ```
 
 ## References
 
-- Language Reference: https://ziglang.org/documentation/0.15.2/
-- Standard Library: https://ziglang.org/documentation/0.15.2/std/
-- Code Samples: https://ziglang.org/learn/samples/
-- Zig Guide: https://zig.guide/
+- Language Reference: <https://ziglang.org/documentation/0.15.2/>
+- Standard Library: <https://ziglang.org/documentation/0.15.2/std/>
+- Code Samples: <https://ziglang.org/learn/samples/>
+- Zig Guide: <https://zig.guide/>

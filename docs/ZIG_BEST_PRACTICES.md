@@ -165,6 +165,113 @@ pub fn deinit(self: *Self) void {
 }
 ```
 
+### General Purpose Allocator (GPA) vs Arena Allocator
+
+TL;DR: Zig’s General Purpose Allocator (GPA) and a classic Arena Allocator serve different goals. GPA is flexible and safe for general use but slower; an Arena is simple, very fast, and ideal for scoped lifetimes with bulk free.
+
+#### What each allocator is
+
+Zig GPA (General Purpose Allocator)
+
+Zig’s GPA is the allocator you use when you want a general-purpose, robust, and flexible heap allocator. It supports normal dynamic allocation/deallocation patterns — alloc, free, resize, etc.
+
+What it gives you:
+
+- Correct handling of arbitrary free orders
+- Ability to resize blocks
+- Minimizes fragmentation compared to naive allocators
+- Works well for typical application workloads
+- Can be backed by a system allocator or custom strategy
+
+When to use it: general dynamic memory needs — structures whose lifetime isn’t just “all at once and then teardown.”
+
+Arena Allocator
+
+An Arena is much simpler: you allocate large chunks of memory and dole them out in linear order. You don’t individually free allocations; you free everything at once.
+
+What it gives you:
+
+- Extremely fast allocation
+- No per-allocation bookkeeping
+- No defined free for individual objects
+- Works great for temporary or scoped workloads
+
+When to use it:
+
+- Parsing data where everything dies at the end
+- Game frame scratch memory
+- Bulk objects with the same lifetime
+- Anything where you can free all at once
+
+#### Comparing by common criteria
+
+Performance
+
+- Arena: very fast, pointer bumping
+- GPA: slower but nice for general use
+
+Fragmentation
+
+- Arena: none (because no frees until reset)
+- GPA: tries to reduce fragmentation
+
+Deallocation:
+
+- Arena: no per-allocation free, bulk free at end
+- GPA: individual frees required
+
+Memory lifetime model
+
+- Arena: single lifetime for all objects
+- GPA: individual lifetimes
+
+Use-case
+
+- Arena: scoped/ephemeral memory
+- GPA: long-lived and complex
+
+Complexity
+
+- Arena: simple
+- GPA: complex, handles diverse patterns
+
+#### Zig example patterns
+
+Arena code (conceptual):
+
+```zig
+var arena = std.heap.ArenaAllocator.init(&buffer);
+defer arena.deinit();
+
+const ptr = arena.alloc(u32, 100) catch unreachable;
+```
+
+GPA usage:
+
+```zig
+const gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var alloc = gpa.allocator();
+const ptr = alloc.alloc(u32, 100) catch unreachable;
+alloc.free(ptr);
+```
+
+Arena doesn’t require individual frees; GPA does.
+
+When each wins
+
+If you’re building a game engine frame scratch pool, or parse once and discard, the Arena is clearly superior––simplicity + speed.
+
+If you need persistent data with individual frees, or you’re writing library code that must interoperate with arbitrary lifetime patterns, use GPA or a blend (Arena for short-lived parts + GPA for long-lived).
+
+#### Summary
+
+- Zig GPA = general-purpose, flexible, correct, slower.
+- Arena = simple, fast, lifespan-scoped, no per-allocation free.
+
+For most real programs, you’ll often combine them: use arenas for scoped temporary allocations and a GPA for the rest.
+
+Would you like a practical Zig snippet showing how to use both together in a real project?
+
 ## Error Handling
 
 ### Never Use `catch unreachable` for Recoverable Errors

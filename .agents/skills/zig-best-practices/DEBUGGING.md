@@ -40,7 +40,7 @@ var gpa = std.heap.GeneralPurposeAllocator(.{
 
 When leaks occur, GPA prints:
 
-```
+```log
 error: memory leak detected
 Leak at 0x7f... (1024 bytes)
     src/main.zig:42:25
