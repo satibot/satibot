@@ -553,7 +553,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     var response = try provider.chat(messages, config.agents.defaults.model, null);
     defer response.deinit();
 
-    std.debug.print("Response: {s}\n", .{response.content orelse "(no content)"});
+    std.debug.print("Response: {s}\n---\n", .{response.content orelse "(no content)"});
 }
 
 /// Run console-based Console bot

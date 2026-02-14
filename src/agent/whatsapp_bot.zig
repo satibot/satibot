@@ -128,7 +128,10 @@ pub const WhatsAppBot = struct {
         if (messages.len > 0) {
             const last_msg = messages[messages.len - 1];
             if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                try self.sendMessage(wa_config, from, last_msg.content.?);
+                // Add separator after LLM response
+                const response_with_separator = try std.fmt.allocPrint(self.allocator, "{s}\n---", .{last_msg.content.?});
+                defer self.allocator.free(response_with_separator);
+                try self.sendMessage(wa_config, from, response_with_separator);
             }
         }
 

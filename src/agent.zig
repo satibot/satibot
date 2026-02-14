@@ -10,7 +10,8 @@ const local_embeddings = @import("db/local_embeddings.zig");
 /// Helper function to print streaming response chunks to stdout.
 pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
     _ = ctx;
-    std.debug.print("{s}", .{chunk});
+    std.debug.print("{s}\n---\n", .{chunk});
+    // Add separator "---" after each LLM message chunk
 }
 
 /// Main Agent struct that orchestrates conversation with LLM providers.
@@ -725,7 +726,7 @@ test "Agent: conversation indexing" {
     try agent.ctx.addMessage(.{ .role = "user", .content = "What is Zig?" });
     try agent.ctx.addMessage(.{ .role = "assistant", .content = "Zig is a programming language." });
 
-    // Test that index_conversation runs without error
+    // Test that indexConversation runs without error
     // Note: This will try to call vector_upsert which may fail in test environment
     // but we're testing the logic flow
     agent.indexConversation() catch |err| {
