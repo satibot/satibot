@@ -404,7 +404,10 @@ pub const TelegramBot = struct {
                                 const last_msg = messages[messages.len - 1];
                                 // Only send if it's an assistant message with content
                                 if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                                    try self.sendMessage(tg_config.botToken, chat_id_str, last_msg.content.?);
+                                    // Add separator after LLM response
+                                    const response_with_separator = try std.fmt.allocPrint(self.allocator, "{s}\n---", .{last_msg.content.?});
+                                    defer self.allocator.free(response_with_separator);
+                                    try self.sendMessage(tg_config.botToken, chat_id_str, response_with_separator);
                                 }
                             }
                         }

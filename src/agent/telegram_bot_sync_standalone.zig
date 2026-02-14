@@ -315,12 +315,18 @@ fn processUpdate(
     defer allocator.free(result.response_text);
 
     if (!result.should_continue) {
-        try sendMessage(allocator, client, bot_token, chat_id, result.response_text);
+        // Add separator after response
+        const response_with_separator = try std.fmt.allocPrint(allocator, "{s}\n---", .{result.response_text});
+        defer allocator.free(response_with_separator);
+        try sendMessage(allocator, client, bot_token, chat_id, response_with_separator);
         return chat_id;
     }
 
     // For actual messages (not just /new), echo the response
-    try sendMessage(allocator, client, bot_token, chat_id, result.response_text);
+    // Add separator after response
+    const response_with_separator = try std.fmt.allocPrint(allocator, "{s}\n---", .{result.response_text});
+    defer allocator.free(response_with_separator);
+    try sendMessage(allocator, client, bot_token, chat_id, response_with_separator);
 
     return chat_id;
 }

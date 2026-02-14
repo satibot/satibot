@@ -44,6 +44,6 @@ satibot vector-db add "my name is John"
 - Embeddings: Uses OpenRouter API (default: `arcee-ai/trinity-mini:free`)
 - Configuration: Set `"disableRag": true` in `config.json`'s `agents.defaults` to disable all embedding and RAG operations globally.
 - Search: Cosine similarity on vector embeddings
-- Auto-save: Conversations auto-indexed via `agent.index_conversation()`
+- Auto-save: Conversations auto-indexed via `agent.indexConversation()`
 
 The CLI provides direct access to test and debug vector DB operations without running the full agent.

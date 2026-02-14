@@ -269,7 +269,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData, 
     
     // Save session state to Vector/Graph DB for long-term memory.
     // This enables RAG (Retrieval-Augmented Generation) functionality.
-    agent.index_conversation() catch {};
+    agent.indexConversation() catch {};
 }
 
 /// Global task handler that uses the global context
