@@ -111,8 +111,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     if (messages.len > 0) {
         const last_msg = messages[messages.len - 1];
         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-            std.debug.print("\n🤖 [Bot]: {s}\n---\n", .{last_msg.content.?});
-            // Add separator after each LLM message
+            std.debug.print("\n🤖 [Bot]: {s}\n", .{last_msg.content.?});
         }
     }
 

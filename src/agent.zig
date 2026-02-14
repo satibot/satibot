@@ -10,8 +10,7 @@ const local_embeddings = @import("db/local_embeddings.zig");
 /// Helper function to print streaming response chunks to stdout.
 pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
     _ = ctx;
-    std.debug.print("{s}\n---\n", .{chunk});
-    // Add separator "---" after each LLM message chunk
+    std.debug.print("{s}", .{chunk});
 }
 
 /// Main Agent struct that orchestrates conversation with LLM providers.
