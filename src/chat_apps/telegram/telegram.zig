@@ -4,6 +4,9 @@
 /// Centralized HTTP handling - All HTTP requests (both Telegram and OpenRouter)
 /// are processed through the event loop's task handler.
 ///
+/// DEBUG MODE: Set SATIBOT_MOCK_LLM=1 to use mock LLM provider instead of real API
+/// This is useful for debugging without making real API calls or consuming credits.
+///
 /// Logic Graph:
 /// ```mermaid
 /// graph TD
@@ -14,7 +17,7 @@
 ///     TG --> |Updates| EL
 ///     EL --> |Parse| Handler[Telegram Handlers]
 ///     Handler --> |Update Offset| Offset[Event Loop State]
-///     Handler --> |Process| Agent[AI Agent]
+///     Handler --> |Process| Agent[AI Agent/Mock]
 ///     Agent --> |Reply| EL
 ///     EL --> |HTTP POST| TG
 /// ```
@@ -109,6 +112,15 @@ pub const TelegramBot = struct {
     /// Initialize the TelegramBot with xev event loop.
     /// The event loop will manage HTTP connections for efficiency.
     pub fn init(allocator: std.mem.Allocator, config: Config) !TelegramBot {
+        // Check if mock mode is enabled
+        const use_mock = std.process.hasEnvVarConstant("SATIBOT_MOCK_LLM");
+
+        if (use_mock) {
+            std.debug.print("🤖 DEBUG MODE: Using mock LLM provider - no real API calls will be made\n", .{});
+        } else {
+            std.debug.print("🔗 Using real LLM provider - API calls will be made\n", .{});
+        }
+
         // Extract telegram config
         const tg_config = config.tools.telegram orelse return error.TelegramConfigNotFound;
         _ = tg_config; // TODO: Use this for Telegram integration

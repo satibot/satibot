@@ -7,6 +7,7 @@ const tools = @import("tools.zig");
 const providers = @import("../root.zig");
 const base = @import("../providers/base.zig");
 const session = @import("../db/session.zig");
+const mock_provider = @import("../providers/mock.zig");
 
 /// Message structure - pure data
 pub const Message = struct {
@@ -397,13 +398,34 @@ pub fn processMessage(
 
     // Get provider interface and process with LLM
     const getProviderInterface = struct {
-        fn call(model_name: []const u8) base.ProviderInterface {
+        fn call(model_name: []const u8, use_mock: bool) base.ProviderInterface {
             _ = model_name; // Default to OpenRouter for now
+            if (use_mock) {
+                std.debug.print("[debug] Using mock LLM provider for debugging\n", .{});
+                return mock_provider.getMockInterface(std.heap.page_allocator);
+            }
             return providers.openrouter.createInterface();
         }
     }.call;
 
-    const provider_interface = getProviderInterface("openrouter");
+    // Check if we should use mock provider (debug mode)
+    const use_mock = blk: {
+        const result = std.process.getEnvVarOwned(std.heap.page_allocator, "SATIBOT_MOCK_LLM") catch |err| switch (err) {
+            error.EnvironmentVariableNotFound => {
+                std.debug.print("[debug] SATIBOT_MOCK_LLM not found\n", .{});
+                break :blk false;
+            },
+            else => |e| {
+                std.debug.print("Warning: Failed to read SATIBOT_MOCK_LLM env var: {any}\n", .{e});
+                break :blk false;
+            },
+        };
+        defer std.heap.page_allocator.free(result);
+        std.debug.print("[debug] SATIBOT_MOCK_LLM detected: {s}\n", .{result});
+        break :blk true;
+    };
+
+    const provider_interface = getProviderInterface("openrouter", use_mock);
 
     // Chunk callback to collect response
     var response_chunks: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable;
