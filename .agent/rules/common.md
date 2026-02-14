@@ -101,11 +101,11 @@ When writing help text, usage information, or multi-line output, prefer using a 
 ```zig
 fn usage() !void {
     const help_text =
-        \\🐸 satibot - AI Chatbot Framework
+        \\🐸 sati - AI Chatbot Framework
         \\
         \\USAGE:
-        \\  satibot <command> [options] [args...]
-        \\  satibot help <command>    Show detailed help for a command
+        \\  sati <command> [options> [args...]
+        \\  sati help <command>    Show detailed help for a command
         \\
         \\COMMANDS:
         \\  help          Show this help message
@@ -123,10 +123,10 @@ fn usage() !void {
 
 ```zig
 fn usage() !void {
-    std.debug.print("🐸 satibot - AI Chatbot Framework\n\n", .{});
+    std.debug.print("🐸 sati - AI Chatbot Framework\n\n", .{});
     std.debug.print("USAGE:\n", .{});
-    std.debug.print("  satibot <command> [options] [args...]\n", .{});
-    std.debug.print("  satibot help <command>    Show detailed help for a command\n\n", .{});
+    std.debug.print("  sati <command> [options> [args...]\n", .{});
+    std.debug.print("  sati help <command>    Show detailed help for a command\n\n", .{});
     std.debug.print("COMMANDS:\n", .{});
     std.debug.print("  help          Show this help message\n", .{});
     std.debug.print("  agent         Run AI agent in interactive or single message mode\n", .{});

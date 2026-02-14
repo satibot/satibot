@@ -80,7 +80,7 @@ make prod
 # - using `arcee-ai/trinity-large-preview:free`
 # - using `openrouter`
 # - using `telegram`
-satibot in
+sati in
 ```
 
 ### 2. Configure
@@ -110,7 +110,7 @@ Edit `~/.bots/config.json`:
 }
 ```
 
-Add `satibot` to your PATH, for example add to `~/.zshrc`:
+Add `sati` to your PATH, for example add to `~/.zshrc`:
 
 ```bash
 export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
@@ -120,14 +120,14 @@ export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 
 ```bash
 # for console, terminal base
-satibot console
+sati console
 
 # for telegram (sync version - simple & reliable)
-satibot telegram-sync
+sati telegram-sync
 
 # TODO
 # for telegram (async version - high performance)
-# satibot telegram
+# sati telegram
 ```
 
 ### Telegram Bot Versions
@@ -156,11 +156,11 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ## 💬 Chat Integrations
 
-- Telegram: `satibot telegram-sync`
+- Telegram: `sati telegram-sync`
   - [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
   - [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md)
   - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
-- Terminal console: `satibot console`
+- Terminal console: `sati console`
   - [docs/CONSOLE.md](docs/CONSOLE.md)
 
 ---
@@ -187,10 +187,10 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 - **Usage**:
 
 ```bash
-satibot vector-db stats
-satibot vector-db list
-satibot vector-db search "your query" [top_k]
-satibot vector-db add "my name is John"
+sati vector-db stats
+sati vector-db list
+sati vector-db search "your query" [top_k]
+sati vector-db add "my name is John"
 ```
 
 ### 🔧 Skills & Tools

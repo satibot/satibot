@@ -23,7 +23,7 @@ CACHE_DIR     := .zig-cache
 DOC_SRC       := src/root.zig
 DOC_OUT       := docs/api/
 COVERAGE_DIR  := coverage
-BINARY_NAME   := satibot
+BINARY_NAME   := sati
 BINARY_PATH   := $(BUILD_DIR)/bin/$(BINARY_NAME)
 TEST_EXECUTABLE := $(BUILD_DIR)/bin/test
 PREFIX        ?= /usr/local
@@ -111,11 +111,11 @@ build-macos: ## Build for macOS (Intel and Apple Silicon)
 	@echo "Building for macOS..."
 	@mkdir -p releases
 	@zig build -Doptimize=$(RELEASE_MODE) -Dtarget=x86_64-macos -p releases/x86_64-macos
-	@mv releases/x86_64-macos/bin/satibot releases/satibot-x86_64-macos
+	@mv releases/x86_64-macos/bin/sati releases/sati-x86_64-macos
 	@rmdir releases/x86_64-macos/bin 2>/dev/null || true
 	@rmdir releases/x86_64-macos 2>/dev/null || true
 	@zig build -Doptimize=$(RELEASE_MODE) -Dtarget=aarch64-macos -p releases/aarch64-macos
-	@mv releases/aarch64-macos/bin/satibot releases/satibot-arm64-macos
+	@mv releases/aarch64-macos/bin/sati releases/sati-arm64-macos
 	@rmdir releases/aarch64-macos/bin 2>/dev/null || true
 	@rmdir releases/aarch64-macos 2>/dev/null || true
 
@@ -124,11 +124,11 @@ build-linux: ## Build for Linux (x86_64 and ARM64)
 	@echo "Building for Linux..."
 	@mkdir -p releases
 	@zig build -Doptimize=$(RELEASE_MODE) -Dtarget=x86_64-linux -p releases/x86_64-linux
-	@mv releases/x86_64-linux/bin/satibot releases/satibot-x86_64-linux
+	@mv releases/x86_64-linux/bin/sati releases/sati-x86_64-linux
 	@rmdir releases/x86_64-linux/bin 2>/dev/null || true
 	@rmdir releases/x86_64-linux 2>/dev/null || true
 	@zig build -Doptimize=$(RELEASE_MODE) -Dtarget=aarch64-linux -p releases/aarch64-linux
-	@mv releases/aarch64-linux/bin/satibot releases/satibot-arm64-linux
+	@mv releases/aarch64-linux/bin/sati releases/sati-arm64-linux
 	@rmdir releases/aarch64-linux/bin 2>/dev/null || true
 	@rmdir releases/aarch64-linux 2>/dev/null || true
 
@@ -137,7 +137,7 @@ build-windows: ## Build for Windows (x86_64)
 	@echo "Building for Windows..."
 	@mkdir -p releases
 	@zig build -Doptimize=$(RELEASE_MODE) -Dtarget=x86_64-windows -p releases/x86_64-windows
-	@mv releases/x86_64-windows/bin/satibot.exe releases/satibot-x86_64-windows.exe
+	@mv releases/x86_64-windows/bin/sati.exe releases/sati-x86_64-windows.exe
 	@rmdir releases/x86_64-windows/bin 2>/dev/null || true
 	@rmdir releases/x86_64-windows 2>/dev/null || true
 
