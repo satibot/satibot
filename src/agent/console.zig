@@ -49,6 +49,7 @@ fn signalHandler(sig: i32) callconv(.c) void {
 pub const MockContext = struct {
     allocator: std.mem.Allocator,
     config: Config,
+    rag_enabled: bool,
 };
 
 /// Task handler for console messages
@@ -94,7 +95,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     defer allocator.free(session_id);
 
     // Run agent logic with shutdown flag support
-    var agent = try Agent.init(allocator, ctx.config, session_id, true);
+    var agent = try Agent.init(allocator, ctx.config, session_id, ctx.rag_enabled);
     agent.shutdown_flag = &shutdown_requested;
     defer agent.deinit();
 
@@ -134,7 +135,7 @@ pub const MockBot = struct {
     ctx: MockContext,
 
     /// Initialize the Console bot
-    pub fn init(allocator: std.mem.Allocator, config: Config) !*MockBot {
+    pub fn init(allocator: std.mem.Allocator, config: Config, rag_enabled: bool) !*MockBot {
         const self = try allocator.create(MockBot);
 
         self.allocator = allocator;
@@ -143,6 +144,7 @@ pub const MockBot = struct {
         self.ctx = .{
             .allocator = allocator,
             .config = config,
+            .rag_enabled = rag_enabled,
         };
 
         self.event_loop.setTaskHandler(mockTaskHandler);
@@ -242,7 +244,7 @@ test "MockBot logic test" {
     const config = try config_load(allocator);
     defer config.deinit();
 
-    const bot = try MockBot.init(allocator, config.value);
+    const bot = try MockBot.init(allocator, config.value, true);
     defer bot.deinit();
 
     // Verify task adding
@@ -262,7 +264,7 @@ test "MockBot /new command increments session counter" {
     const config = try config_load(allocator);
     defer config.deinit();
 
-    const bot = try MockBot.init(allocator, config.value);
+    const bot = try MockBot.init(allocator, config.value, true);
     defer bot.deinit();
 
     // Test /new command increments counter
@@ -287,7 +289,7 @@ test "MockBot /new with prompt processes prompt after incrementing counter" {
     const config = try config_load(allocator);
     defer config.deinit();
 
-    const bot = try MockBot.init(allocator, config.value);
+    const bot = try MockBot.init(allocator, config.value, true);
     defer bot.deinit();
 
     // Test /new with prompt

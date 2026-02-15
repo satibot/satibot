@@ -65,7 +65,7 @@ pub fn main() !void {
         try runAgent(allocator, args);
     } else if (std.mem.eql(u8, command, "console")) {
         // Run console-based Console bot
-        try runConsole(allocator);
+        try runConsole(allocator, args);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         // Test LLM provider connectivity
         try runTestLlm(allocator);
@@ -221,7 +221,11 @@ fn showCommandHelp(command: []const u8) !void {
             \\CONSOLE COMMAND
             \\
             \\USAGE:
-            \\  sati console
+            \\  sati console [options]
+            \\
+            \\OPTIONS:
+            \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+            \\  --rag              Enable RAG (default)
             \\
             \\DESCRIPTION:
             \\  Runs sati as a console-based interactive bot. This provides
@@ -234,8 +238,9 @@ fn showCommandHelp(command: []const u8) !void {
             \\  exit     Exit the console bot
             \\  quit     Exit the console bot
             \\
-            \\EXAMPLE:
+            \\EXAMPLES:
             \\  sati console
+            \\  sati console --no-rag
             \\
         ;
         std.debug.print("{s}", .{help_text});
@@ -525,17 +530,27 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
 
 /// Run console-based Console bot
 /// Provides interactive console chat using the same agent logic as other platforms
-fn runConsole(allocator: std.mem.Allocator) !void {
+fn runConsole(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // Load configuration
     const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
-    // Display active model and start console bot
-    std.debug.print("Active Model: {s}\nConsole bot started. Type 'exit' or 'quit' to stop.\n", .{config.agents.defaults.model});
+    // Parse command line arguments for --no-rag flag
+    var save_to_rag = true;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "--no-rag")) {
+            save_to_rag = false;
+        } else if (std.mem.eql(u8, arg, "--rag")) {
+            save_to_rag = true;
+        }
+    }
+
+    // Display active model and RAG status
+    std.debug.print("Active Model: {s}\nRAG: {s}\nConsole bot started. Type 'exit' or 'quit' to stop.\n", .{ config.agents.defaults.model, if (save_to_rag) "Enabled" else "Disabled" });
 
     // Import and run the console Console bot
-    var bot = try satibot.console.MockBot.init(allocator, config);
+    var bot = try satibot.console.MockBot.init(allocator, config, save_to_rag);
     defer bot.deinit();
 
     try bot.run();

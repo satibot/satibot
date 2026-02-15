@@ -148,22 +148,25 @@ pub const Agent = struct {
         //     .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
         //     .execute = tools.whatsapp_send_message,
         // }) catch {};
-        @constCast(&self.registry).register(.{
-            .name = "vector_upsert",
-            .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-            .execute = tools.upsertVector,
-        }) catch |err| {
-            std.log.err("Failed to register vector_upsert tool: {any}", .{err});
-        };
-        @constCast(&self.registry).register(.{
-            .name = "vector_search",
-            .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
-            .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
-            .execute = tools.vectorSearch,
-        }) catch |err| {
-            std.log.err("Failed to register vector_search tool: {any}", .{err});
-        };
+        // Only register vector tools when RAG is enabled
+        if (self.rag_enabled) {
+            @constCast(&self.registry).register(.{
+                .name = "vector_upsert",
+                .description = "Add text to vector database for future retrieval. Arguments: {\"text\": \"content to remember\"}",
+                .parameters = "{\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
+                .execute = tools.upsertVector,
+            }) catch |err| {
+                std.log.err("Failed to register vector_upsert tool: {any}", .{err});
+            };
+            @constCast(&self.registry).register(.{
+                .name = "vector_search",
+                .description = "Search vector database for similar content. Arguments: {\"query\": \"search term\", \"top_k\": 3}",
+                .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"top_k\": {\"type\": \"integer\"}}, \"required\": [\"query\"]}",
+                .execute = tools.vectorSearch,
+            }) catch |err| {
+                std.log.err("Failed to register vector_search tool: {any}", .{err});
+            };
+        }
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",

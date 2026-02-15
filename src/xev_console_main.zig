@@ -14,7 +14,7 @@ pub fn main() !void {
     const config = parsed_config.value;
 
     // Initialize and run the Console bot
-    var bot = try console.MockBot.init(allocator, config);
+    var bot = try console.MockBot.init(allocator, config, true);
     defer bot.deinit();
 
     try bot.run();
