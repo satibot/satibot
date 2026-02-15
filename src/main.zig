@@ -559,7 +559,7 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     // Display active model and start bot
-    std.debug.print("Active Model: {s}\nTelegram bot started. Press Ctrl+C to stop.\n", .{config.agents.defaults.model});
+    std.debug.print("Active Model: {s}\nTelegram bot started with sync mode. Press Ctrl+C to stop.\n", .{config.agents.defaults.model});
 
     // Run Telegram bot (blocking call)
     try satibot.telegram_bot_sync.run(allocator, config);
@@ -588,7 +588,7 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     // Display active model and start bot
-    std.debug.print("Active Model: {s}\nSynchronous Telegram bot started. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
+    std.debug.print("Active Model: {s}\nSynchronous Telegram bot started with sync mode. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
 
     // Run synchronous Telegram bot directly using the proper implementation
     try satibot.telegram_bot_sync.run(allocator, config);
