@@ -1,7 +1,6 @@
 /// Session cleanup utility for managing old session files.
 /// Provides functions to clean up old or unused session files.
 const std = @import("std");
-const session = @import("session.zig");
 
 /// Clean up sessions older than the specified number of days.
 pub fn cleanupOldSessions(allocator: std.mem.Allocator, max_age_days: u32) !void {

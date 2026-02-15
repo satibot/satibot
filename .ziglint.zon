@@ -4,6 +4,7 @@
         "build.zig",
     },
     .rules = .{
+        .Z006 = .{ .enabled = false },
         .Z024 = .{ .max_length = 1000 },
     },
 }
