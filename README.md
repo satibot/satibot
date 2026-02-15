@@ -20,7 +20,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 | Feature | OpenClaw | NanoBot | PicoClaw | satibot |
 |---|---|---|---|---|
 | **Language** | TypeScript | Python | Go | Zig |
-| **RAM Usage** | >1GB | >100MB | < 10MB | < 4MB |
+| **RAM Usage** | >1GB | >100MB | < 10MB | < 4MB (disable RAG with `--no-rag` option) |
 | **Startup Time**<br>(0.8GHz core) | >500s | >30s | <1s | ?s |
 | **Cost** | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
 | src | [openclaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | [picoclaw](https://github.com/sipeed/picoclaw) | [satibot](https://github.com/satibot/satibot) |
@@ -165,7 +165,7 @@ TODO
 
 - High-performance, event-driven
 - Processes multiple messages concurrently
-- Higher resource usage - RAM usage ~3.5MB on macOS M1
+- Higher resource usage - RAM usage ~3.5MB on macOS M1 (disable RAG with `--no-rag` option)
 
 See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
 
