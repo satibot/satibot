@@ -294,3 +294,11 @@ Inspired by [TigerStyle](https://github.com/tigerbeetle/tigerbeetle/blob/main/do
 
 - Explain *why* the code exists, not *what* it does
 - Document non-obvious thresholds, timing values, protocol details
+
+## Performance
+
+Find variables that can be mutated for performance optimization and reduce RAM usage.
+
+- Data structures that could be mutated instead of copied
+- String/array allocations that could be reused
+- Clone/copy operations that could be avoided
