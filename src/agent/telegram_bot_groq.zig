@@ -278,7 +278,7 @@ pub const TelegramBot = struct {
                         // Spin up a fresh Agent instance for this interaction.
                         // The Agent loads the session state from disk based on session_id.
                         const active_session = new_session_id orelse session_id;
-                        var agent = Agent.init(self.allocator, self.config, active_session);
+                        var agent = try Agent.init(self.allocator, self.config, active_session);
                         defer agent.deinit();
 
                         // Send initial "typing" action to show the user we're processing.

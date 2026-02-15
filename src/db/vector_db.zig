@@ -66,9 +66,22 @@ pub const VectorStore = struct {
         const count = @min(top_k, results.len);
         const final_results = try self.allocator.alloc(VectorEntry, count);
         for (0..count) |i| {
-            final_results[i] = results[i].entry;
+            // Create deep copies of search results to prevent dangling pointers
+            final_results[i] = .{
+                .text = try self.allocator.dupe(u8, results[i].entry.text),
+                .embedding = try self.allocator.dupe(f32, results[i].entry.embedding),
+            };
         }
         return final_results;
+    }
+
+    /// Free search results allocated by search function
+    pub fn freeSearchResults(self: *VectorStore, results: []const VectorEntry) void {
+        for (results) |entry| {
+            self.allocator.free(entry.text);
+            self.allocator.free(entry.embedding);
+        }
+        self.allocator.free(results);
     }
 
     fn cosineSimilarity(a: []const f32, b: []const f32) f32 {

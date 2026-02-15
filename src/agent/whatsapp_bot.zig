@@ -112,7 +112,7 @@ pub const WhatsAppBot = struct {
 
         // Spin up a fresh Agent instance for this interaction
         const active_session = new_session_id orelse session_id;
-        var agent = Agent.init(self.allocator, self.config, active_session);
+        var agent = try Agent.init(self.allocator, self.config, active_session);
         defer agent.deinit();
 
         // Run the agent loop (LLM inference + Tool execution)

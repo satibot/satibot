@@ -420,7 +420,7 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     try store.load(path);
     const results = try store.search(resp.embeddings[0], parsed.value.top_k.?);
-    defer ctx.allocator.free(results);
+    defer store.freeSearchResults(results);
 
     var result_text: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.allocator, 1024) catch unreachable;
     defer result_text.deinit(ctx.allocator);

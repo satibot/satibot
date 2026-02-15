@@ -180,7 +180,7 @@ pub const TelegramBot = struct {
                     // Create a fresh Agent instance for this interaction
                     // The agent loads session state from disk based on session_id
                     // Each message gets its own agent instance to ensure isolation
-                    var agent = Agent.init(self.allocator, self.config, session_id);
+                    var agent = try Agent.init(self.allocator, self.config, session_id);
                     defer agent.deinit();
 
                     // Send typing indicator to show user that bot is processing

@@ -94,7 +94,7 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     defer allocator.free(session_id);
 
     // Run agent logic with shutdown flag support
-    var agent = Agent.init(allocator, ctx.config, session_id);
+    var agent = try Agent.init(allocator, ctx.config, session_id);
     agent.shutdown_flag = &shutdown_requested;
     defer agent.deinit();
 

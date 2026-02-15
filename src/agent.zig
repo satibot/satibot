@@ -30,8 +30,8 @@ pub const Agent = struct {
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
     /// Registers all default tools automatically.
-    pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8) Agent {
-        const self: Agent = .{
+    pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8) !Agent {
+        var self: Agent = .{
             .config = config,
             .allocator = allocator,
             .ctx = context.Context.init(allocator),
@@ -39,28 +39,33 @@ pub const Agent = struct {
             .session_id = session_id,
         };
 
-        // Load history
-        // Note: Skipping loading messages into context during init to avoid const issues
-        // Messages will be loaded when needed
+        // Load session history into context
         if (session.load(allocator, session_id)) |history| {
-            // Note: we should free history and its elements after adding to context
-            // But context.addMessage dupes them.
-            // So we need to free the history we loaded.
-            for (history) |msg| {
-                allocator.free(msg.role);
-                if (msg.content) |c| allocator.free(c);
-                if (msg.tool_call_id) |id| allocator.free(id);
-                if (msg.tool_calls) |calls| {
-                    for (calls) |call| {
-                        allocator.free(call.id);
-                        allocator.free(call.type);
-                        allocator.free(call.function.name);
-                        allocator.free(call.function.arguments);
+            defer {
+                // Free the loaded history after adding to context
+                for (history) |msg| {
+                    allocator.free(msg.role);
+                    if (msg.content) |c| allocator.free(c);
+                    if (msg.tool_call_id) |id| allocator.free(id);
+                    if (msg.tool_calls) |calls| {
+                        for (calls) |call| {
+                            allocator.free(call.id);
+                            allocator.free(call.type);
+                            allocator.free(call.function.name);
+                            allocator.free(call.function.arguments);
+                        }
+                        allocator.free(calls);
                     }
-                    allocator.free(calls);
                 }
+                allocator.free(history);
             }
-            allocator.free(history);
+
+            // Add loaded messages to context (context.addMessage creates deep copies)
+            for (history) |msg| {
+                self.ctx.addMessage(msg) catch |err| {
+                    std.log.err("Failed to load message into context: {any}", .{err});
+                };
+            }
         } else |_| {}
 
         // Register default tools - only vector tools are active
@@ -261,7 +266,7 @@ pub const Agent = struct {
         const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, std.time.milliTimestamp() });
         defer ctx.allocator.free(sub_session_id);
 
-        var subagent = Agent.init(ctx.allocator, ctx.config, sub_session_id);
+        var subagent = try Agent.init(ctx.allocator, ctx.config, sub_session_id);
         defer subagent.deinit();
 
         try subagent.run(task);
@@ -583,7 +588,7 @@ test "Agent: init and tool registration" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     // Only vector tools are registered by default (others are commented out)
@@ -603,7 +608,7 @@ test "Agent: message context management" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     // Initially should have empty context (except possibly loaded from session)
@@ -636,7 +641,7 @@ test "Agent: tool registry operations" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     // Test getting existing vector tools
@@ -673,7 +678,7 @@ test "Agent: session management" {
     defer parsed.deinit();
 
     const test_session_id = "test-session-123";
-    var agent = Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
     defer agent.deinit();
 
     try std.testing.expectEqualStrings(test_session_id, agent.session_id);
@@ -698,7 +703,7 @@ test "Agent: config integration" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     try std.testing.expectEqualStrings("anthropic/claude-3-sonnet", agent.config.agents.defaults.model);
@@ -718,7 +723,7 @@ test "Agent: conversation indexing" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     // Add some messages to the context
@@ -751,7 +756,7 @@ test "Agent: respect disableRag flag" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
     defer agent.deinit();
 
     try agent.ctx.addMessage(.{ .role = "user", .content = "What is Zig?" });
