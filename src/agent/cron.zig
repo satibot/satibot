@@ -181,7 +181,7 @@ pub const CronStore = struct {
         const session_id = try std.fmt.allocPrint(self.allocator, "cron_{s}", .{job.id});
         defer self.allocator.free(session_id);
 
-        var agent = try Agent.init(self.allocator, config, session_id);
+        var agent = try Agent.init(self.allocator, config, session_id, true);
         defer agent.deinit();
 
         agent.run(job.payload.message) catch |err| {

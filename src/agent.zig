@@ -22,6 +22,7 @@ pub const Agent = struct {
     ctx: context.Context,
     registry: tools.ToolRegistry,
     session_id: []const u8,
+    rag_enabled: bool,
     on_chunk: ?base.ChunkCallback = null,
     chunk_ctx: ?*anyopaque = null,
     last_chunk: ?[]const u8 = null,
@@ -33,13 +34,14 @@ pub const Agent = struct {
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
     /// Registers all default tools automatically.
-    pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8) !Agent {
+    pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8, rag_enabled: bool) !Agent {
         var self: Agent = .{
             .config = config,
             .allocator = allocator,
             .ctx = context.Context.init(allocator),
             .registry = tools.ToolRegistry.init(allocator),
             .session_id = session_id,
+            .rag_enabled = rag_enabled,
             .last_error = null,
         };
 
@@ -231,7 +233,13 @@ pub const Agent = struct {
 
         var prompt_builder: std.ArrayList(u8) = .empty;
         defer prompt_builder.deinit(self.allocator);
-        try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+
+        // Only add vector database prompts when RAG is enabled
+        if (self.rag_enabled) {
+            try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+        } else {
+            try prompt_builder.appendSlice(self.allocator, "You can read, write, and list files in the current directory if needed.\n");
+        }
 
         if (self.config.tools.web.search.apiKey) |key| {
             if (key.len > 0) {
@@ -284,7 +292,7 @@ pub const Agent = struct {
         const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, std.time.milliTimestamp() });
         defer ctx.allocator.free(sub_session_id);
 
-        var subagent = try Agent.init(ctx.allocator, ctx.config, sub_session_id);
+        var subagent = try Agent.init(ctx.allocator, ctx.config, sub_session_id, true);
         defer subagent.deinit();
 
         try subagent.run(task);
@@ -614,7 +622,7 @@ test "Agent: init and tool registration" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Only vector tools are registered by default (others are commented out)
@@ -634,7 +642,7 @@ test "Agent: message context management" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Initially should have empty context (except possibly loaded from session)
@@ -655,6 +663,123 @@ test "Agent: message context management" {
     }
 }
 
+test "Agent: RAG flag system prompt generation" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test with RAG enabled
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-enabled", true);
+        defer agent.deinit();
+
+        try agent.ensureSystemPrompt();
+        const messages = agent.ctx.getMessages();
+        try std.testing.expect(messages.len == 1);
+        try std.testing.expectEqualStrings("system", messages[0].role);
+
+        const content = messages[0].content.?;
+        try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "vector_search") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "vector_upsert") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+    }
+
+    // Test with RAG disabled
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-disabled", false);
+        defer agent.deinit();
+
+        try agent.ensureSystemPrompt();
+        const messages = agent.ctx.getMessages();
+        try std.testing.expect(messages.len == 1);
+        try std.testing.expectEqualStrings("system", messages[0].role);
+
+        const content = messages[0].content.?;
+        try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") == null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "vector_search") == null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "vector_upsert") == null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+    }
+}
+
+test "Agent: RAG flag with web search" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "test-api-key" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test with RAG enabled and web search
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-web-enabled", true);
+        defer agent.deinit();
+
+        try agent.ensureSystemPrompt();
+        const messages = agent.ctx.getMessages();
+        try std.testing.expect(messages.len == 1);
+
+        const content = messages[0].content.?;
+        try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "web_search") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+    }
+
+    // Test with RAG disabled but web search enabled
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-disabled-web-enabled", false);
+        defer agent.deinit();
+
+        try agent.ensureSystemPrompt();
+        const messages = agent.ctx.getMessages();
+        try std.testing.expect(messages.len == 1);
+
+        const content = messages[0].content.?;
+        try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") == null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "web_search") != null);
+        try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+    }
+}
+
+test "Agent: rag_enabled field initialization" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test with RAG enabled
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-field-true", true);
+        defer agent.deinit();
+        try std.testing.expect(agent.rag_enabled == true);
+    }
+
+    // Test with RAG disabled
+    {
+        var agent = try Agent.init(allocator, parsed.value, "test-rag-field-false", false);
+        defer agent.deinit();
+        try std.testing.expect(agent.rag_enabled == false);
+    }
+}
+
 test "Agent: tool registry operations" {
     const allocator = std.testing.allocator;
     const config_json =
@@ -667,7 +792,7 @@ test "Agent: tool registry operations" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Test getting existing vector tools
@@ -709,7 +834,7 @@ test "Agent: loadChatHistory disabled" {
     defer parsed.deinit();
 
     const test_session_id = "test-session-no-history";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     // Should start with empty context (no system prompt yet, no loaded history)
@@ -735,7 +860,7 @@ test "Agent: loadChatHistory enabled with no existing session" {
     defer parsed.deinit();
 
     const test_session_id = "test-session-nonexistent";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     // Should start with empty context (no existing session to load)
@@ -765,7 +890,7 @@ test "Agent: maxChatHistory limits loaded messages" {
     try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 2);
 
     const test_session_id = "test-session-max-history";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     // Should start with empty context (no existing session to load)
@@ -794,7 +919,7 @@ test "Agent: maxChatHistory default value" {
     try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 2);
 
     const test_session_id = "test-session-default-max";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     const messages = agent.ctx.getMessages();
@@ -823,7 +948,7 @@ test "Agent: maxChatHistory custom value" {
     try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 5);
 
     const test_session_id = "test-session-custom-max";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     const messages = agent.ctx.getMessages();
@@ -850,7 +975,7 @@ test "Agent: loadChatHistory default behavior" {
     try std.testing.expect(parsed.value.agents.defaults.loadChatHistory == false);
 
     const test_session_id = "test-session-default";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     // Should start with empty context (default is disabled)
@@ -871,7 +996,7 @@ test "Agent: session management" {
     defer parsed.deinit();
 
     const test_session_id = "test-session-123";
-    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    var agent = try Agent.init(allocator, parsed.value, test_session_id, true);
     defer agent.deinit();
 
     try std.testing.expectEqualStrings(test_session_id, agent.session_id);
@@ -896,7 +1021,7 @@ test "Agent: config integration" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     try std.testing.expectEqualStrings("anthropic/claude-3-sonnet", agent.config.agents.defaults.model);
@@ -916,7 +1041,7 @@ test "Agent: conversation indexing" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Add some messages to the context
@@ -949,7 +1074,7 @@ test "Agent: respect disableRag flag" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     try agent.ctx.addMessage(.{ .role = "user", .content = "What is Zig?" });
@@ -975,7 +1100,7 @@ test "Agent: last_error field initialization and handling" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Test that last_error is initialized to null
@@ -1005,7 +1130,7 @@ test "Agent: last_error field is preserved during operations" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
     // Set an error message
@@ -1036,7 +1161,7 @@ test "Agent: last_error field cleanup on deinit" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
 
     // Set an error message
     const error_msg = "Error to be cleaned up";
@@ -1125,7 +1250,7 @@ test "Chat memory: Agent memory usage during conversation simulation" {
     defer parsed.deinit();
 
     const session_id = "memory-test-session";
-    var agent = try Agent.init(allocator, parsed.value, session_id);
+    var agent = try Agent.init(allocator, parsed.value, session_id, true);
     defer agent.deinit();
 
     // Measure initial agent memory (context + registry)

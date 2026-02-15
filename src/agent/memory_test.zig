@@ -152,7 +152,7 @@ test "Chat memory: Agent memory usage during conversation simulation" {
     defer parsed.deinit();
 
     const session_id = "memory-test-session";
-    var agent = try Agent.init(allocator, parsed.value, session_id);
+    var agent = try Agent.init(allocator, parsed.value, session_id, true);
     defer agent.deinit();
 
     // Measure initial agent memory (context + registry)

@@ -439,7 +439,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     // If no message provided, enter interactive mode
     if (message.len == 0) {
         std.debug.print("Entering interactive mode. Type 'exit' or 'quit' to end.\n", .{});
-        var agent = try satibot.Agent.init(allocator, config, session_id);
+        var agent = try satibot.Agent.init(allocator, config, session_id, save_to_rag);
         defer agent.deinit();
 
         // Read from stdin for interactive mode
@@ -476,7 +476,7 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     }
 
     // Initialize agent with session
-    var agent = try satibot.Agent.init(allocator, config, session_id);
+    var agent = try satibot.Agent.init(allocator, config, session_id, save_to_rag);
     defer agent.deinit();
 
     // Process single message

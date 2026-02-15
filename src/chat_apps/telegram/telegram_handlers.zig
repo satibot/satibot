@@ -308,7 +308,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
 
     // Process message using functional approach
     std.debug.print("Calling messages.processMessage()...\n", .{});
-    const result = messages.processMessage(allocator, ctx.config, session_id, tg_data.text) catch |err| {
+    const result = messages.processMessage(allocator, ctx.config, session_id, tg_data.text, true) catch |err| {
         std.debug.print("Error processing message: {any}\n", .{err});
         // Mark processing as complete
         processing_done.* = true;

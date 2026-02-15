@@ -214,27 +214,31 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
 }
 
 /// Ensure a system prompt exists in the session history
-fn ensureSystemPrompt(history: *SessionHistory, config: Config) !void {
+fn ensureSystemPrompt(history: *SessionHistory, config: Config, rag_enabled: bool) !void {
     for (history.messages.items) |msg| {
         if (std.mem.eql(u8, msg.role, "system")) return;
     }
 
-    const base_prompt = "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n";
+    var prompt_builder: std.ArrayList(u8) = .empty;
+    defer prompt_builder.deinit(history.allocator);
 
-    const has_web_search = config.tools.web.search.apiKey != null and config.tools.web.search.apiKey.?.len > 0;
+    // Always include file operations prompt
+    try prompt_builder.appendSlice(history.allocator, "You can read, write, and list files in the current directory if needed.\n");
 
-    if (has_web_search) {
-        const full_prompt = "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\nUse 'web_search' for current events or information you don't have.\n";
-        try history.addMessage(.{
-            .role = "system",
-            .content = full_prompt,
-        });
-    } else {
-        try history.addMessage(.{
-            .role = "system",
-            .content = base_prompt,
-        });
+    // Add web search prompt if available
+    if (config.tools.web.search.apiKey != null and config.tools.web.search.apiKey.?.len > 0) {
+        try prompt_builder.appendSlice(history.allocator, "Use 'web_search' for current events or information you don't have.\n");
     }
+
+    // Add vector database prompt if RAG is enabled
+    if (rag_enabled) {
+        try prompt_builder.appendSlice(history.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\n");
+    }
+
+    try history.addMessage(.{
+        .role = "system",
+        .content = prompt_builder.items,
+    });
 }
 
 /// Load session history from storage
@@ -312,13 +316,14 @@ pub fn processMessage(
     config: Config,
     session_id: []const u8,
     user_message: []const u8,
+    rag_enabled: bool,
 ) !struct { history: SessionHistory, response: ?[]const u8, error_msg: ?[]const u8 } {
     // Load session history
     var history = try loadSessionHistory(allocator, session_id);
     errdefer history.deinit();
 
     // Ensure system prompt
-    try ensureSystemPrompt(&history, config);
+    try ensureSystemPrompt(&history, config, rag_enabled);
 
     // Add user message
     const user_msg: Message = .{

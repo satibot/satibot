@@ -24,7 +24,7 @@ test "Agent: struct field initialization" {
     defer parsed.deinit();
 
     const test_session_id = "test-session";
-    var test_agent = try agent.Agent.init(allocator, parsed.value, test_session_id);
+    var test_agent = try agent.Agent.init(allocator, parsed.value, test_session_id, true);
     defer test_agent.deinit();
 
     try std.testing.expectEqualStrings(test_session_id, test_agent.session_id);
@@ -48,7 +48,7 @@ test "Agent: init with minimal config" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "minimal-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "minimal-test", true);
     defer test_agent.deinit();
 
     // Should initialize without errors
@@ -71,7 +71,7 @@ test "Agent: init with web search API key" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "web-search-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "web-search-test", true);
     defer test_agent.deinit();
 
     // Should still have vector tools registered
@@ -91,7 +91,7 @@ test "Agent: ensure_system_prompt adds system message" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "system-prompt-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "system-prompt-test", true);
     defer test_agent.deinit();
 
     // Initially should not have system message (unless loaded from session)
@@ -127,7 +127,7 @@ test "Agent: ensure_system_prompt doesn't duplicate" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "no-duplicate-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "no-duplicate-test", true);
     defer test_agent.deinit();
 
     // Add a system message manually
@@ -159,7 +159,7 @@ test "Agent: context operations" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "context-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "context-test", true);
     defer test_agent.deinit();
 
     // Add messages to context
@@ -193,7 +193,7 @@ test "Agent: tool registry functionality" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "registry-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "registry-test", true);
     defer test_agent.deinit();
 
     // Test vector_upsert tool
@@ -227,7 +227,7 @@ test "Agent: chunk callback functionality" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "chunk-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "chunk-test", true);
     defer test_agent.deinit();
 
     // Test setting chunk callback with global state
@@ -267,7 +267,7 @@ test "Agent: shutdown flag functionality" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "shutdown-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "shutdown-test", true);
     defer test_agent.deinit();
 
     // Test with shutdown flag
@@ -333,7 +333,7 @@ test "Agent: indexConversation with disableRag" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "rag-disabled-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "rag-disabled-test", true);
     defer test_agent.deinit();
 
     // Add some messages to the context
@@ -356,7 +356,7 @@ test "Agent: indexConversation with insufficient messages" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "insufficient-msgs-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "insufficient-msgs-test", true);
     defer test_agent.deinit();
 
     // Add only one message
@@ -378,7 +378,7 @@ test "Agent: memory management in deinit" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "memory-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "memory-test", true);
 
     // Add some data that needs cleanup
     try test_agent.ctx.add_message(.{ .role = "user", .content = "Test message" });
@@ -406,7 +406,7 @@ test "Agent: tool context creation" {
     const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    var test_agent = try agent.Agent.init(allocator, parsed.value, "tool-context-test");
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "tool-context-test", true);
     defer test_agent.deinit();
 
     // The tool context is created internally during run, but we can verify
@@ -435,7 +435,7 @@ test "Agent: session ID handling" {
     };
 
     for (session_ids) |session_id| {
-        var test_agent = try agent.Agent.init(allocator, parsed.value, session_id);
+        var test_agent = try agent.Agent.init(allocator, parsed.value, session_id, true);
         defer test_agent.deinit();
 
         try std.testing.expectEqualStrings(session_id, test_agent.session_id);
@@ -480,7 +480,7 @@ test "Agent: configuration integration" {
         const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
-        var test_agent = try agent.Agent.init(allocator, parsed.value, "config-test");
+        var test_agent = try agent.Agent.init(allocator, parsed.value, "config-test", true);
         defer test_agent.deinit();
 
         // Should initialize successfully with different config variations
