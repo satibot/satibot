@@ -7,6 +7,13 @@ pub const Task = struct {
     id: []const u8,
     data: []const u8,
     source: []const u8,
+
+    /// Free all heap-allocated fields
+    pub fn deinit(self: Task, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        allocator.free(self.data);
+        allocator.free(self.source);
+    }
 };
 
 /// Event structure for scheduled events
@@ -18,6 +25,14 @@ pub const Event = struct {
 
     pub fn compare(_: void, a: Event, b: Event) std.math.Order {
         return std.math.order(a.expires, b.expires);
+    }
+
+    /// Free all heap-allocated fields
+    pub fn deinit(self: Event, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
+        if (self.payload) |p| {
+            allocator.free(p);
+        }
     }
 };
 
@@ -46,6 +61,8 @@ pub const XevEventLoop = struct {
     task_mutex: std.Thread.Mutex,
     // Condition variable for task queue
     task_condition: std.Thread.Condition,
+    // Counter for pending tasks (atomic for lock-free checking)
+    pending_tasks: std.atomic.Value(usize),
 
     // Priority queue for scheduled events
     event_queue: std.PriorityQueue(Event, void, Event.compare),
@@ -81,6 +98,7 @@ pub const XevEventLoop = struct {
             .task_queue = std.ArrayList(Task).initCapacity(allocator, 0) catch return error.OutOfMemory,
             .task_mutex = .{},
             .task_condition = .{},
+            .pending_tasks = std.atomic.Value(usize).init(0),
             .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
             .event_mutex = .{},
             .task_handler = null,
@@ -117,6 +135,7 @@ pub const XevEventLoop = struct {
         defer self.task_mutex.unlock();
 
         try self.task_queue.append(self.allocator, task);
+        _ = self.pending_tasks.fetchAdd(1, .seq_cst);
         self.task_condition.signal();
     }
 
@@ -155,7 +174,7 @@ pub const XevEventLoop = struct {
     /// Process all pending tasks in the queue
     fn processPendingTasks(self: *XevEventLoop) void {
         var processed: usize = 0;
-        while (true) {
+        while (self.pending_tasks.load(.seq_cst) > 0) {
             self.task_mutex.lock();
             if (self.task_queue.items.len == 0) {
                 self.task_mutex.unlock();
@@ -166,6 +185,7 @@ pub const XevEventLoop = struct {
             }
 
             const task = self.task_queue.orderedRemove(0);
+            _ = self.pending_tasks.fetchSub(1, .seq_cst);
             self.task_mutex.unlock();
 
             // Process task
@@ -177,10 +197,8 @@ pub const XevEventLoop = struct {
                 std.debug.print("[Task {s}] {s}: {s}\n", .{ task.id, task.source, task.data });
             }
 
-            // Free task memory
-            self.allocator.free(task.id);
-            self.allocator.free(task.data);
-            self.allocator.free(task.source);
+            // Free task memory using deinit method
+            task.deinit(self.allocator);
             processed += 1;
         }
     }
@@ -199,6 +217,7 @@ pub const XevEventLoop = struct {
             }
 
             const task = self.task_queue.orderedRemove(0);
+            _ = self.pending_tasks.fetchSub(1, .seq_cst);
             self.task_mutex.unlock();
 
             // Process task
@@ -210,10 +229,8 @@ pub const XevEventLoop = struct {
                 std.debug.print("[Thread {d}] Task {s} from {s}: {s}\n", .{ thread_id, task.id, task.source, task.data });
             }
 
-            // Free task memory
-            self.allocator.free(task.id);
-            self.allocator.free(task.data);
-            self.allocator.free(task.source);
+            // Free task memory using deinit method
+            task.deinit(self.allocator);
         }
     }
 
@@ -252,18 +269,17 @@ pub const XevEventLoop = struct {
 
                     if (self.event_handler) |handler| {
                         handler(self.allocator, event) catch |err| {
-                            std.debug.print("Error processing event: {any}\n", .{err});
+                            std.debug.print("Error processing event {s}: {any}\n", .{ event.id, err });
                         };
                     }
 
-                    // Free event memory
-                    self.allocator.free(event.id);
-                    if (event.payload) |p| {
-                        self.allocator.free(p);
-                    }
+                    // Free event memory using deinit method
+                    event.deinit(self.allocator);
                 } else {
-                    // Wait for next event or task - use a short timeout to keep checking
-                    const delay_ms = 100; // Check every 100ms
+                    // Calculate dynamic delay based on next event timing
+                    const delay_ns = next_event.expires - now;
+                    const delay_ms: u64 = @max(1, @min(100, @as(u64, @intCast(@divTrunc(delay_ns, std.time.ns_per_ms))))); // Clamp between 1-100ms
+
                     self.timer.run(&self.loop, &self.timer_completion, delay_ms * std.time.ns_per_ms, XevEventLoop, self, timerCallback);
 
                     // Run the loop with a single iteration
@@ -298,15 +314,12 @@ pub const XevEventLoop = struct {
 
                 if (self.event_handler) |handler| {
                     handler(self.allocator, due_event) catch |err| {
-                        std.debug.print("Error processing event: {any}\n", .{err});
+                        std.debug.print("Error processing event {s}: {any}\n", .{ due_event.id, err });
                     };
                 }
 
-                // Free event memory
-                self.allocator.free(due_event.id);
-                if (due_event.payload) |p| {
-                    self.allocator.free(p);
-                }
+                // Free event memory using deinit method
+                due_event.deinit(self.allocator);
             } else {
                 break;
             }
@@ -326,9 +339,7 @@ pub const XevEventLoop = struct {
         // Free remaining tasks
         self.task_mutex.lock();
         for (self.task_queue.items) |task| {
-            self.allocator.free(task.id);
-            self.allocator.free(task.data);
-            self.allocator.free(task.source);
+            task.deinit(self.allocator);
         }
         self.task_queue.deinit(self.allocator);
         self.task_mutex.unlock();
@@ -336,10 +347,7 @@ pub const XevEventLoop = struct {
         // Free remaining events
         self.event_mutex.lock();
         while (self.event_queue.removeOrNull()) |event| {
-            self.allocator.free(event.id);
-            if (event.payload) |p| {
-                self.allocator.free(p);
-            }
+            event.deinit(self.allocator);
         }
         self.event_queue.deinit();
         self.event_mutex.unlock();
