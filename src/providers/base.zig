@@ -230,6 +230,10 @@ pub fn executeWithRetry(
                         std.debug.print("\n❌ Model doesn't support tools. Please use a model that supports function calling.\n", .{});
                         return err;
                     },
+                    OpenRouterError.RateLimitExceeded => {
+                        std.debug.print("\n⚠️ Rate limit exceeded (Model: {s}). Not retrying to avoid further limits.\n", .{model});
+                        return err;
+                    },
                     OpenRouterError.ApiRequestFailed => {
                         std.debug.print("\n⚠️ API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
                         std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
@@ -253,6 +257,8 @@ pub fn executeWithRetry(
     std.debug.print("\n❌ Failed after {d} retries. The service may be experiencing high load or temporary issues. Please try again later.\n", .{max_retries});
     return error.NetworkRetryFailed;
 }
+
+// --- Unit Tests ---
 
 test "ToolCall: struct fields" {
     const call: ToolCall = .{
@@ -605,4 +611,158 @@ test "ProviderInterface: function pointer compatibility" {
     };
 
     try std.testing.expectEqualStrings("MockProvider", interface.getProviderName());
+}
+
+test "executeWithRetry handles RateLimitExceeded without retry" {
+    const allocator = std.testing.allocator;
+
+    // Mock provider that returns RateLimitExceeded error
+    const MockProvider = struct {
+        fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
+            _ = ctx;
+            _ = config;
+            return "test-key";
+        }
+
+        fn initProvider(alloc: std.mem.Allocator, api_key: []const u8) !*anyopaque {
+            _ = alloc;
+            _ = api_key;
+            return @as(*anyopaque, @ptrCast(@alignCast(@constCast(&@as(u8, 0)))));
+        }
+
+        fn deinitProvider(provider: *anyopaque) void {
+            _ = provider;
+        }
+
+        fn chatStream(
+            provider: *anyopaque,
+            messages: []const LlmMessage,
+            model: []const u8,
+            tools: []const ToolDefinition,
+            chunk_callback: ChunkCallback,
+            callback_ctx: ?*anyopaque,
+        ) !LlmResponse {
+            _ = provider;
+            _ = messages;
+            _ = model;
+            _ = tools;
+            _ = chunk_callback;
+            _ = callback_ctx;
+            return error.RateLimitExceeded;
+        }
+
+        fn getProviderName() []const u8 {
+            return "MockProvider";
+        }
+    };
+
+    const interface: ProviderInterface = .{
+        .ctx = undefined,
+        .getApiKey = MockProvider.getApiKey,
+        .initProvider = MockProvider.initProvider,
+        .deinitProvider = MockProvider.deinitProvider,
+        .chatStream = MockProvider.chatStream,
+        .getProviderName = MockProvider.getProviderName,
+    };
+
+    const messages = [_]LlmMessage{.{ .role = "user", .content = "Hello" }};
+    const tools: []const ToolDefinition = &[_]ToolDefinition{};
+
+    const mockCallback = struct {
+        fn callback(ctx: ?*anyopaque, chunk: []const u8) void {
+            _ = ctx;
+            _ = chunk;
+        }
+    }.callback;
+
+    // Test that RateLimitExceeded is returned immediately without retry
+    const result = executeWithRetry(
+        interface,
+        allocator,
+        .{ .providers = .{}, .agents = .{ .defaults = .{ .model = "test" } }, .tools = .{ .web = .{ .search = .{} } } },
+        &messages,
+        "test-model",
+        tools,
+        mockCallback,
+        null,
+    );
+
+    try std.testing.expectError(OpenRouterError.RateLimitExceeded, result);
+}
+
+test "executeWithRetry handles ModelNotSupported without retry" {
+    const allocator = std.testing.allocator;
+
+    // Mock provider that returns ModelNotSupported error
+    const MockProvider = struct {
+        fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
+            _ = ctx;
+            _ = config;
+            return "test-key";
+        }
+
+        fn initProvider(alloc: std.mem.Allocator, api_key: []const u8) !*anyopaque {
+            _ = alloc;
+            _ = api_key;
+            return @as(*anyopaque, @ptrCast(@alignCast(@constCast(&@as(u8, 0)))));
+        }
+
+        fn deinitProvider(provider: *anyopaque) void {
+            _ = provider;
+        }
+
+        fn chatStream(
+            provider: *anyopaque,
+            messages: []const LlmMessage,
+            model: []const u8,
+            tools: []const ToolDefinition,
+            chunk_callback: ChunkCallback,
+            callback_ctx: ?*anyopaque,
+        ) !LlmResponse {
+            _ = provider;
+            _ = messages;
+            _ = model;
+            _ = tools;
+            _ = chunk_callback;
+            _ = callback_ctx;
+            return error.ModelNotSupported;
+        }
+
+        fn getProviderName() []const u8 {
+            return "MockProvider";
+        }
+    };
+
+    const interface: ProviderInterface = .{
+        .ctx = undefined,
+        .getApiKey = MockProvider.getApiKey,
+        .initProvider = MockProvider.initProvider,
+        .deinitProvider = MockProvider.deinitProvider,
+        .chatStream = MockProvider.chatStream,
+        .getProviderName = MockProvider.getProviderName,
+    };
+
+    const messages = [_]LlmMessage{.{ .role = "user", .content = "Hello" }};
+    const tools: []const ToolDefinition = &[_]ToolDefinition{};
+
+    const mockCallback = struct {
+        fn callback(ctx: ?*anyopaque, chunk: []const u8) void {
+            _ = ctx;
+            _ = chunk;
+        }
+    }.callback;
+
+    // Test that ModelNotSupported is returned immediately without retry
+    const result = executeWithRetry(
+        interface,
+        allocator,
+        .{ .providers = .{}, .agents = .{ .defaults = .{ .model = "test" } }, .tools = .{ .web = .{ .search = .{} } } },
+        &messages,
+        "test-model",
+        tools,
+        mockCallback,
+        null,
+    );
+
+    try std.testing.expectError(OpenRouterError.ModelNotSupported, result);
 }

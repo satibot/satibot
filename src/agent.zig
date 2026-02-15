@@ -4,6 +4,7 @@ const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");
 const providers = @import("root.zig");
 const base = @import("providers/base.zig");
+const OpenRouterError = @import("providers/openrouter.zig").OpenRouterError;
 const session = @import("db/session.zig");
 const local_embeddings = @import("db/local_embeddings.zig");
 
@@ -26,6 +27,8 @@ pub const Agent = struct {
     last_chunk: ?[]const u8 = null,
     /// Optional shutdown flag to check during long-running operations
     shutdown_flag: ?*const std.atomic.Value(bool) = null,
+    /// Stores the last error message from provider for display to user
+    last_error: ?[]const u8 = null,
 
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
@@ -37,6 +40,7 @@ pub const Agent = struct {
             .ctx = context.Context.init(allocator),
             .registry = tools.ToolRegistry.init(allocator),
             .session_id = session_id,
+            .last_error = null,
         };
 
         // Load session history into context
@@ -229,6 +233,7 @@ pub const Agent = struct {
         self.ctx.deinit();
         self.registry.deinit();
         if (self.last_chunk) |chunk| self.allocator.free(chunk);
+        if (self.last_error) |err| self.allocator.free(err);
         self.* = undefined;
     }
 
@@ -449,6 +454,14 @@ pub const Agent = struct {
                 internal_cb,
                 self,
             ) catch |err| {
+                // Capture error message for display to user
+                const err_msg = switch (err) {
+                    error.NetworkRetryFailed => "Service unavailable after multiple retries",
+                    error.NoApiKey => "No API key configured",
+                    OpenRouterError.RateLimitExceeded => "[OpenRouter] API request failed with status 429 (Rate Limit Exceeded)",
+                    else => @errorName(err),
+                };
+                self.last_error = self.allocator.dupe(u8, err_msg) catch null;
                 return err;
             };
 
@@ -764,4 +777,96 @@ test "Agent: respect disableRag flag" {
     // This should return immediately and not fail even if dependencies are missing,
     // because it checks the flag first.
     try agent.indexConversation();
+}
+
+test "Agent: last_error field initialization and handling" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model"
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    defer agent.deinit();
+
+    // Test that last_error is initialized to null
+    try std.testing.expect(agent.last_error == null);
+
+    // Test that we can set last_error
+    const error_msg = "Test error message";
+    agent.last_error = try allocator.dupe(u8, error_msg);
+    
+    try std.testing.expect(agent.last_error != null);
+    try std.testing.expectEqualStrings(error_msg, agent.last_error.?);
+}
+
+test "Agent: last_error field is preserved during operations" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model"
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    defer agent.deinit();
+
+    // Set an error message
+    const error_msg = "Preserved error message";
+    agent.last_error = try allocator.dupe(u8, error_msg);
+
+    // Add a message to context (this should not clear last_error)
+    try agent.ctx.addMessage(.{ .role = "user", .content = "Test message" });
+    
+    // Verify last_error is still preserved
+    try std.testing.expect(agent.last_error != null);
+    try std.testing.expectEqualStrings(error_msg, agent.last_error.?);
+}
+
+test "Agent: last_error field cleanup on deinit" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model"
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent = try Agent.init(allocator, parsed.value, "test-session");
+    
+    // Set an error message
+    const error_msg = "Error to be cleaned up";
+    agent.last_error = try allocator.dupe(u8, error_msg);
+    
+    try std.testing.expect(agent.last_error != null);
+    
+    // Deinit should clean up the last_error memory
+    agent.deinit();
+    
+    // After deinit, we can't access the field but the memory should be freed
+    // This test mainly ensures no memory leaks occur
 }

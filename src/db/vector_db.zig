@@ -137,7 +137,7 @@ test "VectorStore: add and search" {
     try store.add("orange", &.{ 0.0, 0.0, 1.0 });
 
     const results = try store.search(&.{ 0.9, 0.1, 0.0 }, 1);
-    defer allocator.free(results);
+    defer store.freeSearchResults(results);
 
     try std.testing.expectEqual(@as(usize, 1), results.len);
     try std.testing.expectEqualStrings("apple", results[0].text);
@@ -155,7 +155,7 @@ test "VectorStore: cosineSimilarity calculation" {
 
     // Search with a query close to vector_a
     const results = try store.search(&.{ 0.9, 0.1, 0.0 }, 3);
-    defer allocator.free(results);
+    defer store.freeSearchResults(results);
 
     try std.testing.expectEqual(@as(usize, 3), results.len);
     try std.testing.expectEqualStrings("vector_a", results[0].text);
@@ -167,7 +167,7 @@ test "VectorStore: empty store search" {
     defer store.deinit();
 
     const results = try store.search(&.{ 1.0, 0.0 }, 5);
-    defer allocator.free(results);
+    defer store.freeSearchResults(results);
 
     try std.testing.expectEqual(@as(usize, 0), results.len);
 }
@@ -182,7 +182,7 @@ test "VectorStore: search with top_k larger than entries" {
 
     // Request top 10 but only have 2 entries
     const results = try store.search(&.{ 1.0, 0.0 }, 10);
-    defer allocator.free(results);
+    defer store.freeSearchResults(results);
 
     try std.testing.expectEqual(@as(usize, 2), results.len);
 }

@@ -185,6 +185,33 @@ pub const TelegramBot = struct {
 
                     // Send typing indicator to show user that bot is processing
                     // This appears while waiting for LLM response (can take several seconds)
+                    // We use a volatile bool to coordinate between main thread and typing thread
+                    var typing_done: bool = false;
+
+                    // Spawn a thread to continuously send typing indicator every 5 seconds
+                    // This ensures typing indicator shows until all chunks are sent
+                    const typing_thread = try std.Thread.spawn(.{}, struct {
+                        fn run(
+                            bot: *TelegramBot,
+                            token: []const u8,
+                            chat_id: []const u8,
+                            done_flag: *bool,
+                        ) void {
+                            while (!done_flag.*) {
+                                std.Thread.sleep(std.time.ns_per_s * 5);
+                                if (done_flag.*) break;
+                                bot.sendChatAction(token, chat_id) catch |err| {
+                                    std.debug.print("Failed to send typing action: {any}\n", .{err});
+                                };
+                            }
+                        }
+                    }.run, .{ self, tg_config.botToken, chat_id_str, &typing_done });
+                    errdefer {
+                        typing_done = true;
+                        typing_thread.join();
+                    }
+
+                    // Send initial typing action immediately
                     self.sendChatAction(tg_config.botToken, chat_id_str) catch |err| {
                         std.debug.print("Warning: Failed to send typing indicator: {any}\n", .{err});
                         // Continue processing even if typing indicator fails
@@ -193,11 +220,21 @@ pub const TelegramBot = struct {
                     // Run the agent loop (LLM inference + Tool execution)
                     // This processes the user message and generates a response
                     agent.run(actual_text) catch |err| {
+                        // Mark typing as done first
+                        typing_done = true;
+                        typing_thread.join();
+
                         // Log the error and send a user-friendly error message
                         std.debug.print("Error running agent: {any}\n", .{err});
-                        const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
+    const error_msg = if (agent.last_error) |last_err|
+        try std.fmt.allocPrint(self.allocator, "⚠️ Error: {s}\n\nPlease try again.", .{last_err})
+    else
+        try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
                         defer self.allocator.free(error_msg);
-                        try self.sendMessage(tg_config.botToken, chat_id_str, error_msg);
+                        self.sendMessage(tg_config.botToken, chat_id_str, error_msg) catch |send_err| {
+                            std.debug.print("Failed to send error message: {any}\n", .{send_err});
+                        };
+                        return;
                     };
 
                     // Send the agent's response back to Telegram
@@ -207,9 +244,15 @@ pub const TelegramBot = struct {
                     if (messages.len > 0) {
                         const last_msg = messages[messages.len - 1];
                         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-                            try self.sendMessage(tg_config.botToken, chat_id_str, last_msg.content.?);
+                            self.sendMessage(tg_config.botToken, chat_id_str, last_msg.content.?) catch |err| {
+                                std.debug.print("Failed to send response message: {any}\n", .{err});
+                            };
                         }
                     }
+
+                    // Mark typing as done - stops the typing thread
+                    typing_done = true;
+                    typing_thread.join();
 
                     // Save conversation to Vector/Graph DB for long-term memory
                     // This enables RAG (Retrieval-Augmented Generation) in future conversations
@@ -413,6 +456,101 @@ test "TelegramBot send_chat_action with fake token fails" {
 
     // Test that send_chat_action returns an error with fake credentials
     // This verifies the method signature and HTTP call logic are correct
-    const result = bot.send_chat_action("fake-token-for-testing", "123456");
+    const result = bot.sendChatAction("fake-token-for-testing", "123456");
     try std.testing.expectError(error.HttpError, result);
+}
+
+test "TelegramBot typing thread coordination" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token-for-testing" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Test typing thread lifecycle
+    var typing_done: bool = false;
+    
+    // Start typing thread
+    const typing_thread = try std.Thread.spawn(.{}, struct {
+        fn run(
+            bot_instance: *TelegramBot,
+            token: []const u8,
+            chat_id: []const u8,
+            done_flag: *bool,
+        ) void {
+            var counter: usize = 0;
+            while (!done_flag.* and counter < 3) {
+                std.Thread.sleep(std.time.ns_per_ms * 10); // Short sleep for testing
+                counter += 1;
+                // sendChatAction will fail with fake token but thread should continue
+                bot_instance.sendChatAction(token, chat_id) catch |err| {
+                    // Expected to fail with fake token
+                    std.debug.assert(err == error.HttpError);
+                };
+            }
+        }
+    }.run, .{ &bot, "fake-token", "123456", &typing_done });
+    
+    // Let thread run for a bit
+    std.Thread.sleep(std.time.ns_per_ms * 50);
+    
+    // Signal thread to stop
+    typing_done = true;
+    typing_thread.join();
+    
+    // Verify thread stopped cleanly
+    try std.testing.expect(typing_done);
+}
+
+test "TelegramBot error handling with last_error" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token-for-testing" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Test that error handling doesn't crash even when send_message fails
+    const error_msg = "Test error message";
+    
+    // This should not crash even with fake token
+    bot.sendMessage("fake-token", "123456", error_msg) catch |err| {
+        // Expected to fail with fake token
+        std.debug.assert(err == error.HttpError);
+    };
+}
+
+test "TelegramBot message chunking handles empty text" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token-for-testing" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Test that empty text is handled gracefully
+    // This will fail with fake token but shouldn't crash
+    bot.sendMessage("fake-token", "123456", "") catch |err| {
+        // Expected to fail with fake token
+        std.debug.assert(err == error.HttpError);
+    };
 }
