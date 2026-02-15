@@ -226,10 +226,10 @@ pub const TelegramBot = struct {
 
                         // Log the error and send a user-friendly error message
                         std.debug.print("Error running agent: {any}\n", .{err});
-    const error_msg = if (agent.last_error) |last_err|
-        try std.fmt.allocPrint(self.allocator, "⚠️ Error: {s}\n\nPlease try again.", .{last_err})
-    else
-        try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
+                        const error_msg = if (agent.last_error) |last_err|
+                            try std.fmt.allocPrint(self.allocator, "⚠️ Error: {s}\n\nPlease try again.", .{last_err})
+                        else
+                            try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
                         defer self.allocator.free(error_msg);
                         self.sendMessage(tg_config.botToken, chat_id_str, error_msg) catch |send_err| {
                             std.debug.print("Failed to send error message: {any}\n", .{send_err});
@@ -476,7 +476,7 @@ test "TelegramBot typing thread coordination" {
 
     // Test typing thread lifecycle
     var typing_done: bool = false;
-    
+
     // Start typing thread
     const typing_thread = try std.Thread.spawn(.{}, struct {
         fn run(
@@ -497,14 +497,14 @@ test "TelegramBot typing thread coordination" {
             }
         }
     }.run, .{ &bot, "fake-token", "123456", &typing_done });
-    
+
     // Let thread run for a bit
     std.Thread.sleep(std.time.ns_per_ms * 50);
-    
+
     // Signal thread to stop
     typing_done = true;
     typing_thread.join();
-    
+
     // Verify thread stopped cleanly
     try std.testing.expect(typing_done);
 }
@@ -525,7 +525,7 @@ test "TelegramBot error handling with last_error" {
 
     // Test that error handling doesn't crash even when send_message fails
     const error_msg = "Test error message";
-    
+
     // This should not crash even with fake token
     bot.sendMessage("fake-token", "123456", error_msg) catch |err| {
         // Expected to fail with fake token
@@ -553,4 +553,82 @@ test "TelegramBot message chunking handles empty text" {
         // Expected to fail with fake token
         std.debug.assert(err == error.HttpError);
     };
+}
+
+test "TelegramBot: memory - init and deinit without leaks" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token" },
+        },
+    };
+
+    // Test that init and deinit work without memory leaks
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Verify initial state
+    try std.testing.expectEqual(@as(i64, 0), bot.offset);
+    try std.testing.expectEqual(allocator, bot.allocator);
+    try std.testing.expectEqual(config, bot.config);
+}
+
+test "TelegramBot: memory - client reuse across operations" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token-for-testing" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Simulate multiple send operations that allocate/deallocate memory
+    // The client should be reused efficiently
+    for (0..10) |_| {
+        // Each operation should allocate URL and body, then free them
+        // If there's a leak, repeated operations would accumulate memory
+        bot.sendChatAction("fake-token", "123456") catch |err| {
+            // Expected to fail with fake token
+            std.debug.assert(err == error.HttpError);
+        };
+    }
+
+    // If we reach here without memory issues, test passes
+    try std.testing.expect(true);
+}
+
+test "TelegramBot: memory - offset management doesn't leak" {
+    const allocator = std.testing.allocator;
+    const config: Config = .{
+        .agents = .{ .defaults = .{ .model = "test" } },
+        .providers = .{},
+        .tools = .{
+            .web = .{ .search = .{} },
+            .telegram = .{ .botToken = "fake-token" },
+        },
+    };
+
+    var bot = try TelegramBot.init(allocator, config);
+    defer bot.deinit();
+
+    // Test that offset updates don't accumulate memory
+    const initial_offset = bot.offset;
+    try std.testing.expectEqual(@as(i64, 0), initial_offset);
+
+    // Update offset multiple times
+    for (0..100) |i| {
+        bot.offset = @intCast(i + 1);
+        try std.testing.expectEqual(@as(i64, i + 1), bot.offset);
+    }
+
+    // Final offset should be correct without leaks
+    try std.testing.expectEqual(@as(i64, 100), bot.offset);
 }
