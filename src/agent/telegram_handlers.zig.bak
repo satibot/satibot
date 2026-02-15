@@ -214,7 +214,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData, 
     
     if (response.status != .ok) {
         std.debug.print("OpenRouter API error: status {d}, body: {s}\n", .{@intFromEnum(response.status), response.body});
-        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "⚠️ Error: Failed to get response from AI\n\nPlease try again.", .{});
+        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "❌ Error: Failed to get response from AI\n\nPlease try again.", .{});
         defer gpa.allocator().free(error_msg);
         try sendMessage(&temp_client, tg_config.botToken, chat_id_str, error_msg);
         return;
@@ -232,7 +232,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData, 
     
     var parsed = std.json.parseFromSlice(OpenRouterResponse, gpa.allocator(), response.body, .{ .ignore_unknown_fields = true }) catch |err| {
         std.debug.print("Failed to parse OpenRouter response: {any}\n", .{err});
-        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "⚠️ Error: Failed to parse AI response\n\nPlease try again.", .{});
+        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "❌ Error: Failed to parse AI response\n\nPlease try again.", .{});
         defer gpa.allocator().free(error_msg);
         try sendMessage(&temp_client, tg_config.botToken, chat_id_str, error_msg);
         return;
@@ -256,13 +256,13 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData, 
             std.debug.print("Response sent successfully\n", .{});
         } else {
             std.debug.print("No content in OpenRouter response\n", .{});
-            const error_msg = try std.fmt.allocPrint(gpa.allocator(), "⚠️ Error: AI returned empty response\n\nPlease try again.", .{});
+            const error_msg = try std.fmt.allocPrint(gpa.allocator(), "❌ Error: AI returned empty response\n\nPlease try again.", .{});
             defer gpa.allocator().free(error_msg);
             try sendMessage(&temp_client, tg_config.botToken, chat_id_str, error_msg);
         }
     } else {
         std.debug.print("No choices in OpenRouter response\n", .{});
-        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "⚠️ Error: AI returned no response\n\nPlease try again.", .{});
+        const error_msg = try std.fmt.allocPrint(gpa.allocator(), "❌ Error: AI returned no response\n\nPlease try again.", .{});
         defer gpa.allocator().free(error_msg);
         try sendMessage(&temp_client, tg_config.botToken, chat_id_str, error_msg);
     }

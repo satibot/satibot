@@ -393,7 +393,7 @@ pub const TelegramBot = struct {
 
                         if (had_error) {
                             // Send error message to user if processing failed
-                            const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: Agent failed to process request\n\nPlease try again.", .{});
+                            const error_msg = try std.fmt.allocPrint(self.allocator, "❌ Error: Agent failed to process request\n\nPlease try again.", .{});
                             defer self.allocator.free(error_msg);
                             try self.sendMessage(tg_config.botToken, chat_id_str, error_msg);
                         } else {

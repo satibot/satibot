@@ -227,9 +227,9 @@ pub const TelegramBot = struct {
                         // Log the error and send a user-friendly error message
                         std.debug.print("Error running agent: {any}\n", .{err});
                         const error_msg = if (agent.last_error) |last_err|
-                            try std.fmt.allocPrint(self.allocator, "⚠️ Error: {s}\n\nPlease try again.", .{last_err})
+                            try std.fmt.allocPrint(self.allocator, "❌ Error: {s}\n\nPlease try again.", .{last_err})
                         else
-                            try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
+                            try std.fmt.allocPrint(self.allocator, "❌ Error: {any}\n\nPlease try again.", .{err});
                         defer self.allocator.free(error_msg);
                         self.sendMessage(tg_config.botToken, chat_id_str, error_msg) catch |send_err| {
                             std.debug.print("Failed to send error message: {any}\n", .{send_err});

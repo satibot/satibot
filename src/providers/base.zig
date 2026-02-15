@@ -227,15 +227,15 @@ pub fn executeWithRetry(
                         continue;
                     },
                     OpenRouterError.ModelNotSupported => {
-                        std.debug.print("\n❌ Model doesn't support tools. Please use a model that supports function calling.\n", .{});
+                        std.debug.print("\n❌ Error: Model doesn't support tools. Please use a model that supports function calling.\n", .{});
                         return err;
                     },
                     OpenRouterError.RateLimitExceeded => {
-                        std.debug.print("\n⚠️ Rate limit exceeded (Model: {s}). Not retrying to avoid further limits.\n", .{model});
+                        std.debug.print("\n❌ Error: Rate limit exceeded (Model: {s}). Not retrying to avoid further limits.\n", .{model});
                         return err;
                     },
                     OpenRouterError.ApiRequestFailed => {
-                        std.debug.print("\n⚠️ API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
+                        std.debug.print("\n❌ Error: API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
                         std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
                         continue;
                     },
@@ -244,7 +244,7 @@ pub fn executeWithRetry(
 
             // Retry on network errors or temporary service issues
             if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
-                std.debug.print("\n⚠️ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
+                std.debug.print("\n❌ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
                 std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
                 continue;
             }

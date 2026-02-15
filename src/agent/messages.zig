@@ -413,7 +413,7 @@ pub fn processMessage(
         &callback_ctx,
     ) catch |err| {
         std.debug.print("Error processing message: {any}\n", .{err});
-        const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
+        const error_msg = try std.fmt.allocPrint(allocator, "❌ Error: Failed to process message\n\nPlease try again.", .{});
         return .{ .history = history, .response = null, .error_msg = error_msg };
     };
     defer @constCast(&response).deinit();

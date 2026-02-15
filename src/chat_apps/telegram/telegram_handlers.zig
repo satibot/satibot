@@ -313,7 +313,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
         // Mark processing as complete
         processing_done.* = true;
 
-        const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
+        const error_msg = try std.fmt.allocPrint(allocator, "❌ Error: Failed to process message\n\nPlease try again.", .{});
         defer allocator.free(error_msg);
         try sendMessage(allocator, ctx.client, tg_config.botToken, chat_id_str, error_msg);
         return;

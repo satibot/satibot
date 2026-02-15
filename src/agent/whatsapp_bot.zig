@@ -118,7 +118,7 @@ pub const WhatsAppBot = struct {
         // Run the agent loop (LLM inference + Tool execution)
         agent.run(actual_text) catch |err| {
             std.debug.print("Error running agent: {any}\n", .{err});
-            const error_msg = try std.fmt.allocPrint(self.allocator, "⚠️ Error: {any}\n\nPlease try again.", .{err});
+            const error_msg = try std.fmt.allocPrint(self.allocator, "❌ Error: {any}\n\nPlease try again.", .{err});
             defer self.allocator.free(error_msg);
             try self.sendMessage(wa_config, from, error_msg);
         };
