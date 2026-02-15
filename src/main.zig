@@ -1,7 +1,7 @@
 const std = @import("std");
 const satibot = @import("satibot");
-// Import build options (contains build timestamp)
-const build_options = @import("build_options");
+// Import build options (contains build timestamp) from satibot module
+const build_options = satibot.build_opts;
 
 /// Main entry point for sati application
 /// Handles command line arguments and dispatches to appropriate handlers
@@ -82,7 +82,11 @@ pub fn main() !void {
         // Handle "sati in <platform>" command format
         // This auto-creates config for the specified platform before running
         if (args.len < 3) {
-            std.debug.print("Usage: sati in <platform>\nPlatforms:\n  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n", .{});
+            const platforms = if (build_options.include_whatsapp)
+                "  whatsapp   Auto-create WhatsApp config and run\n  telegram   Auto-create Telegram config and run\n"
+            else
+                "  telegram   Auto-create Telegram config and run\n";
+            std.debug.print("Usage: sati in <platform>\nPlatforms:\n{s}", .{platforms});
             return;
         }
         const platform = args[2];
@@ -118,6 +122,16 @@ pub fn main() !void {
 
 /// Print usage information for all available commands
 fn usage() !void {
+    const include_whatsapp = build_options.include_whatsapp;
+
+    // Use a fixed buffer allocator for building the help text
+    var buffer: [4096]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
+
+    var help_text_list = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable;
+    defer help_text_list.deinit(allocator);
+
     const help_text =
         \\🐸 sati - AI Chatbot Framework
         \\
@@ -131,7 +145,15 @@ fn usage() !void {
         \\  console       Run console-based interactive bot
         \\  telegram      Run sati as a Telegram bot (async version)
         \\  telegram-sync Run sati as a Telegram bot (sync version)
+        \\  
+    ;
+
+    const whatsapp_commands =
         \\  whatsapp      Run sati as a WhatsApp bot
+        \\
+    ;
+
+    const other_commands =
         \\  gateway       Run gateway service (Telegram + Cron + Heartbeat)
         \\  vector-db     Manage vector database for RAG functionality
         \\  status        Display system status and configuration
@@ -139,11 +161,15 @@ fn usage() !void {
         \\  test-llm      Test LLM provider connectivity
         \\  in            Quick start with auto-configuration
         \\
-        \\OPTIONS:
-        \\  --help, -h    Show this help message
-        \\  --version, -v Show version information
+    ;
+
+    const whatsapp_examples =
+        \\  # Quick start WhatsApp (auto-creates config)
+        \\  sati in whatsapp
         \\
-        \\EXAMPLES:
+    ;
+
+    const other_examples =
         \\  # Interactive agent mode
         \\  sati agent
         \\
@@ -155,9 +181,6 @@ fn usage() !void {
         \\
         \\  # Run Telegram bot with OpenRouter validation
         \\  sati telegram openrouter
-        \\
-        \\  # Quick start WhatsApp (auto-creates config)
-        \\  sati in whatsapp
         \\
         \\  # Vector database operations
         \\  sati vector-db list
@@ -171,6 +194,9 @@ fn usage() !void {
         \\  sati help agent
         \\  sati help vector-db
         \\
+    ;
+
+    const config_footer =
         \\CONFIGURATION:
         \\  Configuration files are stored in ~/.bots/
         \\  - config.json: Main configuration
@@ -188,7 +214,21 @@ fn usage() !void {
         \\
     ;
 
-    std.debug.print("{s}", .{help_text});
+    try help_text_list.appendSlice(allocator, help_text);
+    if (include_whatsapp) {
+        try help_text_list.appendSlice(allocator, whatsapp_commands);
+    } else {
+        try help_text_list.appendSlice(allocator, "\n");
+    }
+    try help_text_list.appendSlice(allocator, other_commands);
+
+    if (include_whatsapp) {
+        try help_text_list.appendSlice(allocator, whatsapp_examples);
+    }
+    try help_text_list.appendSlice(allocator, other_examples);
+    try help_text_list.appendSlice(allocator, config_footer);
+
+    std.debug.print("{s}", .{help_text_list.items});
 }
 
 /// Show detailed help for a specific command
@@ -624,6 +664,13 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 /// Run WhatsApp bot server
 /// Listens for WhatsApp messages via Meta API and responds using the AI agent
 fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    // Check if WhatsApp is enabled in build
+    if (!build_options.include_whatsapp) {
+        std.debug.print("Error: WhatsApp support is disabled in this build.\n", .{});
+        std.debug.print("To enable WhatsApp, rebuild with: zig build -Dinclude-whatsapp=true\n", .{});
+        return error.WhatsAppDisabled;
+    }
+
     // Load configuration from main config file
     const parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
@@ -854,7 +901,9 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     std.debug.print("\nChannels:\n", .{});
     std.debug.print("  Telegram:   {s}\n", .{if (config.tools.telegram != null) "✅ Enabled" else "❌ Disabled"});
     std.debug.print("  Discord:    {s}\n", .{if (config.tools.discord != null) "✅ Enabled" else "❌ Disabled"});
-    std.debug.print("  WhatsApp:   {s}\n", .{if (config.tools.whatsapp != null) "✅ Enabled" else "❌ Disabled"});
+    if (build_options.include_whatsapp) {
+        std.debug.print("  WhatsApp:   {s}\n", .{if (config.tools.whatsapp != null) "✅ Enabled" else "❌ Disabled"});
+    }
 
     // Display data directory
     const home = std.posix.getenv("HOME") orelse "/tmp";
@@ -946,6 +995,13 @@ fn runUpgrade(allocator: std.mem.Allocator) !void {
 /// Auto-create WhatsApp configuration in main config file
 /// Adds WhatsApp configuration to ~/.bots/config.json if it doesn't exist
 fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
+    // Check if WhatsApp is enabled in build
+    if (!build_options.include_whatsapp) {
+        std.debug.print("Error: WhatsApp support is disabled in this build.\n", .{});
+        std.debug.print("To enable WhatsApp, rebuild with: zig build -Dinclude-whatsapp=true\n", .{});
+        return error.WhatsAppDisabled;
+    }
+
     const home = std.posix.getenv("HOME") orelse "/tmp";
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);

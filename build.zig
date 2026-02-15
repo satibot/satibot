@@ -24,6 +24,9 @@ pub fn build(b: *std.Build) void {
     // Check if we're building only the telegram bot (production mode)
     const telegram_bot_only = b.option(bool, "telegram-bot-only", "Build only the telegram bot") orelse false;
 
+    // Check if we should include WhatsApp components
+    const include_whatsapp = b.option(bool, "include-whatsapp", "Include WhatsApp components in build") orelse false;
+
     const build_options = b.addOptions();
     const build_time_timestamp = std.time.timestamp();
     build_options.addOption(i64, "build_time", build_time_timestamp);
@@ -38,6 +41,7 @@ pub fn build(b: *std.Build) void {
     const date_version_output = b.run(&.{ "date", "-u", "+%Y.%m.%d.%H%M" });
     const version = std.mem.trim(u8, date_version_output, "\n\r ");
     build_options.addOption([]const u8, "version", version);
+    build_options.addOption(bool, "include_whatsapp", include_whatsapp);
 
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
@@ -59,7 +63,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "build_options", .module = build_options.createModule() },
+            .{ .name = "build_opts", .module = build_options.createModule() },
             .{ .name = "tls", .module = b.dependency("tls", .{
                 .target = target,
                 .optimize = optimize,
@@ -101,10 +105,8 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             // List of modules available for import in source files part of the
-            // root module.
             .imports = &.{
                 .{ .name = "satibot", .module = mod },
-                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });
