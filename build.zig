@@ -109,6 +109,13 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    // Strip debug symbols and reduce binary size
+    if (optimize == .ReleaseSmall or optimize == .ReleaseFast) {
+        exe.root_module.strip = true;
+        // LTO requires LLD which may not be available, so disable it
+        // exe.want_lto = true; // Link-time optimization
+    }
+
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
