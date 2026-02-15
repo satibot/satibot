@@ -1087,38 +1087,38 @@ test "OpenRouterError includes RateLimitExceeded" {
 
 test "parseErrorBody handles rate limit responses" {
     const allocator = std.testing.allocator;
-    
+
     // Test parsing a rate limit error response
     const error_body = "{\"error\":{\"message\":\"Rate limit exceeded. Try again in 60 seconds.\"}}";
     const parsed = try parseErrorBody(allocator, error_body);
     defer allocator.free(parsed);
-    
+
     try std.testing.expect(std.mem.indexOf(u8, parsed, "Rate limit exceeded") != null);
 }
 
 test "parseErrorBody handles malformed JSON gracefully" {
     const allocator = std.testing.allocator;
-    
+
     // Test parsing malformed JSON - should return the raw body
     const malformed_body = "Not valid JSON";
     const parsed = try parseErrorBody(allocator, malformed_body);
     defer allocator.free(parsed);
-    
+
     try std.testing.expect(std.mem.eql(u8, parsed, malformed_body));
 }
 
 test "buildChatRequestBody includes stream parameter" {
     const allocator = std.testing.allocator;
-    
+
     const messages = [_]base.LlmMessage{
         .{ .role = "user", .content = "Hello" },
     };
-    
+
     // Test with stream=false
     const body_no_stream = try buildChatRequestBody(allocator, &messages, "test-model", null, false);
     defer allocator.free(body_no_stream);
     try std.testing.expect(std.mem.indexOf(u8, body_no_stream, "\"stream\": true") == null);
-    
+
     // Test with stream=true
     const body_with_stream = try buildChatRequestBody(allocator, &messages, "test-model", null, true);
     defer allocator.free(body_with_stream);
@@ -1127,7 +1127,7 @@ test "buildChatRequestBody includes stream parameter" {
 
 test "parseChatResponse handles empty choices" {
     const allocator = std.testing.allocator;
-    
+
     // Test response with no choices
     const empty_choices_body = "{\"id\":\"test\",\"model\":\"test\",\"choices\":[]}";
     const result = parseChatResponse(allocator, empty_choices_body);
@@ -1136,9 +1136,9 @@ test "parseChatResponse handles empty choices" {
 
 test "parseChatResponse handles tool calls" {
     const allocator = std.testing.allocator;
-    
+
     // Test response with tool calls
-    const tool_call_body = 
+    const tool_call_body =
         \\{
         \\  "id": "test",
         \\  "model": "test",
@@ -1158,10 +1158,10 @@ test "parseChatResponse handles tool calls" {
         \\  }]
         \\}
     ;
-    
+
     var response = try parseChatResponse(allocator, tool_call_body);
     defer response.deinit();
-    
+
     try std.testing.expect(response.content == null);
     try std.testing.expect(response.tool_calls != null);
     try std.testing.expect(response.tool_calls.?.len == 1);
