@@ -39,6 +39,7 @@ const constants = @import("../constants.zig");
 pub const TelegramBot = struct {
     allocator: std.mem.Allocator,
     config: Config,
+    rag_enabled: bool,
 
     // Offset for long-polling. This ensures we don't process the
     // same message twice. It is updated to the last update_id + 1
@@ -58,9 +59,10 @@ pub const TelegramBot = struct {
     /// Args:
     ///   - allocator: Memory allocator for string operations
     ///   - config: Bot configuration including API tokens
+    ///   - rag_enabled: Whether RAG (Retrieval-Augmented Generation) is enabled
     ///
     /// Returns: Initialized TelegramBot instance
-    pub fn init(allocator: std.mem.Allocator, config: Config) !TelegramBot {
+    pub fn init(allocator: std.mem.Allocator, config: Config, rag_enabled: bool) !TelegramBot {
         const client = try http.Client.initWithSettings(allocator, .{
             .request_timeout_ms = 60000,
             .keep_alive = true,
@@ -68,6 +70,7 @@ pub const TelegramBot = struct {
         return .{
             .allocator = allocator,
             .config = config,
+            .rag_enabled = rag_enabled,
             .client = client,
         };
     }
@@ -180,7 +183,7 @@ pub const TelegramBot = struct {
                     // Create a fresh Agent instance for this interaction
                     // The agent loads session state from disk based on session_id
                     // Each message gets its own agent instance to ensure isolation
-                    var agent = try Agent.init(self.allocator, self.config, session_id, true);
+                    var agent = try Agent.init(self.allocator, self.config, session_id, self.rag_enabled);
                     defer agent.deinit();
 
                     // Send typing indicator to show user that bot is processing
@@ -256,10 +259,13 @@ pub const TelegramBot = struct {
 
                     // Save conversation to Vector/Graph DB for long-term memory
                     // This enables RAG (Retrieval-Augmented Generation) in future conversations
-                    agent.indexConversation() catch |err| {
-                        // Log indexing error but don't fail the response
-                        std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
-                    };
+                    // Only index if RAG is enabled
+                    if (self.rag_enabled) {
+                        agent.indexConversation() catch |err| {
+                            // Log indexing error but don't fail the response
+                            std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
+                        };
+                    }
                 }
             }
         }
@@ -373,8 +379,9 @@ fn nextTelegramChunkEnd(text: []const u8, start: usize) usize {
 /// Args:
 ///   - allocator: Memory allocator for bot initialization
 ///   - config: Bot configuration
-pub fn run(allocator: std.mem.Allocator, config: Config) !void {
-    var bot = try TelegramBot.init(allocator, config);
+///   - rag_enabled: Whether RAG (Retrieval-Augmented Generation) is enabled
+pub fn run(allocator: std.mem.Allocator, config: Config, rag_enabled: bool) !void {
+    var bot = try TelegramBot.init(allocator, config, rag_enabled);
     defer bot.deinit();
 
     // Send startup ready message to configured admin chat if available
@@ -416,7 +423,7 @@ test "TelegramBot lifecycle" {
         },
     };
 
-    var bot = try TelegramBot.init(allocator, config);
+    var bot = try TelegramBot.init(allocator, config, true);
     defer bot.deinit();
 
     try std.testing.expectEqual(bot.offset, 0);
@@ -433,7 +440,7 @@ test "TelegramBot tick returns if no config" {
         },
     };
 
-    var bot = try TelegramBot.init(allocator, config);
+    var bot = try TelegramBot.init(allocator, config, false);
     defer bot.deinit();
 
     // this should return immediately (no network call)
