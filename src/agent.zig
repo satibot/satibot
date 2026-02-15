@@ -43,34 +43,40 @@ pub const Agent = struct {
             .last_error = null,
         };
 
-        // Load session history into context
-        if (session.load(allocator, session_id)) |history| {
-            defer {
-                // Free the loaded history after adding to context
-                for (history) |msg| {
-                    allocator.free(msg.role);
-                    if (msg.content) |c| allocator.free(c);
-                    if (msg.tool_call_id) |id| allocator.free(id);
-                    if (msg.tool_calls) |calls| {
-                        for (calls) |call| {
-                            allocator.free(call.id);
-                            allocator.free(call.type);
-                            allocator.free(call.function.name);
-                            allocator.free(call.function.arguments);
+        // Load session history into context if enabled
+        if (config.agents.defaults.loadChatHistory) {
+            if (session.load(allocator, session_id)) |history| {
+                defer {
+                    // Free the loaded history after adding to context
+                    for (history) |msg| {
+                        allocator.free(msg.role);
+                        if (msg.content) |c| allocator.free(c);
+                        if (msg.tool_call_id) |id| allocator.free(id);
+                        if (msg.tool_calls) |calls| {
+                            for (calls) |call| {
+                                allocator.free(call.id);
+                                allocator.free(call.type);
+                                allocator.free(call.function.name);
+                                allocator.free(call.function.arguments);
+                            }
+                            allocator.free(calls);
                         }
-                        allocator.free(calls);
                     }
+                    allocator.free(history);
                 }
-                allocator.free(history);
-            }
 
-            // Add loaded messages to context (context.addMessage creates deep copies)
-            for (history) |msg| {
-                self.ctx.addMessage(msg) catch |err| {
-                    std.log.err("Failed to load message into context: {any}", .{err});
-                };
+                // Add loaded messages to context (context.addMessage creates deep copies)
+                for (history) |msg| {
+                    self.ctx.addMessage(msg) catch |err| {
+                        std.log.err("Failed to load message into context: {any}", .{err});
+                    };
+                }
+            } else |_| {
+                std.debug.print("Chat history loading is enabled, but no existing session found for '{s}'\n", .{session_id});
             }
-        } else |_| {}
+        } else {
+            std.debug.print("Chat history loading is disabled in configuration\n", .{});
+        }
 
         // Register default tools - only vector tools are active
         //     .execute = tools.list_files,
@@ -676,6 +682,86 @@ test "Agent: tool registry operations" {
         const tool = agent.registry.get(tool_name);
         try std.testing.expect(tool != null);
     }
+}
+
+test "Agent: loadChatHistory disabled" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model",
+        \\      "loadChatHistory": false
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const test_session_id = "test-session-no-history";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
+    // Should start with empty context (no system prompt yet, no loaded history)
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
+}
+
+test "Agent: loadChatHistory enabled with no existing session" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model",
+        \\      "loadChatHistory": true
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const test_session_id = "test-session-nonexistent";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
+    // Should start with empty context (no existing session to load)
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
+}
+
+test "Agent: loadChatHistory default behavior" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model"
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test that default is false (no loadChatHistory field specified)
+    try std.testing.expect(parsed.value.agents.defaults.loadChatHistory == false);
+
+    const test_session_id = "test-session-default";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
+    // Should start with empty context (default is disabled)
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
 }
 
 test "Agent: session management" {

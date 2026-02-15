@@ -22,6 +22,7 @@ pub const DefaultAgentConfig = struct {
     model: []const u8,
     embeddingModel: ?[]const u8 = null,
     disableRag: bool = false,
+    loadChatHistory: bool = false,
 };
 
 /// Configuration for LLM provider API credentials.
@@ -97,7 +98,8 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
                 \\  "agents": {
                 \\    "defaults": {
                 \\      "model": "arcee-ai/trinity-large-preview:free",
-                \\      "embeddingModel": "local"
+                \\      "embeddingModel": "local",
+                \\      "loadChatHistory": false
                 \\    }
                 \\  },
                 \\  "providers": {},
@@ -275,6 +277,7 @@ test "Config: save and reload" {
                 .model = "test-model-saved",
                 .embeddingModel = "local",
                 .disableRag = false,
+                .loadChatHistory = true,
             },
         },
         .providers = .{
@@ -322,6 +325,26 @@ test "Config: disableRag parsing" {
     try std.testing.expect(parsed.value.agents.defaults.disableRag == true);
 }
 
+test "Config: loadChatHistory parsing" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": {
+        \\    "defaults": {
+        \\      "model": "test-model",
+        \\      "loadChatHistory": false
+        \\    }
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.value.agents.defaults.loadChatHistory == false);
+}
+
 test "Config save and load roundtrip with openrouter model" {
     const allocator = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
@@ -338,6 +361,7 @@ test "Config save and load roundtrip with openrouter model" {
                 .model = "tngtech/deepseek-r1t2-chimera:free",
                 .embeddingModel = "local",
                 .disableRag = false,
+                .loadChatHistory = true,
             },
         },
         .providers = .{
@@ -365,6 +389,7 @@ test "Config save and load roundtrip with openrouter model" {
                 .model = "z-ai/glm-4.5-air:free",
                 .embeddingModel = "local",
                 .disableRag = false,
+                .loadChatHistory = true,
             },
         },
         .providers = .{
