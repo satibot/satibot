@@ -219,10 +219,12 @@ pub const XevEventLoop = struct {
 
     /// Run the event loop
     pub fn run(self: *XevEventLoop) !void {
-        // Start worker threads
+        // Start worker threads with reduced stack size (512KB instead of 16MB default)
         const num_workers = 4; // Default number of workers
         for (0..num_workers) |i| {
-            const thread = try std.Thread.spawn(.{}, workerThreadFn, .{ self, i });
+            const thread = try std.Thread.spawn(.{
+                .stack_size = 524288, // 512KB stack = 512 * 1024
+            }, workerThreadFn, .{ self, i });
             try self.worker_threads.append(self.allocator, thread);
         }
         defer {

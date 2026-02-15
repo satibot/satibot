@@ -205,8 +205,10 @@ pub const MockBot = struct {
         std.posix.sigaction(std.posix.SIG.INT, &sa, null);
         std.posix.sigaction(std.posix.SIG.TERM, &sa, null);
 
-        // Start event loop thread
-        const el_thread = try std.Thread.spawn(.{}, XevEventLoop.run, .{&self.event_loop});
+        // Start event loop thread with reduced stack size (1MB instead of 16MB default)
+        const el_thread = try std.Thread.spawn(.{
+            .stack_size = 1048576, // 1MB stack
+        }, XevEventLoop.run, .{&self.event_loop});
         defer el_thread.join();
 
         // Main thread handles console input
