@@ -263,15 +263,55 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     const chat_id_str = try std.fmt.allocPrint(allocator, "{d}", .{tg_data.chat_id});
     defer allocator.free(chat_id_str);
 
+    // Pure functional approach - use simple volatile bool for thread coordination
+    const processing_done = try allocator.create(bool);
+    defer allocator.destroy(processing_done);
+    processing_done.* = false;
+
+    // Pure function for typing indicator thread
+    const typingIndicatorFn = struct {
+        fn run(
+            client: *const http.Client,
+            bot_token: []const u8,
+            chat_id: []const u8,
+            done_flag: *bool,
+        ) void {
+            // Send typing action every 5 seconds until processing is complete
+            while (!done_flag.*) {
+                // Wait 5 seconds between typing indicators
+                std.Thread.sleep(std.time.ns_per_s * 5);
+
+                // Check if processing is complete
+                if (done_flag.*) break;
+
+                // Send typing action (ignore errors to avoid crashing)
+                sendChatAction(client.allocator, client, bot_token, chat_id, "typing") catch |err| {
+                    std.debug.print("Failed to send typing action: {any}\n", .{err});
+                };
+            }
+        }
+    }.run;
+
+    // Send initial typing action immediately
     sendChatAction(allocator, ctx.client, tg_config.botToken, chat_id_str, "typing") catch |err| {
-        std.debug.print("Failed to send typing action: {any}\n", .{err});
+        std.debug.print("Failed to send initial typing action: {any}\n", .{err});
     };
-    std.debug.print("Sent typing action\n", .{});
+    std.debug.print("Sent initial typing action\n", .{});
+
+    // Start typing indicator thread
+    const typing_thread = try std.Thread.spawn(
+        .{},
+        typingIndicatorFn,
+        .{ ctx.client, tg_config.botToken, chat_id_str, processing_done },
+    );
+    defer typing_thread.join();
 
     // Process message using functional approach
     std.debug.print("Calling messages.processMessage()...\n", .{});
     const result = messages.processMessage(allocator, ctx.config, session_id, tg_data.text) catch |err| {
         std.debug.print("Error processing message: {any}\n", .{err});
+        // Mark processing as complete
+        processing_done.* = true;
 
         const error_msg = try std.fmt.allocPrint(allocator, "⚠️ Error: Failed to process message\n\nPlease try again.", .{});
         defer allocator.free(error_msg);
@@ -281,6 +321,9 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
     defer @constCast(&result.history).deinit();
 
     std.debug.print("processMessage() completed successfully\n", .{});
+
+    // Mark processing as complete - this will stop the typing thread
+    processing_done.* = true;
 
     // Send response or error message
     if (result.response) |response| {
