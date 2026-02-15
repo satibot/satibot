@@ -10,13 +10,15 @@ pub fn build(b: *std.Build) void {
     const build_time_timestamp = std.time.timestamp();
     build_options.addOption(i64, "build_time", build_time_timestamp);
 
+    // Get build time in UTC, format: YYYY-MM-DD HH:MM:SS
     const date_output = b.run(&.{ "date", "-u", "+%Y-%m-%d %H:%M:%S" });
+    // Add UTC suffix to build time string
     const build_time_str = b.fmt("{s} UTC", .{std.mem.trim(u8, date_output, "\n\r ")});
     build_options.addOption([]const u8, "build_time_str", build_time_str);
 
+    // Get build version in UTC, format: YYYY.MM.DD.HHMM
     const date_version_output = b.run(&.{ "date", "-u", "+%Y.%m.%d.%H%M" });
-    const version = std.mem.trim(u8, date_version_output, "\n\r ");
-    build_options.addOption([]const u8, "version", version);
+    build_options.addOption([]const u8, "version", date_version_output);
 
     // Create minimal module with only essential dependencies
     const mod = b.addModule("satibot", .{
