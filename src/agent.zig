@@ -65,8 +65,15 @@ pub const Agent = struct {
                     allocator.free(history);
                 }
 
+                // Limit the number of messages to load based on maxChatHistory
+                const max_messages = config.agents.defaults.maxChatHistory;
+                const start_idx = if (history.len > max_messages) history.len - max_messages else 0;
+                const limited_history = history[start_idx..];
+
+                std.debug.print("--- Loading {d} of {d} available chat history messages (maxChatHistory: {d}) ---\n", .{ limited_history.len, history.len, max_messages });
+
                 // Add loaded messages to context (context.addMessage creates deep copies)
-                for (history) |msg| {
+                for (limited_history) |msg| {
                     self.ctx.addMessage(msg) catch |err| {
                         std.log.err("Failed to load message into context: {any}", .{err});
                     };
@@ -732,6 +739,93 @@ test "Agent: loadChatHistory enabled with no existing session" {
     defer agent.deinit();
 
     // Should start with empty context (no existing session to load)
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
+}
+
+test "Agent: maxChatHistory limits loaded messages" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model",
+        \\      "loadChatHistory": true,
+        \\      "maxChatHistory": 2
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test that maxChatHistory is parsed correctly
+    try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 2);
+
+    const test_session_id = "test-session-max-history";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
+    // Should start with empty context (no existing session to load)
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
+}
+
+test "Agent: maxChatHistory default value" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model",
+        \\      "loadChatHistory": true
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test that maxChatHistory defaults to 2 when not specified
+    try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 2);
+
+    const test_session_id = "test-session-default-max";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
+    const messages = agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 0);
+}
+
+test "Agent: maxChatHistory custom value" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { 
+        \\    "defaults": { 
+        \\      "model": "test-model",
+        \\      "loadChatHistory": true,
+        \\      "maxChatHistory": 5
+        \\    } 
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Test that custom maxChatHistory value is parsed correctly
+    try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 5);
+
+    const test_session_id = "test-session-custom-max";
+    var agent = try Agent.init(allocator, parsed.value, test_session_id);
+    defer agent.deinit();
+
     const messages = agent.ctx.getMessages();
     try std.testing.expect(messages.len == 0);
 }

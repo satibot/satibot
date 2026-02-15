@@ -23,6 +23,7 @@ pub const DefaultAgentConfig = struct {
     embeddingModel: ?[]const u8 = null,
     disableRag: bool = false,
     loadChatHistory: bool = false,
+    maxChatHistory: usize = 2,
 };
 
 /// Configuration for LLM provider API credentials.
@@ -99,7 +100,8 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
                 \\    "defaults": {
                 \\      "model": "arcee-ai/trinity-large-preview:free",
                 \\      "embeddingModel": "local",
-                \\      "loadChatHistory": false
+                \\      "loadChatHistory": false,
+                \\      "maxChatHistory": 2
                 \\    }
                 \\  },
                 \\  "providers": {},
@@ -278,6 +280,7 @@ test "Config: save and reload" {
                 .embeddingModel = "local",
                 .disableRag = false,
                 .loadChatHistory = true,
+                .maxChatHistory = 2,
             },
         },
         .providers = .{
@@ -325,6 +328,26 @@ test "Config: disableRag parsing" {
     try std.testing.expect(parsed.value.agents.defaults.disableRag == true);
 }
 
+test "Config: maxChatHistory parsing" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": {
+        \\    "defaults": {
+        \\      "model": "test-model",
+        \\      "maxChatHistory": 5
+        \\    }
+        \\  },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    try std.testing.expect(parsed.value.agents.defaults.maxChatHistory == 5);
+}
+
 test "Config: loadChatHistory parsing" {
     const allocator = std.testing.allocator;
     const config_json =
@@ -362,6 +385,7 @@ test "Config save and load roundtrip with openrouter model" {
                 .embeddingModel = "local",
                 .disableRag = false,
                 .loadChatHistory = true,
+                .maxChatHistory = 2,
             },
         },
         .providers = .{
@@ -390,6 +414,7 @@ test "Config save and load roundtrip with openrouter model" {
                 .embeddingModel = "local",
                 .disableRag = false,
                 .loadChatHistory = true,
+                .maxChatHistory = 2,
             },
         },
         .providers = .{
