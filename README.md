@@ -130,6 +130,23 @@ sati telegram-sync
 # sati telegram
 ```
 
+## CLI Options
+
+### Agent Command Options
+
+When using `sati agent`, you can use these options:
+
+```bash
+# Disable RAG (Retrieval-Augmented Generation)
+sati agent --no-rag
+
+# Single message with RAG disabled
+sati agent -m "Hello, how are you?" --no-rag
+
+# Interactive mode with specific session and RAG disabled
+sati agent -s chat123 --no-rag
+```
+
 ### Telegram Bot Versions
 
 satibot offers two Telegram bot implementations:

@@ -272,6 +272,8 @@ fn showCommandHelp(command: []const u8) !void {
             \\
             \\OPTIONS:
             \\  openrouter         Validate OpenRouter configuration
+            \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+            \\  --rag              Enable RAG (default)
             \\
             \\DESCRIPTION:
             \\  Runs sati as a Telegram bot. The bot will listen for messages
@@ -293,6 +295,8 @@ fn showCommandHelp(command: []const u8) !void {
             \\
             \\OPTIONS:
             \\  openrouter         Validate OpenRouter configuration
+            \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+            \\  --rag              Enable RAG (default)
             \\
             \\DESCRIPTION:
             \\  Runs sati as a synchronous Telegram bot. This version processes
@@ -309,7 +313,7 @@ fn showCommandHelp(command: []const u8) !void {
             \\  Get bot token from @BotFather
             \\
         ;
-        std.debug.print("{s}", .{help_text});
+        std.debug.print("{s}\n", .{help_text});
         return;
     } else if (std.mem.eql(u8, command, "whatsapp")) {
         const help_text =
@@ -545,12 +549,16 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
-    // Check if OpenRouter validation is requested
+    // Parse command line arguments
     var check_openrouter = false;
+    var save_to_rag = true;
     for (args[2..]) |arg| {
         if (std.mem.eql(u8, arg, "openrouter")) {
             check_openrouter = true;
-            break;
+        } else if (std.mem.eql(u8, arg, "--no-rag")) {
+            save_to_rag = false;
+        } else if (std.mem.eql(u8, arg, "--rag")) {
+            save_to_rag = true;
         }
     }
 
@@ -562,7 +570,7 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Active Model: {s}\nTelegram bot started with sync mode. Press Ctrl+C to stop.\n", .{config.agents.defaults.model});
 
     // Run Telegram bot (blocking call)
-    try satibot.telegram_bot_sync.run(allocator, config);
+    try satibot.telegram_bot_sync.run(allocator, config, save_to_rag);
 }
 
 /// Run synchronous Telegram bot server
@@ -574,12 +582,16 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer parsed_config.deinit();
     const config = parsed_config.value;
 
-    // Check if OpenRouter validation is requested
+    // Parse command line arguments
     var check_openrouter = false;
+    var save_to_rag = true;
     for (args[2..]) |arg| {
         if (std.mem.eql(u8, arg, "openrouter")) {
             check_openrouter = true;
-            break;
+        } else if (std.mem.eql(u8, arg, "--no-rag")) {
+            save_to_rag = false;
+        } else if (std.mem.eql(u8, arg, "--rag")) {
+            save_to_rag = true;
         }
     }
 
@@ -591,7 +603,7 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     std.debug.print("Active Model: {s}\nSynchronous Telegram bot started with sync mode. Press Ctrl+C to stop.\nProcessing: Sequential (one message at a time)\n", .{config.agents.defaults.model});
 
     // Run synchronous Telegram bot directly using the proper implementation
-    try satibot.telegram_bot_sync.run(allocator, config);
+    try satibot.telegram_bot_sync.run(allocator, config, save_to_rag);
 }
 
 /// Run WhatsApp bot server
