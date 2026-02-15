@@ -215,52 +215,47 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
 
 /// Ensure a system prompt exists in the session history
 fn ensureSystemPrompt(history: *SessionHistory, config: Config) !void {
-    // Check if system message already exists
     for (history.messages.items) |msg| {
         if (std.mem.eql(u8, msg.role, "system")) return;
     }
 
-    // Create system prompt
-    var prompt_builder = std.ArrayList(u8).initCapacity(history.allocator, 0) catch unreachable;
-    defer prompt_builder.deinit(history.allocator);
+    const base_prompt = "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n";
 
-    try prompt_builder.appendSlice(history.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+    const has_web_search = config.tools.web.search.apiKey != null and config.tools.web.search.apiKey.?.len > 0;
 
-    if (config.tools.web.search.apiKey) |key| {
-        if (key.len > 0) {
-            try prompt_builder.appendSlice(history.allocator, "Use 'web_search' for current events or information you don't have.\n");
-        }
+    if (has_web_search) {
+        const full_prompt = "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'upsertVector' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\nUse 'web_search' for current events or information you don't have.\n";
+        try history.addMessage(.{
+            .role = "system",
+            .content = full_prompt,
+        });
+    } else {
+        try history.addMessage(.{
+            .role = "system",
+            .content = base_prompt,
+        });
     }
-
-    const system_msg: Message = .{
-        .role = try history.allocator.dupe(u8, "system"),
-        .content = try history.allocator.dupe(u8, prompt_builder.items),
-    };
-
-    try history.addMessage(system_msg);
 }
 
 /// Load session history from storage
 fn loadSessionHistory(allocator: std.mem.Allocator, session_id: []const u8) !SessionHistory {
     var history = SessionHistory.init(allocator);
 
-    // Load from session storage
     if (session.load(allocator, session_id)) |loaded_messages| {
         for (loaded_messages) |msg| {
-            // Convert loaded messages to our Message format
             const new_msg: Message = .{
-                .role = try allocator.dupe(u8, msg.role),
-                .content = if (msg.content) |c| try allocator.dupe(u8, c) else null,
-                .tool_call_id = if (msg.tool_call_id) |id| try allocator.dupe(u8, id) else null,
+                .role = msg.role,
+                .content = msg.content,
+                .tool_call_id = msg.tool_call_id,
                 .tool_calls = if (msg.tool_calls) |calls| blk: {
                     const new_calls = try allocator.alloc(ToolCall, calls.len);
                     for (calls, 0..) |call, i| {
                         new_calls[i] = .{
-                            .id = try allocator.dupe(u8, call.id),
-                            .type = try allocator.dupe(u8, call.type),
+                            .id = call.id,
+                            .type = call.type,
                             .function = .{
-                                .name = try allocator.dupe(u8, call.function.name),
-                                .arguments = try allocator.dupe(u8, call.function.arguments),
+                                .name = call.function.name,
+                                .arguments = call.function.arguments,
                             },
                         };
                     }
@@ -270,21 +265,6 @@ fn loadSessionHistory(allocator: std.mem.Allocator, session_id: []const u8) !Ses
             try history.addMessage(new_msg);
         }
 
-        // Free loaded messages
-        for (loaded_messages) |msg| {
-            allocator.free(msg.role);
-            if (msg.content) |c| allocator.free(c);
-            if (msg.tool_call_id) |id| allocator.free(id);
-            if (msg.tool_calls) |calls| {
-                for (calls) |call| {
-                    allocator.free(call.id);
-                    allocator.free(call.type);
-                    allocator.free(call.function.name);
-                    allocator.free(call.function.arguments);
-                }
-                allocator.free(calls);
-            }
-        }
         allocator.free(loaded_messages);
     } else |_| {}
 
@@ -293,25 +273,25 @@ fn loadSessionHistory(allocator: std.mem.Allocator, session_id: []const u8) !Ses
 
 /// Save session history to storage
 fn saveSessionHistory(history: *SessionHistory, session_id: []const u8) !void {
-    // Convert our Message format back to session format
     const allocator = history.allocator;
+
     const save_messages = try allocator.alloc(base.LlmMessage, history.messages.items.len);
-    errdefer allocator.free(save_messages);
+    defer allocator.free(save_messages);
 
     for (history.messages.items, 0..) |msg, i| {
         save_messages[i] = .{
-            .role = try allocator.dupe(u8, msg.role),
-            .content = if (msg.content) |c| try allocator.dupe(u8, c) else null,
-            .tool_call_id = if (msg.tool_call_id) |id| try allocator.dupe(u8, id) else null,
+            .role = msg.role,
+            .content = msg.content,
+            .tool_call_id = msg.tool_call_id,
             .tool_calls = if (msg.tool_calls) |calls| blk: {
                 const new_calls = try allocator.alloc(base.ToolCall, calls.len);
                 for (calls, 0..) |call, j| {
                     new_calls[j] = .{
-                        .id = try allocator.dupe(u8, call.id),
-                        .type = try allocator.dupe(u8, call.type),
+                        .id = call.id,
+                        .type = if (call.type.len > 0) call.type else "function",
                         .function = .{
-                            .name = try allocator.dupe(u8, call.function.name),
-                            .arguments = try allocator.dupe(u8, call.function.arguments),
+                            .name = call.function.name,
+                            .arguments = call.function.arguments,
                         },
                     };
                 }
@@ -320,27 +300,9 @@ fn saveSessionHistory(history: *SessionHistory, session_id: []const u8) !void {
         };
     }
 
-    // Save to session storage
     session.save(allocator, session_id, save_messages) catch |err| {
         std.debug.print("Warning: Failed to save session: {any}\n", .{err});
     };
-
-    // Free save messages
-    for (save_messages) |msg| {
-        allocator.free(msg.role);
-        if (msg.content) |c| allocator.free(c);
-        if (msg.tool_call_id) |id| allocator.free(id);
-        if (msg.tool_calls) |calls| {
-            for (calls) |call| {
-                allocator.free(call.id);
-                allocator.free(call.type);
-                allocator.free(call.function.name);
-                allocator.free(call.function.arguments);
-            }
-            allocator.free(calls);
-        }
-    }
-    allocator.free(save_messages);
 }
 
 /// Process a message - pure functional approach
@@ -360,8 +322,8 @@ pub fn processMessage(
 
     // Add user message
     const user_msg: Message = .{
-        .role = try allocator.dupe(u8, "user"),
-        .content = try allocator.dupe(u8, user_message),
+        .role = "user",
+        .content = user_message,
     };
     try history.addMessage(user_msg);
 
@@ -458,7 +420,7 @@ pub fn processMessage(
 
     // Add assistant response to history
     const assistant_msg: Message = .{
-        .role = try allocator.dupe(u8, "assistant"),
+        .role = "assistant",
         .content = if (response.content) |c| try allocator.dupe(u8, c) else null,
     };
     try history.addMessage(assistant_msg);
