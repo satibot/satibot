@@ -1,6 +1,6 @@
-/// Cron job scheduling module for recurring and one-time tasks.
-/// Jobs can be scheduled to run at specific times or at regular intervals.
-/// Jobs are persisted to disk and survive application restarts.
+//! Cron job scheduling module for recurring and one-time tasks.
+//! Jobs can be scheduled to run at specific times or at regular intervals.
+//! Jobs are persisted to disk and survive application restarts.
 const std = @import("std");
 const Config = @import("../config.zig").Config;
 const Agent = @import("../agent.zig").Agent;
@@ -15,7 +15,7 @@ pub const CronScheduleKind = enum {
 pub const CronSchedule = struct {
     kind: CronScheduleKind,
     at_ms: ?i64 = null, // For 'at' schedules: timestamp in milliseconds
-    every_ms: ?i64 = null, // For 'every' schedules: interval in milliseconds
+    every_ms: ?u32 = null, // For 'every' schedules: interval in milliseconds
 };
 
 /// Payload containing the task to execute and delivery settings.

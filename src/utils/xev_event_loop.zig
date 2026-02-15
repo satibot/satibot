@@ -278,7 +278,7 @@ pub const XevEventLoop = struct {
                 } else {
                     // Calculate dynamic delay based on next event timing
                     const delay_ns = next_event.expires - now;
-                    const delay_ms: u64 = @max(1, @min(100, @as(u64, @intCast(@divTrunc(delay_ns, std.time.ns_per_ms))))); // Clamp between 1-100ms
+                    const delay_ms: u32 = @max(1, @min(100, @as(u32, @intCast(@divTrunc(delay_ns, std.time.ns_per_ms))))); // Clamp between 1-100ms
 
                     self.timer.run(&self.loop, &self.timer_completion, delay_ms * std.time.ns_per_ms, XevEventLoop, self, timerCallback);
 

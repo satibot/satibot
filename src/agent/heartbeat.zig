@@ -6,7 +6,7 @@ const std = @import("std");
 /// Runs every 30 minutes (1800 seconds) by default.
 pub const HeartbeatService = struct {
     allocator: std.mem.Allocator,
-    interval_s: u64 = 1800, // 30 minutes * 60 seconds = 1800 seconds
+    interval_s: u32 = 1800, // 30 minutes * 60 seconds = 1800 seconds
     last_tick_ms: i64 = 0,
     workspace_path: []const u8,
 
@@ -40,10 +40,11 @@ pub const HeartbeatService = struct {
         };
         defer file.close();
 
-        const content = file.readToEndAlloc(self.allocator, 1048576) catch |err| {
+        // Read file content up to 0.5MB (524288 = 1024 * 512)
+        const content = file.readToEndAlloc(self.allocator, 524288) catch |err| {
             std.log.err("Failed to read HEARTBEAT.md file: {}", .{err});
             return err;
-        }; // 1MB buffer (1024 * 1024)
+        };
 
         defer self.allocator.free(content);
 
