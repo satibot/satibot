@@ -23,6 +23,15 @@ Before run:
 - If need, run CLI help command: `l-log -h` for more information.
 - log path: `./logs/chat.csv`.
 
+## Validate after every code change
+
+After each code change, always run these commands to confirm the project still passes build and lint checks:
+
+1. `zig build`
+2. `ziglint`
+
+Do not skip these checks.
+
 ## Multiple number
 
 Replace arithmetic expressions with pre-calculated constants in memory allocations.
