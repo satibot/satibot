@@ -43,15 +43,34 @@ var shutdown_requested = std.atomic.Value(bool).init(false);
 /// Global event loop pointer for signal handler access
 var global_event_loop: ?*XevEventLoop = null;
 
+/// Global config for sending messages on shutdown
+var global_bot_token: ?[]const u8 = null;
+var global_chat_id: ?i64 = null;
+
 /// Signal handler for SIGINT (Ctrl+C) and SIGTERM
 /// Sets the global shutdown flag and requests event loop shutdown
 fn signalHandler(sig: i32) callconv(.c) void {
     _ = sig;
     std.debug.print("\n🛑 Shutdown signal received, stopping event loop...\n", .{});
     shutdown_requested.store(true, .seq_cst);
+
+    // Try to send shutdown message to chat
     if (global_event_loop) |el| {
+        if (global_bot_token) |token| {
+            if (global_chat_id) |chat_id| {
+                sendMessageToTelegram(el, token, chat_id, "🛑 Bot is shutting down...") catch {
+                    std.debug.print("Failed to send shutdown message to chat\n", .{});
+                };
+            }
+        }
         el.requestShutdown();
     }
+}
+
+/// Set global config for signal handler to send shutdown messages
+pub fn setGlobalConfig(bot_token: []const u8, chat_id: i64) void {
+    global_bot_token = bot_token;
+    global_chat_id = chat_id;
 }
 
 /// Static message sender function that uses the event loop's HTTP client
@@ -284,6 +303,14 @@ pub fn runBot(allocator: std.mem.Allocator, config: Config) !void {
         std.debug.print("Error: telegram configuration is required but not found.\n", .{});
         return error.TelegramConfigNotFound;
     };
+
+    // Set global config for signal handler to send shutdown messages
+    if (tg_config.chatId) |chat_id_str| {
+        const chat_id = std.fmt.parseInt(i64, chat_id_str, 10) catch 0;
+        if (chat_id != 0) {
+            setGlobalConfig(tg_config.botToken, chat_id);
+        }
+    }
 
     // Initialize the bot instance
     var bot = try TelegramBot.init(allocator, config);
