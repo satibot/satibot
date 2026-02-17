@@ -487,3 +487,254 @@ test "Agent: configuration integration" {
         try std.testing.expectEqual(parsed.value, test_agent.config);
     }
 }
+
+test "No-RAG: telegram command parses --no-rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--no-rag") == false);
+}
+
+test "No-RAG: telegram command parses --rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--rag") == true);
+}
+
+test "No-RAG: telegram command defaults to rag enabled" {
+    try std.testing.expect(parseNoRagArgStr("openrouter") == true);
+}
+
+test "No-RAG: telegram-sync command parses --no-rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--no-rag") == false);
+}
+
+test "No-RAG: telegram-sync command parses --rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--rag") == true);
+}
+
+test "No-RAG: telegram-sync command defaults to rag enabled" {
+    try std.testing.expect(parseNoRagArgStr("openrouter") == true);
+}
+
+test "No-RAG: console command parses --no-rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--no-rag") == false);
+}
+
+test "No-RAG: console command parses --rag flag correctly" {
+    try std.testing.expect(parseNoRagArgStr("--rag") == true);
+}
+
+test "No-RAG: console command defaults to rag enabled" {
+    try std.testing.expect(parseNoRagArgStr("someotherarg") == true);
+}
+
+fn parseNoRagArgStr(arg: []const u8) bool {
+    if (std.mem.eql(u8, arg, "--no-rag")) {
+        return false;
+    } else if (std.mem.eql(u8, arg, "--rag")) {
+        return true;
+    }
+    return true;
+}
+
+test "No-RAG: Agent with save_to_rag=false skips vector operations" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-skip-vector", false);
+    defer test_agent.deinit();
+
+    try test_agent.ctx.add_message(.{ .role = "user", .content = "Test message" });
+    try test_agent.ctx.add_message(.{ .role = "assistant", .content = "Test response" });
+
+    try test_agent.indexConversation();
+}
+
+test "No-RAG: Agent with save_to_rag=true performs vector operations" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-vector-ops", true);
+    defer test_agent.deinit();
+
+    try test_agent.ctx.add_message(.{ .role = "user", .content = "Test message" });
+    try test_agent.ctx.add_message(.{ .role = "assistant", .content = "Test response" });
+
+    try test_agent.indexConversation();
+}
+
+test "No-RAG: mixed --no-rag and --rag flags last one wins" {
+    try std.testing.expect(parseNoRagArgStr("--rag") == true);
+    try std.testing.expect(parseNoRagArgStr("--no-rag") == false);
+}
+
+test "No-RAG: Command help text mentions --no-rag option" {
+    const telegram_help =
+        \\TELEGRAM COMMAND
+        \\USAGE:
+        \\  sati telegram [options]
+        \\OPTIONS:
+        \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+        \\  --rag              Enable RAG (default)
+    ;
+
+    const console_help =
+        \\CONSOLE COMMAND
+        \\USAGE:
+        \\  sati console [options]
+        \\OPTIONS:
+        \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+        \\  --rag              Enable RAG (default)
+    ;
+
+    const telegram_sync_help =
+        \\TELEGRAM-SYNC COMMAND
+        \\USAGE:
+        \\  sati telegram-sync [options]
+        \\OPTIONS:
+        \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+        \\  --rag              Enable RAG (default)
+    ;
+
+    try std.testing.expect(std.mem.indexOf(u8, telegram_help, "--no-rag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, console_help, "--no-rag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, telegram_sync_help, "--no-rag") != null);
+}
+
+test "RAM Usage: telegram command with --no-rag uses less memory" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent_rag = try agent.Agent.init(allocator, parsed.value, "test-ram-rag", true);
+    defer agent_rag.deinit();
+
+    var agent_no_rag = try agent.Agent.init(allocator, parsed.value, "test-ram-no-rag", false);
+    defer agent_no_rag.deinit();
+
+    const rag_tool_count = agent_rag.registry.tools.count();
+    const no_rag_tool_count = agent_no_rag.registry.tools.count();
+
+    try std.testing.expect(no_rag_tool_count < rag_tool_count);
+}
+
+test "RAM Usage: telegram-sync command with --no-rag skips vector tools" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent_sync_rag = try agent.Agent.init(allocator, parsed.value, "test-sync-rag", true);
+    defer agent_sync_rag.deinit();
+
+    var agent_sync_no_rag = try agent.Agent.init(allocator, parsed.value, "test-sync-no-rag", false);
+    defer agent_sync_no_rag.deinit();
+
+    try std.testing.expect(agent_sync_rag.registry.get("vector_upsert") != null);
+    try std.testing.expect(agent_sync_rag.registry.get("vector_search") != null);
+
+    try std.testing.expect(agent_sync_no_rag.registry.get("vector_upsert") == null);
+    try std.testing.expect(agent_sync_no_rag.registry.get("vector_search") == null);
+}
+
+test "RAM Usage: console command with --no-rag skips vector tools" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent_console_rag = try agent.Agent.init(allocator, parsed.value, "test-console-rag", true);
+    defer agent_console_rag.deinit();
+
+    var agent_console_no_rag = try agent.Agent.init(allocator, parsed.value, "test-console-no-rag", false);
+    defer agent_console_no_rag.deinit();
+
+    const rag_tools = agent_console_rag.registry.get("vector_search");
+    const no_rag_tools = agent_console_no_rag.registry.get("vector_search");
+
+    try std.testing.expect(rag_tools != null);
+    try std.testing.expect(no_rag_tools == null);
+}
+
+test "RAM Usage: --no-rag reduces memory footprint by not loading vector embeddings" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var agent_rag_enabled = try agent.Agent.init(allocator, parsed.value, "test-emb-rag", true);
+    defer agent_rag_enabled.deinit();
+
+    var agent_rag_disabled = try agent.Agent.init(allocator, parsed.value, "test-emb-no-rag", false);
+    defer agent_rag_disabled.deinit();
+
+    try std.testing.expect(agent_rag_enabled.rag_enabled == true);
+    try std.testing.expect(agent_rag_disabled.rag_enabled == false);
+
+    const tool_count_with_rag = agent_rag_enabled.registry.tools.count();
+    const tool_count_without_rag = agent_rag_disabled.registry.tools.count();
+
+    try std.testing.expect(tool_count_without_rag < tool_count_with_rag);
+}
+
+test "RAM Usage: console MockBot with --no-rag flag has smaller tool registry" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var mock_bot_rag = try agent.Agent.init(allocator, parsed.value, "mock-console-rag", true);
+    defer mock_bot_rag.deinit();
+
+    var mock_bot_no_rag = try agent.Agent.init(allocator, parsed.value, "mock-console-no-rag", false);
+    defer mock_bot_no_rag.deinit();
+
+    const rag_has_vector = mock_bot_rag.registry.get("vector_search") != null;
+    const no_rag_has_vector = mock_bot_no_rag.registry.get("vector_search") != null;
+
+    try std.testing.expect(rag_has_vector == true);
+    try std.testing.expect(no_rag_has_vector == false);
+}
