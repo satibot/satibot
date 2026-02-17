@@ -30,6 +30,7 @@ pub const Agent = struct {
     shutdown_flag: ?*const std.atomic.Value(bool) = null,
     /// Stores the last error message from provider for display to user
     last_error: ?[]const u8 = null,
+    has_system_prompt: bool = false,
 
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
@@ -167,6 +168,7 @@ pub const Agent = struct {
                 std.log.err("Failed to register vector_search tool: {any}", .{err});
             };
         }
+
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",
@@ -229,9 +231,13 @@ pub const Agent = struct {
     /// Ensure a system prompt exists in the conversation context.
     /// If not present, adds a default prompt that describes the bot and its tools.
     pub fn ensureSystemPrompt(self: *Agent) !void {
-        const messages = self.ctx.getMessages();
-        for (messages) |msg| {
-            if (std.mem.eql(u8, msg.role, "system")) return;
+        if (self.has_system_prompt) return;
+
+        for (self.ctx.getMessages()) |msg| {
+            if (std.mem.eql(u8, msg.role, "system")) {
+                self.has_system_prompt = true;
+                return;
+            }
         }
 
         var prompt_builder: std.ArrayList(u8) = .empty;
@@ -251,6 +257,7 @@ pub const Agent = struct {
         }
 
         try self.ctx.addMessage(.{ .role = "system", .content = prompt_builder.items });
+        self.has_system_prompt = true;
     }
 
     pub fn deinit(self: *Agent) void {
