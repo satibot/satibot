@@ -10,6 +10,7 @@ pub const vector_db = @import("db/vector_db.zig");
 pub const local_embeddings = @import("db/local_embeddings.zig");
 pub const graph_db = @import("db/graph_db.zig");
 pub const console = @import("agent/console.zig");
+pub const console_sync = @import("agent/console_sync.zig");
 // chat apps
 pub const telegram = @import("chat_apps/telegram/telegram.zig");
 pub const telegram_handlers = @import("chat_apps/telegram/telegram_handlers.zig");

@@ -302,3 +302,46 @@ test "MockBot /new with prompt processes prompt after incrementing counter" {
     // without running the full event loop, but we can verify the task was added)
     try std.testing.expect(bot.event_loop.task_queue.items.len == 1);
 }
+
+test "MockBot: No memory leak with --no-rag option" {
+    const allocator = std.testing.allocator;
+
+    // Load config
+    const config = try config_load(allocator);
+    defer config.deinit();
+
+    // Test with rag_enabled = false (--no-rag)
+    {
+        var bot = try MockBot.init(allocator, config.value, false);
+        defer bot.deinit();
+
+        // Add some tasks to verify the event loop works with RAG disabled
+        try bot.event_loop.addTask("test1", "Hello", "console_input");
+        try bot.event_loop.addTask("test2", "How are you?", "console_input");
+
+        // Verify tasks were added
+        try std.testing.expect(bot.event_loop.task_queue.items.len == 2);
+
+        // Verify RAG is disabled in context
+        try std.testing.expect(bot.ctx.rag_enabled == false);
+    }
+    // If deinit works correctly, no memory leaks should occur
+}
+
+test "MockBot: Memory leak test - multiple init/deinit cycles with --no-rag" {
+    const allocator = std.testing.allocator;
+
+    // Load config
+    const config = try config_load(allocator);
+    defer config.deinit();
+
+    // Test multiple init/deinit cycles to detect any cumulative leaks
+    for (0..5) |_| {
+        var bot = try MockBot.init(allocator, config.value, false);
+        defer bot.deinit();
+
+        // Add tasks
+        try bot.event_loop.addTask("test_id", "Test message", "console_input");
+    }
+    // If we reach here without memory leaks, test passes
+}

@@ -1,14 +1,12 @@
 const std = @import("std");
-const satibot = @import("root.zig");
-const console = @import("agent/console.zig");
+const satibot = @import("root_console_sync.zig");
+const console_sync = @import("agent/console_sync.zig");
 
 pub fn main() !void {
-    // Initialize allocator
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Parse command line arguments for --no-rag flag
     var rag_enabled = true;
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -18,17 +16,11 @@ pub fn main() !void {
         }
     }
 
-    // Load configuration
     var parsed_config = try satibot.config.load(allocator);
     defer parsed_config.deinit();
-    const config = parsed_config.value;
+    const config_value = parsed_config.value;
 
-    // Display RAG status
     std.debug.print("RAG: {s}\n", .{if (rag_enabled) "Enabled" else "Disabled"});
 
-    // Initialize and run the Console bot
-    var bot = try console.MockBot.init(allocator, config, rag_enabled);
-    defer bot.deinit();
-
-    try bot.run();
+    try console_sync.run(allocator, config_value, rag_enabled);
 }

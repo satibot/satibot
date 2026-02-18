@@ -127,6 +127,13 @@ zig build run -- agent -m "Follow-up message" -s my-session
 zig build telegram
 # Run as a Console bot (Console-based, uses Xev loop)
 zig build console
+# Run console with RAG disabled
+zig build console -- --no-rag
+# Run as a Sync Console bot (simpler, smaller binary, no event loop)
+# Uses separate build file for smaller binary (~3.9MB vs 4.8MB)
+zig build --build-file build_console_sync.zig
+# Run sync console with RAG disabled
+zig build --build-file build_console_sync.zig run -- --no-rag
 # Run the GATEWAY (Telegram + Cron + Heartbeat)
 zig build run -- gateway
 # RAG is enabled by default to remember conversations. 

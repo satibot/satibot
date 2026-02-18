@@ -50,6 +50,7 @@ pub fn build(b: *std.Build) void {
     // to our consumers. We must give it a name because a Zig package can expose
     // multiple modules and consumers will need to be able to specify which
     // module they want to access.
+    // Always include xev for async features
     const mod = b.addModule("satibot", .{
         // The root source file is the "entry point" of this module. Users of
         // this module will only be able to access public declarations contained
@@ -87,7 +88,7 @@ pub fn build(b: *std.Build) void {
     // If instead your goal is to create an executable, consider if users might
     // be interested in also being able to embed the core functionality of your
     // program in their own executable in order to avoid the overhead involved in
-    // subprocessing your CLI tool.
+    // sub-processing your CLI tool.
     //
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
@@ -242,6 +243,46 @@ pub fn build(b: *std.Build) void {
     run_xev_console_step.dependOn(&run_xev_console_cmd.step);
     // run_xev_console_cmd.step.dependOn(b.getInstallStep());
 
+    // This allows the user to pass arguments to the application in the build
+    // command itself, like this: `zig build console -- --no-rag`
+    if (b.args) |args| {
+        run_xev_console_cmd.addArgs(args);
+    }
+
+    // Synchronous Console bot executable
+    // Uses ReleaseSmall for better performance and smaller binary
+    const console_sync_exe = b.addExecutable(.{
+        .name = "console-sync-bot",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/console_sync_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "satibot", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+                .{ .name = "build_opts", .module = build_options.createModule() },
+                .{ .name = "tls", .module = b.dependency("tls", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("tls") },
+                .{ .name = "xev", .module = b.dependency("xev", .{
+                    .target = target,
+                    .optimize = optimize,
+                }).module("xev") },
+            },
+        }),
+    });
+    b.installArtifact(console_sync_exe);
+
+    // Run step for console-sync bot
+    const run_console_sync_step = b.step("console-sync", "Run the sync Console bot (no event loop, -Dinclude-console=false)");
+    const run_console_sync_cmd = b.addRunArtifact(console_sync_exe);
+    run_console_sync_step.dependOn(&run_console_sync_cmd.step);
+
+    if (b.args) |args| {
+        run_console_sync_cmd.addArgs(args);
+    }
+
     // Run step for xev telegram bot
     // const run_xev_telegram_step = b.step("telegram", "Run the xev telegram bot");
     // run_xev_telegram_step.dependOn(&run_xev_telegram_cmd.step);
@@ -298,6 +339,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "satibot", .module = mod },
+                .{ .name = "build_opts", .module = build_options.createModule() },
                 .{ .name = "tls", .module = b.dependency("tls", .{
                     .target = target,
                     .optimize = optimize,

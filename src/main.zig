@@ -66,6 +66,9 @@ pub fn main() !void {
     } else if (std.mem.eql(u8, command, "console")) {
         // Run console-based Console bot
         try runConsole(allocator, args);
+    } else if (std.mem.eql(u8, command, "console-sync")) {
+        // Run synchronous console bot (no event loop)
+        try runConsoleSync(allocator, args);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         // Test LLM provider connectivity
         try runTestLlm(allocator);
@@ -142,7 +145,8 @@ fn usage() !void {
         \\COMMANDS:
         \\  help          Show this help message
         \\  agent         Run AI agent in interactive or single message mode
-        \\  console       Run console-based interactive bot
+        \\  console       Run console-based interactive bot (async)
+        \\  console-sync  Run console-based interactive bot (sync)
         \\  telegram      Run sati as a Telegram bot (async version)
         \\  telegram-sync Run sati as a Telegram bot (sync version)
         \\  
@@ -178,6 +182,7 @@ fn usage() !void {
         \\
         \\  # Console-based interactive bot
         \\  sati console
+        \\  sati console-sync
         \\
         \\  # Run Telegram bot with OpenRouter validation
         \\  sati telegram openrouter
@@ -281,6 +286,41 @@ fn showCommandHelp(command: []const u8) !void {
             \\EXAMPLES:
             \\  sati console
             \\  sati console --no-rag
+            \\
+        ;
+        std.debug.print("{s}", .{help_text});
+        return;
+    } else if (std.mem.eql(u8, command, "console-sync")) {
+        const help_text =
+            \\CONSOLE-SYNC COMMAND
+            \\
+            \\USAGE:
+            \\  sati console-sync [options]
+            \\
+            \\OPTIONS:
+            \\  --no-rag           Disable RAG (Retrieval-Augmented Generation)
+            \\  --rag              Enable RAG (default)
+            \\
+            \\DESCRIPTION:
+            \\  Runs sati as a synchronous console-based interactive bot.
+            \\  This version processes messages directly without an event loop,
+            \\  making it simpler and more reliable than the async version.
+            \\
+            \\COMMANDS:
+            \\  /help    Show help message
+            \\  /new     Start a new session
+            \\  exit     Exit the console bot
+            \\  quit     Exit the console bot
+            \\
+            \\CHARACTERISTICS:
+            \\  - Synchronous processing (one message at a time)
+            \\  - No event loop or thread pool
+            \\  - Lower resource usage
+            \\  - Easier to debug
+            \\
+            \\EXAMPLES:
+            \\  sati console-sync
+            \\  sati console-sync --no-rag
             \\
         ;
         std.debug.print("{s}", .{help_text});
@@ -594,6 +634,27 @@ fn runConsole(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     defer bot.deinit();
 
     try bot.run();
+}
+
+/// Run synchronous console-based Console bot (no event loop)
+/// Provides interactive console chat using direct Agent calls
+fn runConsoleSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+    const parsed_config = try satibot.config.load(allocator);
+    defer parsed_config.deinit();
+    const config = parsed_config.value;
+
+    var save_to_rag = true;
+    for (args[2..]) |arg| {
+        if (std.mem.eql(u8, arg, "--no-rag")) {
+            save_to_rag = false;
+        } else if (std.mem.eql(u8, arg, "--rag")) {
+            save_to_rag = true;
+        }
+    }
+
+    std.debug.print("Active Model: {s}\nRAG: {s}\nConsole Sync bot started. Type 'exit' or 'quit' to stop.\n", .{ config.agents.defaults.model, if (save_to_rag) "Enabled" else "Disabled" });
+
+    try satibot.console_sync.run(allocator, config, save_to_rag);
 }
 
 /// Run Telegram bot server

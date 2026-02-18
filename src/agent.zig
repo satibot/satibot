@@ -2,9 +2,10 @@ const std = @import("std");
 const Config = @import("config.zig").Config;
 const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");
-const providers = @import("root.zig");
+const openrouter = @import("providers/openrouter.zig");
+const anthropic = @import("providers/anthropic.zig");
 const base = @import("providers/base.zig");
-const OpenRouterError = @import("providers/openrouter.zig").OpenRouterError;
+const OpenRouterError = openrouter.OpenRouterError;
 const session = @import("db/session.zig");
 const local_embeddings = @import("db/local_embeddings.zig");
 
@@ -279,7 +280,7 @@ pub const Agent = struct {
         const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
             return error.NoApiKey;
         };
-        var provider = try providers.openrouter.OpenRouterProvider.init(allocator, api_key);
+        var provider = try openrouter.OpenRouterProvider.init(allocator, api_key);
         defer provider.deinit();
 
         var retry_count: usize = 0;
@@ -466,9 +467,9 @@ pub const Agent = struct {
             const getProviderInterface = struct {
                 fn call(model_name: []const u8) base.ProviderInterface {
                     if (std.mem.indexOf(u8, model_name, "claude") != null) {
-                        return providers.anthropic.createInterface();
+                        return anthropic.createInterface();
                     } else {
-                        return providers.openrouter.createInterface();
+                        return openrouter.createInterface();
                     }
                 }
             }.call;

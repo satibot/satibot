@@ -47,12 +47,12 @@ pub const TaskHandler = *const fn (allocator: std.mem.Allocator, task: Task) any
 /// Callback function type for handling scheduled events
 pub const EventHandler = *const fn (allocator: std.mem.Allocator, event: Event) anyerror!void;
 
-/// Event Loop using libxev for high-performance async I/O
+/// Event Loop using lib-xev for high-performance async I/O
 pub const XevEventLoop = struct {
     allocator: std.mem.Allocator,
     config: Config,
 
-    // libxev loop
+    // lib-xev loop
     loop: xev.Loop,
 
     // Thread-safe task queue for immediate processing
@@ -87,7 +87,7 @@ pub const XevEventLoop = struct {
     timer_completion: xev.Completion,
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !XevEventLoop {
-        // Initialize libxev loop
+        // Initialize lib-xev loop
         const loop = try xev.Loop.init(.{});
         const timer = try xev.Timer.init();
 
