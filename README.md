@@ -15,6 +15,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 - [x] VectorDB - very simple local first vector searching for similar content chat logs.
 - [x] OpenTelemetry tracing for observability
+- [x] HTTP Web API (zap framework) for REST interface built on top of the Zap logging library (used for fast, structured logging)
 
 ## Comparison with others
 

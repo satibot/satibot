@@ -1,4 +1,3 @@
-const std = @import("std");
 pub const build_opts = @import("build_opts");
 
 pub const Agent = @import("agent.zig").Agent;

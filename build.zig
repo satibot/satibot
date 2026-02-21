@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
     const version = std.mem.trim(u8, date_version_output, "\n\r ");
     build_options.addOption([]const u8, "version", version);
     build_options.addOption(bool, "include_whatsapp", false);
+    const include_web = b.option(bool, "web", "Build with web module (zap)") orelse false;
 
     // External dependencies
     const tls_mod = b.dependency("tls", .{
@@ -29,10 +30,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }).module("xev");
 
-    // const zap_mod = b.dependency("zap", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    // }).module("zap");
+    // web module (HTTP API using zap) — zap is a private dep of libs/web
+    const web_mod: ?*std.Build.Module = if (include_web)
+        b.dependency("web", .{
+            .target = target,
+            .optimize = optimize,
+        }).module("web")
+    else
+        null;
 
     // Libraries - defined in dependency order
     const core = b.addModule("core", .{
@@ -95,19 +100,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "utils", .module = utils },
         },
     });
-
-    // Web module (HTTP API using zap) - TODO: re-enable when web module is ready
-    // const web = b.addModule("web", .{
-    //     .root_source_file = b.path("libs/web/src/root.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    //     .imports = &.{
-    //         .{ .name = "zap", .module = zap_mod },
-    //         .{ .name = "core", .module = core },
-    //         .{ .name = "agent", .module = agent },
-    //     },
-    // });
-    // _ = zap_mod; // suppress unused warning
 
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
@@ -184,23 +176,31 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(telegram);
 
-    // Web App (HTTP API) - TODO: re-enable when web module is ready
-    // const web_app = b.addExecutable(.{
-    //     .name = "web",
-    //     .root_module = b.createModule(.{
-    //         .root_source_file = b.path("apps/web/src/main.zig"),
-    //         .target = target,
-    //         .optimize = optimize,
-    //         .imports = &.{
-    //             .{ .name = "agent", .module = agent },
-    //             .{ .name = "web", .module = web },
-    //             .{ .name = "core", .module = core },
-    //             .{ .name = "zap", .module = zap_mod },
-    //             .{ .name = "build_opts", .module = build_options.createModule() },
-    //         },
-    //     }),
-    // });
-    // b.installArtifact(web_app);
+    // Web App (HTTP API)
+    if (include_web) {
+        const web_app = b.addExecutable(.{
+            .name = "web",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("apps/web/src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "agent", .module = agent },
+                    .{ .name = "web", .module = web_mod.? },
+                    .{ .name = "core", .module = core },
+                    .{ .name = "build_opts", .module = build_options.createModule() },
+                },
+            }),
+        });
+        b.installArtifact(web_app);
+
+        const run_web_cmd = b.addRunArtifact(web_app);
+        if (b.args) |args| {
+            run_web_cmd.addArgs(args);
+        }
+        const run_web = b.step("run-web", "Run web API server");
+        run_web.dependOn(&run_web_cmd.step);
+    }
 
     // Run steps
     const run_console_sync_cmd = b.addRunArtifact(console_sync);
@@ -223,14 +223,6 @@ pub fn build(b: *std.Build) void {
     }
     const run_telegram = b.step("run-telegram", "Run telegram bot");
     run_telegram.dependOn(&run_telegram_cmd.step);
-
-    // Web run commands - TODO: re-enable when web module is ready
-    // const run_web_cmd = b.addRunArtifact(web_app);
-    // if (b.args) |args| {
-    //     run_web_cmd.addArgs(args);
-    // }
-    // const run_web = b.step("run-web", "Run web API server");
-    // run_web.dependOn(&run_web_cmd.step);
 
     // Test step for all libraries
     const test_step = b.step("test", "Run library tests");
@@ -262,5 +254,31 @@ pub fn build(b: *std.Build) void {
         });
         const test_run = b.addRunArtifact(b.addTest(.{ .root_module = test_module }));
         test_step.dependOn(&test_run.step);
+    }
+
+    // Web module tests (conditional)
+    if (include_web) {
+        const web_test = b.addTest(.{
+            .root_module = web_mod.?,
+        });
+        const web_test_run = b.addRunArtifact(web_test);
+        test_step.dependOn(&web_test_run.step);
+
+        // App web tests
+        const app_web_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("apps/web/src/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "agent", .module = agent },
+                    .{ .name = "web", .module = web_mod.? },
+                    .{ .name = "core", .module = core },
+                    .{ .name = "build_opts", .module = build_options.createModule() },
+                },
+            }),
+        });
+        const app_web_test_run = b.addRunArtifact(app_web_test);
+        test_step.dependOn(&app_web_test_run.step);
     }
 }

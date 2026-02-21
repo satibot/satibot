@@ -28,7 +28,7 @@ Before run:
 After each code change, always run these commands to confirm the project still passes build and lint checks:
 
 1. `zig build`
-2. `ziglint`
+2. `make lint`
 
 Do not skip these checks.
 

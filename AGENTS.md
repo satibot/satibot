@@ -8,7 +8,7 @@ After each code change, always run these commands:
 
 ```bash
 zig build test
-ziglint
+make lint
 ```
 
 ### Log Your Work

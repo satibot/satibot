@@ -58,6 +58,12 @@ zig build telegram         # Telegram bot
 zig build run-console      # Build and run async console
 zig build run-console-sync # Build and run sync console
 zig build run-telegram     # Build and run telegram bot
+
+zig build -Dweb=true
+# and then
+./zig-out/bin/web
+# or directly
+zig build run-web -Dweb=true
 ```
 
 Build and run tests:
@@ -73,8 +79,10 @@ git clone git@github.com:rockorager/ziglint.git
 cd ziglint
 zig build -Doptimize=ReleaseFast --prefix $HOME/.local
 
-# run lint
+# run lint for single repo
 ziglint
+# for monorepo
+make lint
 ```
 
 ### Common Tasks (Makefile)

@@ -1,0 +1,17 @@
+.{
+    .name = .web,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        // zap is owned here so the root monorepo build.zig.zon doesn't need it
+        .zap = .{
+            .url = "https://github.com/zigzap/zap/archive/refs/tags/v0.11.0.tar.gz",
+            .hash = "zap-0.10.6-GoeB8xCEJABLgoiZjWZMMT5TsoZ5OO2EZe6j24RTUYEH",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
