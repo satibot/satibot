@@ -47,7 +47,7 @@ my_agent.run("Hello!");
 
 ### With Jaeger (Local Development)
 
-1. Start Jaeger:
+1. Start Jaeger with OTLP receiver enabled:
 
 ```bash
 docker run -d --name jaeger \
@@ -57,23 +57,51 @@ docker run -d --name jaeger \
   jaegertracing/all-in-one:latest
 ```
 
-1. Run satibot with OTEL:
+- **Port 16686**: Jaeger UI (view traces here)
+- **Port 4318**: OTLP HTTP receiver (app sends traces here)
+
+1. Run satibot with OTEL environment variables:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 export OTEL_SERVICE_NAME=satibot-dev
+# Run any command that uses the observer
 sati console
 ```
 
-1. View traces at <http://localhost:16686>
+1. View traces at <http://localhost:16686>. Select the Service `satibot-dev` and click "Find Traces".
 
-### With Datadog
+## Testing in a Real App
+
+When deploying or testing in a real application, follow this checklist to ensure traces are flowing correctly:
+
+### 1. Verification Checklist
+
+- [ ] **Connectivity**: The app can reach `OTEL_EXPORTER_OTLP_ENDPOINT`.
+- [ ] **Service Name**: `OTEL_SERVICE_NAME` is set to distinguish environments (e.g., `satibot-staging`).
+- [ ] **Batching**: Spans are batched by default (100). In low-traffic apps, it may take time for the first batch to send. For immediate results during testing, reduce `max_batch_size` to `1`.
+
+### 2. Manual Verification
+
+You can manually send a trace to your collector using `curl` to verify it's working:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://trace.agent.datadoghq.com/api/v0.2/traces
-export OTEL_EXPORTER_OTLP_HEADERS="DD-API-KEY=your_api_key"
-export OTEL_SERVICE_NAME=satibot-prod
-sati telegram
+curl -X POST http://localhost:4318/v1/traces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceSpans": [{
+      "resource": { "attributes": [{ "key": "service.name", "value": { "stringValue": "curl-test" } }] },
+      "scopeSpans": [{
+        "spans": [{
+          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "spanId": "00f067aa0ba902b7",
+          "name": "test-span",
+          "startTimeUnixNano": "'$(date +%s%N)'",
+          "endTimeUnixNano": "'$(date +%s%N)'"
+        }]
+      }]
+    }]
+  }'
 ```
 
 ## Traced Events
@@ -128,9 +156,22 @@ export OTEL_LOG_LEVEL=debug
 docker logs jaeger
 ```
 
+### Inspect Raw Payloads
+
+If you suspect the JSON format is incorrect, you can use `nc` (netcat) to act as a mock collector and print the raw JSON sent by the app:
+
+```bash
+# In one terminal, listen on port 4318
+nc -l 4318
+
+# In another terminal, run the app pointing to localhost:4318
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+sati console
+```
+
 ### High memory usage
 
-Reduce batch size:
+Reduce batch size if the app stores too many spans in memory:
 
 ```zig
 var otel = try agent.otel.OtelObserver.init(allocator, .{
