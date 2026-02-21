@@ -12,7 +12,27 @@ This version includes significant changes from previous versions:
 - **Signal Handling**: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
 - **Division**: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
 
-The event loop has been migrated to use XevEventLoop (see `src/utils/xev_event_loop.zig`).
+The event loop has been migrated to use XevEventLoop (see `libs/utils/src/xev_event_loop.zig`).
+
+### Monorepo Structure
+
+This project uses a Zig monorepo structure:
+
+```text
+libs/
+  ├── core/src/         - Config and constants (shared across all modules)
+  ├── http/src/         - HTTP client module
+  ├── providers/src/   - LLM provider implementations (OpenRouter, Anthropic, Groq)
+  ├── db/src/          - Database and session modules
+  ├── utils/src/       - Shared utilities (xev_event_loop)
+  └── agent/src/       - Core agent logic
+
+apps/
+  ├── console/src/     - Console applications (sync + async)
+  └── telegram/src/    - Telegram bot
+```
+
+Modules are defined in `build.zig` with proper dependency management to avoid circular dependencies.
 
 ### Prerequisites
 
@@ -23,10 +43,21 @@ zig version
 # Should be 0.15.2
 ```
 
-Simple way to buid:
+Simple way to build:
 
 ```bash
+# Build all targets (debug mode)
 zig build
+
+# Build specific targets
+zig build console          # Async console app
+zig build console-sync     # Sync console app  
+zig build telegram         # Telegram bot
+
+# Run targets directly
+zig build run-console      # Build and run async console
+zig build run-console-sync # Build and run sync console
+zig build run-telegram     # Build and run telegram bot
 ```
 
 Build and run tests:
@@ -119,29 +150,60 @@ zig build-exe src/main.zig --name sati -femit-bin=debug/sati
 Test:
 
 ```bash
-# Run the agent with a message
-zig build run -- agent -m "Your message"
-# Run with a specific session ID to persist history
-zig build run -- agent -m "Follow-up message" -s my-session
-# Run as a Telegram Bot (Xev/Asynchronous)
-zig build telegram
-# Run as a Console bot (Console-based, uses Xev loop)
+# Run all tests
+zig build test
+
+# Build and run console (async)
 zig build console
+
 # Run console with RAG disabled
 zig build console -- --no-rag
-# Run as a Sync Console bot (simpler, smaller binary, no event loop)
-# Uses separate build file for smaller binary (~3.9MB vs 4.8MB)
-zig build --build-file build_console_sync.zig
+
+# Build and run console (sync)
+zig build console-sync
+
 # Run sync console with RAG disabled
-zig build --build-file build_console_sync.zig run -- --no-rag
-# Run the GATEWAY (Telegram + Cron + Heartbeat)
-zig build run -- gateway
-# RAG is enabled by default to remember conversations. 
-# To disable it for a specific run:
-zig build run -- agent -m "Don't remember this" --no-rag
+zig build console-sync -- --no-rag
+
+# Build and run Telegram bot
+zig build run-telegram
 ```
 
-### Specialized Tests
+### Module Development
+
+When working on a specific module:
+
+```bash
+# Make changes to libs/core/src/config.zig
+# The core module is imported by all other modules via:
+# const config = @import("core").config;
+
+# Make changes to libs/agent/src/
+# Agent module imports: core, db, http, providers, utils
+
+# Test your changes
+zig build test
+```
+
+### Adding a New Module
+
+1. Create the module directory: `libs/<name>/src/`
+2. Create `root.zig` with public exports
+3. Add the module to `build.zig`:
+
+```zig
+const <name> = b.addModule("<name>", .{
+    .root_source_file = b.path("libs/<name>/src/root.zig"),
+    .target = target,
+    .optimize = optimize,
+    .imports = &.{
+        .{ .name = "core", .module = core },
+        // Add other dependencies as needed
+    },
+});
+```
+
+1. Import in other modules: `const <name> = @import("<name>");`
 
 ```bash
 # Run unit tests for the Xev Console bot

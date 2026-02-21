@@ -9,6 +9,7 @@ pub const messages = @import("agent/messages.zig");
 pub const console = @import("agent/console.zig");
 pub const console_sync = @import("agent/console_sync.zig");
 pub const telegram_bot_sync = @import("agent/telegram_bot_sync.zig");
+pub const observability = @import("observability.zig");
 
 // WhatsApp support (conditional)
 const whatsapp_bot_real = @import("agent/whatsapp_bot.zig");
@@ -53,6 +54,7 @@ pub const anthropic = @import("providers").anthropic;
 pub const groq = @import("providers").groq;
 
 test {
+    _ = @import("agent/memory_leak_test.zig");
     _ = config;
     _ = Agent;
     _ = context;

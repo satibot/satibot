@@ -14,6 +14,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 - [x] VectorDB - very simple local first vector searching for similar content chat logs.
+- [x] OpenTelemetry tracing for observability
 
 ## Comparison with others
 
@@ -28,7 +29,8 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
 - 🐵 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
 - 🔧 **Extensible**: Easy skill installation and tool system
-- 💬 **Multi-Platform**: [TODO: current is using Telegram and console] Telegram, Discord, WhatsApp, and more
+- 💬 **Multi-Platform**: Telegram, Console, Web API, and more
+- 📊 **Observability**: Built-in OpenTelemetry tracing support
 
 View more in [Features](docs/FEATURES.md).
 
@@ -69,7 +71,10 @@ zig version
 git clone https://github.com/satibot/satibot.git
 cd satibot
 
-# build
+# build all targets
+zig build
+
+# build release version
 zig build -Doptimize=ReleaseFast --prefix $HOME/.local
 # or
 make prod
@@ -80,7 +85,25 @@ make prod
 # - using `arcee-ai/trinity-large-preview:free`
 # - using `openrouter`
 # - using `telegram`
-sati in
+sati init
+```
+
+### Project Structure
+
+This is a Zig monorepo with the following structure:
+
+```text
+libs/
+  ├── core/         - Config and constants (shared)
+  ├── http/         - HTTP client module
+  ├── providers/    - LLM provider implementations
+  ├── db/           - Database and session modules
+  ├── utils/        - Shared utilities (xev_event_loop)
+  └── agent/        - Core agent logic
+
+apps/
+  ├── console/      - Console applications (sync + async)
+  └── telegram/     - Telegram bot
 ```
 
 ### 2. Configure
@@ -119,15 +142,31 @@ export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 ## Run
 
 ```bash
-# for console, terminal base
+# for console (sync version - simple & reliable)
+sati console-sync
+
+# for console (async version with xev event loop)
 sati console
 
 # for telegram (sync version - simple & reliable)
 sati telegram-sync
+```
 
-# TODO
-# for telegram (async version - high performance)
-# sati telegram
+## Build Commands
+
+```bash
+# Build all targets (debug)
+zig build
+
+# Build specific targets
+zig build console          # Async console app
+zig build console-sync     # Sync console app
+zig build telegram         # Telegram bot
+
+# Run with build
+zig build run-console          # Build and run async console
+zig build run-console-sync     # Build and run sync console
+zig build run-telegram         # Build and run telegram bot
 ```
 
 ## CLI Options
@@ -161,11 +200,9 @@ satibot offers two Telegram bot implementations:
 
 **⚡ Async Version** (`telegram`)
 
-TODO
-
-- High-performance, event-driven
+- High-performance, event-driven (xev-based)
 - Processes multiple messages concurrently
-- Higher resource usage - RAM usage ~3.5MB on macOS M1 (disable RAG with `--no-rag` option)
+- Higher resource usage - RAM usage more than  3.5MB on macOS M1 (disable RAG with `--no-rag` option)
 
 See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
 
@@ -173,11 +210,11 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ## 💬 Chat Integrations
 
-- Telegram: `sati telegram-sync`
+- Telegram: `sati telegram` or `sati telegram-sync`
   - [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
   - [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md)
   - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
-- Terminal console: `sati console`
+- Terminal console: `sati console` or `sati console-sync`
   - [docs/CONSOLE.md](docs/CONSOLE.md)
 
 ---
@@ -212,7 +249,7 @@ sati vector-db add "my name is John"
 
 ### 🔧 Skills & Tools
 
-TODO
+Browse and install skills from the community:
 
 ```bash
 # Browse available skills
@@ -222,20 +259,25 @@ curl https://agent-skills.md/
 ./scripts/install-skill.sh <github-url-or-path>
 
 # Use built-in tools
-zig build run -- agent -m "Run: ls -la"
+zig build console -- -- agent -m "Run: ls -la"
 ```
 
 ### ⏰ Automation
 
-TODO
+**Heartbeat**: Proactive task checking
 
 ```bash
-# Heartbeat: Proactive task checking
-echo "Check emails" > HEARTBEAT.md
+# Create a heartbeat task
+echo "Check emails" > ~/.bots/HEARTBEAT.md
 
-# Cron: Schedule recurring tasks
+# Run the telegram bot (includes heartbeat)
+sati telegram
+
+# TODO: Cron: Schedule recurring tasks
 zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 ```
+
+TODO: Cron: Schedule recurring tasks via configuration in `~/.bots/config.json`
 
 ---
 
@@ -250,6 +292,7 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 |[**Telegram Guide**](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
 |[**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
 |[**RAG Guide**](docs/RAG.md)|Understanding the memory system|
+|[**OpenTelemetry**](docs/OPENTELEMETRY.md)|Distributed tracing setup with OTEL|
 |[**Release Guide**](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
 
 ---

@@ -29,6 +29,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }).module("xev");
 
+    // const zap_mod = b.dependency("zap", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // }).module("zap");
+
     // Libraries - defined in dependency order
     const core = b.addModule("core", .{
         .root_source_file = b.path("libs/core/src/root.zig"),
@@ -90,6 +95,19 @@ pub fn build(b: *std.Build) void {
             .{ .name = "utils", .module = utils },
         },
     });
+
+    // Web module (HTTP API using zap) - TODO: re-enable when web module is ready
+    // const web = b.addModule("web", .{
+    //     .root_source_file = b.path("libs/web/src/root.zig"),
+    //     .target = target,
+    //     .optimize = optimize,
+    //     .imports = &.{
+    //         .{ .name = "zap", .module = zap_mod },
+    //         .{ .name = "core", .module = core },
+    //         .{ .name = "agent", .module = agent },
+    //     },
+    // });
+    // _ = zap_mod; // suppress unused warning
 
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
@@ -166,15 +184,53 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(telegram);
 
+    // Web App (HTTP API) - TODO: re-enable when web module is ready
+    // const web_app = b.addExecutable(.{
+    //     .name = "web",
+    //     .root_module = b.createModule(.{
+    //         .root_source_file = b.path("apps/web/src/main.zig"),
+    //         .target = target,
+    //         .optimize = optimize,
+    //         .imports = &.{
+    //             .{ .name = "agent", .module = agent },
+    //             .{ .name = "web", .module = web },
+    //             .{ .name = "core", .module = core },
+    //             .{ .name = "zap", .module = zap_mod },
+    //             .{ .name = "build_opts", .module = build_options.createModule() },
+    //         },
+    //     }),
+    // });
+    // b.installArtifact(web_app);
+
     // Run steps
-    const run_console_sync = b.step("run-console-sync", "Run console-sync app");
-    run_console_sync.dependOn(&b.addRunArtifact(console_sync).step);
+    const run_console_sync_cmd = b.addRunArtifact(console_sync);
+    if (b.args) |args| {
+        run_console_sync_cmd.addArgs(args);
+    }
+    const run_console_sync = b.step("console-sync", "Run console-sync app");
+    run_console_sync.dependOn(&run_console_sync_cmd.step);
 
-    const run_console = b.step("run-console", "Run console app (xev)");
-    run_console.dependOn(&b.addRunArtifact(console_xev).step);
+    const run_console_cmd = b.addRunArtifact(console_xev);
+    if (b.args) |args| {
+        run_console_cmd.addArgs(args);
+    }
+    const run_console = b.step("console", "Run console app (xev)");
+    run_console.dependOn(&run_console_cmd.step);
 
+    const run_telegram_cmd = b.addRunArtifact(telegram);
+    if (b.args) |args| {
+        run_telegram_cmd.addArgs(args);
+    }
     const run_telegram = b.step("run-telegram", "Run telegram bot");
-    run_telegram.dependOn(&b.addRunArtifact(telegram).step);
+    run_telegram.dependOn(&run_telegram_cmd.step);
+
+    // Web run commands - TODO: re-enable when web module is ready
+    // const run_web_cmd = b.addRunArtifact(web_app);
+    // if (b.args) |args| {
+    //     run_web_cmd.addArgs(args);
+    // }
+    // const run_web = b.step("run-web", "Run web API server");
+    // run_web.dependOn(&run_web_cmd.step);
 
     // Test step for all libraries
     const test_step = b.step("test", "Run library tests");

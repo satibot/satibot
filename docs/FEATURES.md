@@ -20,8 +20,8 @@ Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [nanobot](https
   - **VectorDB**: Semantic search and long-term memory.
   - **GraphDB**: Relationship mapping and complex knowledge retrieval.
   - **RAG**: Retrieval-Augmented Generation for fact-based responses.
-- **Subagent**: Background task execution with `subagent_spawn` tool. // TODO
-- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured). // TODO
+- **Subagent**: Background task execution with `subagent_spawn` tool.
+- **Voice Transcription**: Telegram voice messages are automatically transcribed using **Groq** (if configured).
 
 ## 🚪 Gateway Service
 
@@ -30,8 +30,13 @@ The **Gateway** is the central nervous system of SatiBot. Instead of running sep
 **Run it:**
 
 ```bash
-zig build run -- gateway
+# Run individual services
+sati telegram      # Telegram bot
+sati console       # Console (async)
+sati console-sync  # Console (sync)
 ```
+
+Note: The Gateway service currently runs as part of the Telegram bot. Cron and Heartbeat are handled within the telegram executable.
 
 **Services included:**
 

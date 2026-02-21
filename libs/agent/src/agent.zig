@@ -10,6 +10,9 @@ const OpenRouterError = openrouter.OpenRouterError;
 const db = @import("db");
 const session = db.session;
 const local_embeddings = db.local_embeddings;
+const observability = @import("observability.zig");
+const Observer = observability.Observer;
+const ObserverEvent = observability.ObserverEvent;
 
 /// Helper function to print streaming response chunks to stdout.
 pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
@@ -34,11 +37,21 @@ pub const Agent = struct {
     /// Stores the last error message from provider for display to user
     last_error: ?[]const u8 = null,
     has_system_prompt: bool = false,
+    /// Observability observer for tracking events and metrics
+    observer: Observer,
+    /// Start time for tracking agent duration
+    agent_start_time: i64 = 0,
 
     /// Initialize a new Agent with configuration and session ID.
     /// Loads conversation history from session if available.
     /// Registers all default tools automatically.
     pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8, rag_enabled: bool) !Agent {
+        var noop_obs = observability.NoopObserver{};
+        return initWithObserver(allocator, config, session_id, rag_enabled, noop_obs.observer());
+    }
+
+    /// Initialize a new Agent with custom observer.
+    pub fn initWithObserver(allocator: std.mem.Allocator, config: Config, session_id: []const u8, rag_enabled: bool, observer: Observer) !Agent {
         var self: Agent = .{
             .config = config,
             .allocator = allocator,
@@ -47,6 +60,7 @@ pub const Agent = struct {
             .session_id = session_id,
             .rag_enabled = rag_enabled,
             .last_error = null,
+            .observer = observer,
         };
 
         // Load session history into context if enabled
@@ -326,6 +340,15 @@ pub const Agent = struct {
         try self.ctx.addMessage(.{ .role = "user", .content = message });
 
         const model = self.config.agents.defaults.model;
+        self.agent_start_time = std.time.milliTimestamp();
+
+        // Record agent start event
+        const provider_name: []const u8 = if (self.config.providers.openrouter != null) "openrouter" else "unknown";
+        const start_event = ObserverEvent{ .agent_start = .{
+            .provider = provider_name,
+            .model = model,
+        } };
+        self.observer.recordEvent(&start_event);
 
         var iterations: usize = 0;
         const max_iterations = 10;
@@ -478,6 +501,15 @@ pub const Agent = struct {
 
             const provider_interface = getProviderInterface(model);
 
+            // Record LLM request event
+            const timer_start = std.time.milliTimestamp();
+            const req_event = ObserverEvent{ .llm_request = .{
+                .provider = "openrouter",
+                .model = model,
+                .messages_count = filtered_messages.items.len,
+            } };
+            self.observer.recordEvent(&req_event);
+
             response = base.executeWithRetry(
                 provider_interface,
                 self.allocator,
@@ -488,6 +520,17 @@ pub const Agent = struct {
                 internal_cb,
                 self,
             ) catch |err| {
+                // Record failed LLM response event
+                const duration_ms: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - timer_start)));
+                const fail_event = ObserverEvent{ .llm_response = .{
+                    .provider = "openrouter",
+                    .model = model,
+                    .duration_ms = duration_ms,
+                    .success = false,
+                    .error_message = @errorName(err),
+                } };
+                self.observer.recordEvent(&fail_event);
+
                 // Capture error message for display to user
                 const err_msg = switch (err) {
                     error.NetworkRetryFailed => "Service unavailable after multiple retries",
@@ -501,6 +544,17 @@ pub const Agent = struct {
 
             std.debug.print("\n", .{});
             defer response.deinit();
+
+            // Record successful LLM response event
+            const duration_ms: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - timer_start)));
+            const resp_event = ObserverEvent{ .llm_response = .{
+                .provider = "openrouter",
+                .model = model,
+                .duration_ms = duration_ms,
+                .success = true,
+                .error_message = null,
+            } };
+            self.observer.recordEvent(&resp_event);
 
             // Add assistant response to history
             try self.ctx.addMessage(.{
@@ -531,8 +585,23 @@ pub const Agent = struct {
                 for (calls) |call| {
                     std.debug.print("Tool Call: {s}({s})\n", .{ call.function.name, call.function.arguments });
 
+                    // Record tool start event
+                    const tool_start_event = ObserverEvent{ .tool_call_start = .{ .tool = call.function.name } };
+                    self.observer.recordEvent(&tool_start_event);
+
+                    const tool_timer_start = std.time.milliTimestamp();
+
                     if (self.registry.get(call.function.name)) |tool| {
                         const result = tool.execute(tool_ctx, call.function.arguments) catch |err| {
+                            // Record tool failure event
+                            const tool_duration: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start)));
+                            const tool_fail_event = ObserverEvent{ .tool_call = .{
+                                .tool = call.function.name,
+                                .duration_ms = tool_duration,
+                                .success = false,
+                            } };
+                            self.observer.recordEvent(&tool_fail_event);
+
                             const error_msg = try std.fmt.allocPrint(self.allocator, "Error executing tool {s}: {any}", .{ call.function.name, err });
                             defer self.allocator.free(error_msg);
                             std.debug.print("{s}\n", .{error_msg});
@@ -544,6 +613,15 @@ pub const Agent = struct {
                             continue;
                         };
                         defer self.allocator.free(result);
+
+                        // Record tool success event
+                        const tool_duration: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start)));
+                        const tool_event = ObserverEvent{ .tool_call = .{
+                            .tool = call.function.name,
+                            .duration_ms = tool_duration,
+                            .success = true,
+                        } };
+                        self.observer.recordEvent(&tool_event);
 
                         std.debug.print("Tool Result: {s}\n", .{result});
                         try self.ctx.addMessage(.{
@@ -567,10 +645,25 @@ pub const Agent = struct {
             }
 
             // No tool calls, we are done
+            // Record turn complete event
+            const complete_event = ObserverEvent{ .turn_complete = {} };
+            self.observer.recordEvent(&complete_event);
+
             break;
         }
 
         try session.save(self.allocator, self.session_id, self.ctx.getMessages());
+
+        // Record agent end event
+        const duration_ms: u64 = if (self.agent_start_time > 0)
+            @as(u64, @intCast(std.time.milliTimestamp() - self.agent_start_time))
+        else
+            0;
+        const end_event = ObserverEvent{ .agent_end = .{
+            .duration_ms = duration_ms,
+            .tokens_used = null,
+        } };
+        self.observer.recordEvent(&end_event);
     }
 
     pub fn indexConversation(self: *Agent) !void {

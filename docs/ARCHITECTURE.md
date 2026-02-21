@@ -2,9 +2,53 @@
 
 SatiBot is built in **Zig** (version 0.15.2), focusing on performance, memory safety, and explicit controlflow. It uses a **ReAct** (Reason+Action) loop for agentic behavior.
 
+## Monorepo Structure
+
+This project uses a Zig monorepo structure:
+
+```text
+libs/
+  ├── core/src/         - Config and constants (shared across all modules)
+  ├── http/src/         - HTTP client module
+  ├── providers/src/   - LLM provider implementations (OpenRouter, Anthropic, Groq)
+  ├── db/src/          - Database and session modules
+  ├── utils/src/       - Shared utilities (xev_event_loop)
+  ├── agent/src/       - Core agent logic
+  └── web/src/         - HTTP API endpoints (zap web framework)
+
+apps/
+  ├── console/src/     - Console applications (sync + async)
+  └── telegram/src/    - Telegram bot
+```
+
+Modules are defined in `build.zig` with proper dependency management to avoid circular dependencies. The `core` module provides shared config and constants used by all other modules.
+
+## Observability
+
+### OpenTelemetry Tracing (`libs/agent/src/otel.zig`)
+
+SatiBot includes built-in OpenTelemetry (OTEL) tracing support for distributed observability.
+
+- **OTLP HTTP Protocol**: Sends traces in JSON format over HTTP to any OTEL-compliant backend
+- **Supported Backends**: Jaeger, Zipkin, Datadog, Grafana Tempo, AWS X-Ray
+- **Configuration**: Via environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc.)
+- **Auto-traced Events**: Agent lifecycle (start, LLM requests, tool calls, etc.)
+
+See [docs/OPENTELEMETRY.md](OPENTELEMETRY.md) for detailed setup instructions.
+
+### Observer Interface (`libs/agent/src/observability.zig`)
+
+A type-erased interface for recording events and metrics using VTable pattern:
+
+- `NoopObserver` - Discards all events (zero-cost default)
+- `LogObserver` - Logs to stderr
+- `VerboseObserver` - Human-readable indicators for CLI
+- `MultiObserver` - Broadcasts to multiple observers
+- `OtelObserver` - Sends to OTEL collector
+
 ## Core Components
 
-### 1. `Agent` (`src/agent.zig`)
+### 1. `Agent` (`libs/agent/src/agent.zig`)
 
 The central struct that manages:
 
@@ -12,7 +56,7 @@ The central struct that manages:
 - **ToolRegistry**: Available capabilities.
 - **Provider**: Connection to the LLM (OpenRouter, etc.).
 
-### 2. `Gateway` (`src/agent/gateway.zig`)
+### 2. `Gateway` (`libs/agent/src/agent/gateway.zig`)
 
 A multi-threaded supervisor that runs background services:
 
@@ -20,7 +64,7 @@ A multi-threaded supervisor that runs background services:
 - **Cron Thread**: Ticks every second to check for scheduled jobs.
 - **Heartbeat Thread**: Ticks periodically to process the heartbeat file.
 
-#### `XevEventLoop` (`src/utils/xev_event_loop.zig`)
+#### `XevEventLoop` (`libs/utils/src/xev_event_loop.zig`)
 
 A high-performance asynchronous event loop based on **libxev**. It handles non-blocking I/O and task scheduling using platform-native APIs (io_uring, kqueue, epoll).
 
@@ -28,7 +72,7 @@ A high-performance asynchronous event loop based on **libxev**. It handles non-b
 - **HTTP Integration**: HTTP requests are processed asynchronously as event loop tasks.
 - **Offset Management**: Tracks the polling state for Telegram.
 
-### 3. `ToolRegistry` (`src/agent/tools.zig`)
+### 3. `ToolRegistry` (`libs/agent/src/agent/tools.zig`)
 
 A dynamic dispatch system for tools. Tools are defined as Zig functions matching the signature:
 

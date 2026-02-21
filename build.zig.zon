@@ -40,13 +40,15 @@
             .url = "https://github.com/mitchellh/libxev/archive/refs/heads/main.tar.gz",
             .hash = "libxev-0.0.0-86vtc0IbEwBzMSXa-ZPZ8JpcV4Mw1SrsTuvtJmFAQ7Uu",
         },
+        // .zap = .{
+        //     .url = "https://github.com/zigzap/zap/archive/refs/tags/v0.11.0.tar.gz",
+        //     .hash = "zap-0.10.6-GoeB8xCEJABLgoiZjWZMMT5TsoZ5OO2EZe6j24RTUYEH",
+        // },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "src",
-        // For example...
-        //"LICENSE",
-        //"README.md",
+        "libs",
+        "apps",
     },
 }
