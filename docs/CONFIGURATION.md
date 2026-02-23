@@ -10,6 +10,18 @@ Run the onboard command to generate a default configuration:
 zig build run -- onboard
 ```
 
+## Bot Definition Files
+
+In addition to `config.json`, SatiBot can load personality and context files from `~/.bots/`:
+
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Bot's personality and identity |
+| `USER.md` | User context and preferences |
+| `MEMORY.md` | Long-term memory |
+
+See [BOT_DEFINITION.md](./BOT_DEFINITION.md) for details.
+
 ## Structure
 
 ### Root Object

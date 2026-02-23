@@ -1,5 +1,6 @@
 const std = @import("std");
 const Config = @import("core").config.Config;
+const bot_definition = @import("core").bot_definition;
 const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");
 const providers = @import("providers");
@@ -29,6 +30,7 @@ pub const Agent = struct {
     registry: tools.ToolRegistry,
     session_id: []const u8,
     rag_enabled: bool,
+    bot_definition: bot_definition.BotDefinition,
     on_chunk: ?base.ChunkCallback = null,
     chunk_ctx: ?*anyopaque = null,
     last_chunk: ?[]const u8 = null,
@@ -52,6 +54,8 @@ pub const Agent = struct {
 
     /// Initialize a new Agent with custom observer.
     pub fn initWithObserver(allocator: std.mem.Allocator, config: Config, session_id: []const u8, rag_enabled: bool, observer: Observer) !Agent {
+        const bot_def = bot_definition.load(allocator);
+
         var self: Agent = .{
             .config = config,
             .allocator = allocator,
@@ -59,6 +63,7 @@ pub const Agent = struct {
             .registry = tools.ToolRegistry.init(allocator),
             .session_id = session_id,
             .rag_enabled = rag_enabled,
+            .bot_definition = bot_def,
             .last_error = null,
             .observer = observer,
         };
@@ -270,6 +275,18 @@ pub const Agent = struct {
         var prompt_builder: std.ArrayList(u8) = .empty;
         defer prompt_builder.deinit(self.allocator);
 
+        if (self.bot_definition.soul) |soul| {
+            try prompt_builder.appendSlice(self.allocator, soul);
+        }
+
+        if (self.bot_definition.user) |user| {
+            try prompt_builder.appendSlice(self.allocator, user);
+        }
+
+        if (self.bot_definition.memory) |memory| {
+            try prompt_builder.appendSlice(self.allocator, memory);
+        }
+
         // Only add vector database prompts when RAG is enabled
         if (self.rag_enabled) {
             try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
@@ -288,6 +305,7 @@ pub const Agent = struct {
     }
 
     pub fn deinit(self: *Agent) void {
+        bot_definition.deinit(self.allocator, &self.bot_definition);
         self.ctx.deinit();
         self.registry.deinit();
         if (self.last_chunk) |chunk| self.allocator.free(chunk);
@@ -1152,31 +1170,45 @@ test "Agent: session management" {
     try std.testing.expectEqualStrings(test_session_id, agent.session_id);
 }
 
-test "Agent: config integration" {
+test "Agent.init: creates agent with default configuration" {
     const allocator = std.testing.allocator;
-    const config_json =
-        \\{
-        \\  "agents": { 
-        \\    "defaults": { 
-        \\      "model": "anthropic/claude-3-sonnet",
-        \\      "embeddingModel": "arcee-ai/trinity-mini:free"
-        \\    }
-        \\  },
-        \\  "providers": {
-        \\    "anthropic": { "apiKey": "test-key" }
-        \\  },
-        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
-        \\}
-    ;
-    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
-    defer parsed.deinit();
 
-    var agent = try Agent.init(allocator, parsed.value, "test-session", true);
+    const config: Config = .{
+        .agents = .{
+            .defaults = .{
+                .model = "test-model",
+                .embeddingModel = null,
+                .disableRag = false,
+                .loadChatHistory = false,
+                .maxChatHistory = 2,
+            },
+        },
+        .providers = .{
+            .openrouter = null,
+            .anthropic = null,
+            .openai = null,
+            .groq = null,
+        },
+        .tools = .{
+            .web = .{
+                .search = .{ .apiKey = null },
+                .server = null,
+            },
+            .telegram = null,
+            .discord = null,
+            .whatsapp = null,
+        },
+    };
+
+    var agent = try Agent.init(allocator, config, "test-session", false);
     defer agent.deinit();
 
-    try std.testing.expectEqualStrings("anthropic/claude-3-sonnet", agent.config.agents.defaults.model);
-    try std.testing.expectEqualStrings("arcee-ai/trinity-mini:free", agent.config.agents.defaults.embeddingModel.?);
-    try std.testing.expectEqualStrings("test-key", agent.config.providers.anthropic.?.apiKey);
+    try std.testing.expect(std.mem.eql(u8, agent.session_id, "test-session"));
+    try std.testing.expect(agent.rag_enabled == false);
+    try std.testing.expect(agent.has_system_prompt == false);
+    try std.testing.expect(agent.last_error == null);
+    try std.testing.expect(agent.last_chunk == null);
+    try std.testing.expect(agent.shutdown_flag == null);
 }
 
 test "Agent: conversation indexing" {

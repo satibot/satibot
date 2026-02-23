@@ -1133,7 +1133,7 @@ test "Tools: readFile security blocks .env files" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test blocking various .env file patterns
@@ -1164,7 +1164,7 @@ test "Tools: readFile security blocks private keys" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test blocking private key files
@@ -1194,7 +1194,7 @@ test "Tools: readFile security blocks sensitive directories" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test blocking files in sensitive directories
@@ -1233,7 +1233,7 @@ test "Tools: readFile security allows safe files" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{abs_path});
@@ -1269,7 +1269,7 @@ test "Tools: readFile edge cases and boundary conditions" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test edge case: files with similar but safe names
@@ -1298,7 +1298,7 @@ test "Tools: readFile security error message consistency" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test that all blocked files return the same error message
@@ -1337,7 +1337,7 @@ test "Tools: readFile with absolute and relative paths" {
 
     const ctx: ToolContext = .{
         .allocator = allocator,
-        .config = {},
+        .config = undefined,
     };
 
     // Test absolute path

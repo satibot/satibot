@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "defaults": {
+      "model": "anthropic/claude-3-5-sonnet",
+      "embeddingModel": "local",
+      "loadChatHistory": true,
+      "maxChatHistory": 5,
+      "disableRag": false
+    }
+  },
+  "providers": {
+    "openrouter": {
+      "apiKey": "your-api-key-here",
+      "apiBase": "https://api.openrouter.ai/v1"
+    }
+  },
+  "tools": {
+    "telegram": {
+      "botToken": "your-telegram-bot-token",
+      "chatId": "your-chat-id"
+    }
+  }
+}

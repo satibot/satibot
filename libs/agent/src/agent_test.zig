@@ -1,6 +1,7 @@
 const std = @import("std");
 const agent = @import("agent.zig");
 const Config = @import("config.zig").Config;
+const bot_definition = @import("core").bot_definition;
 
 test "Agent: print_chunk function" {
     // Test that print_chunk doesn't crash
@@ -486,4 +487,241 @@ test "Agent: configuration integration" {
         // Should initialize successfully with different config variations
         try std.testing.expectEqual(parsed.value, test_agent.config);
     }
+}
+
+test "Agent.ensureSystemPrompt: with all bot definition fields and RAG enabled" {
+    const allocator = std.testing.allocator;
+
+    // Create test configuration
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "test-key" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Create test bot definition with all fields
+    var bot_def: bot_definition.BotDefinition = .{
+        .soul = try allocator.dupe(u8, "Test soul content"),
+        .user = try allocator.dupe(u8, "Test user context"),
+        .memory = try allocator.dupe(u8, "Test long-term memory"),
+    };
+    defer bot_definition.deinit(allocator, &bot_def);
+
+    // Create agent
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", true);
+    defer test_agent.deinit();
+
+    // Replace the bot definition with our test one
+    bot_definition.deinit(allocator, &test_agent.bot_definition);
+    test_agent.bot_definition = bot_def;
+    test_agent.rag_enabled = true;
+
+    // Call ensureSystemPrompt
+    try test_agent.ensureSystemPrompt();
+
+    // Verify system prompt was added
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+
+    // Verify the content contains all expected parts
+    const content = messages[0].content orelse return error.NoContent;
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test soul content") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "User context:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test user context") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Long-term memory:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test long-term memory") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "web_search") != null);
+
+    // Verify has_system_prompt flag is set
+    try std.testing.expect(test_agent.has_system_prompt == true);
+}
+
+test "Agent.ensureSystemPrompt: with minimal bot definition and RAG disabled" {
+    const allocator = std.testing.allocator;
+
+    // Create test configuration without web search API key
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Create test bot definition with only soul
+    var bot_def: bot_definition.BotDefinition = .{
+        .soul = try allocator.dupe(u8, "Test soul only"),
+        .user = null,
+        .memory = null,
+    };
+    defer bot_definition.deinit(allocator, &bot_def);
+
+    // Create agent with RAG disabled
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", false);
+    defer test_agent.deinit();
+
+    // Replace the bot definition with our test one
+    bot_definition.deinit(allocator, &test_agent.bot_definition);
+    test_agent.bot_definition = bot_def;
+    test_agent.rag_enabled = false;
+
+    // Call ensureSystemPrompt
+    try test_agent.ensureSystemPrompt();
+
+    // Verify system prompt was added
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+
+    // Verify the content contains expected parts and not others
+    const content = messages[0].content orelse return error.NoContent;
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test soul only") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "User context:") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Long-term memory:") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Vector Database") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "web_search") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+
+    // Verify has_system_prompt flag is set
+    try std.testing.expect(test_agent.has_system_prompt == true);
+}
+
+test "Agent.ensureSystemPrompt: does not add duplicate system prompt" {
+    const allocator = std.testing.allocator;
+
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", false);
+    defer test_agent.deinit();
+
+    // Call ensureSystemPrompt twice
+    try test_agent.ensureSystemPrompt();
+    try test_agent.ensureSystemPrompt();
+
+    // Verify only one system prompt was added
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+}
+
+test "Agent.ensureSystemPrompt: respects existing system prompt" {
+    const allocator = std.testing.allocator;
+
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", false);
+    defer test_agent.deinit();
+
+    // Add an existing system prompt
+    try test_agent.ctx.addMessage(.{
+        .role = "system",
+        .content = "Existing system prompt",
+    });
+
+    // Call ensureSystemPrompt
+    try test_agent.ensureSystemPrompt();
+
+    // Verify no additional system prompt was added
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+    try std.testing.expect(std.mem.eql(u8, messages[0].content.?, "Existing system prompt"));
+}
+
+test "Agent.ensureSystemPrompt: empty web search API key" {
+    const allocator = std.testing.allocator;
+
+    // Create test configuration with empty web search API key
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", false);
+    defer test_agent.deinit();
+
+    // Call ensureSystemPrompt
+    try test_agent.ensureSystemPrompt();
+
+    // Verify system prompt was added but without web_search
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+
+    const content = messages[0].content orelse return error.NoContent;
+    try std.testing.expect(std.mem.indexOf(u8, content, "web_search") == null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "read, write, and list files") != null);
+}
+
+test "Agent.ensureSystemPrompt: only user and memory fields" {
+    const allocator = std.testing.allocator;
+
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": {} } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Create test bot definition with only user and memory
+    var bot_def: bot_definition.BotDefinition = .{
+        .soul = null,
+        .user = try allocator.dupe(u8, "Test user only"),
+        .memory = try allocator.dupe(u8, "Test memory only"),
+    };
+    defer bot_definition.deinit(allocator, &bot_def);
+
+    var test_agent = try agent.Agent.init(allocator, parsed.value, "test-session", false);
+    defer test_agent.deinit();
+
+    // Replace the bot definition with our test one
+    bot_definition.deinit(allocator, &test_agent.bot_definition);
+    test_agent.bot_definition = bot_def;
+
+    // Call ensureSystemPrompt
+    try test_agent.ensureSystemPrompt();
+
+    // Verify system prompt was added with correct content
+    const messages = test_agent.ctx.getMessages();
+    try std.testing.expect(messages.len == 1);
+    try std.testing.expect(std.mem.eql(u8, messages[0].role, "system"));
+
+    const content = messages[0].content orelse return error.NoContent;
+    try std.testing.expect(std.mem.indexOf(u8, content, "User context:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test user only") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Long-term memory:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test memory only") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Test soul content") == null);
 }
