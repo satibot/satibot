@@ -80,7 +80,7 @@ lint: ## Check code style and formatting of Zig files
 		echo "Linting $${dir%/src}..."; \
 		(cd "$${dir%/src}" && ziglint --ignore Z024 --ignore Z006); \
 	done
-	$(ZIG) fmt --check $(SRC_DIR)
+	@$(ZIG) fmt --check .
 
 format: ## Format Zig files
 	@echo "Formatting Zig files..."
