@@ -8,6 +8,7 @@ Inspired by [OpenClaw](https://github.com/openclaw/openclaw) and [nanobot](https
 - LLM providers (OpenRouter, Anthropic, etc.)
 - Tool execution: shell commands, HTTP requests, etc.
 - **Gateway**: Single command to run Telegram, Cron, and Heartbeat collectively.
+- **Web API**: REST interface for integration with frontend chat apps like [Sati Talk](https://github.com/satibot/sati-talk).
 - **Cron System**: Schedule recurring tasks (e.g., daily summaries, hourly status checks).
 - **Heartbeat**: Proactive agent wake-up to check for pending tasks in `HEARTBEAT.md`.
 - Conversation history
@@ -133,6 +134,27 @@ The Heartbeat allows the agent to be "proactive".
 
 - You can leave notes for the agent in that file like "If Bitcoin drops below $90k, alert me on Telegram".
 - The agent effectively "thinks" periodically about your standing instructions.
+
+---
+
+## 🌐 Web API Backend
+
+A dedicated backend service for web-based chat interfaces.
+
+**Run it:**
+
+```bash
+sati web
+# or
+zig build run-web -Dweb
+```
+
+**Key Features:**
+
+- **RESTful Endpoints**: `/api/chat` for agent interaction.
+- **CORS Support**: Configurable `allowOrigin` for security.
+- **Fast & Lightweight**: Built on the Zap framework.
+- **Stateless**: Uses session IDs passed from the client for context.
 
 ---
 

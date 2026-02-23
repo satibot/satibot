@@ -16,6 +16,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] VectorDB - very simple local first vector searching for similar content chat logs.
 - [x] OpenTelemetry tracing for observability
 - [x] HTTP Web API (zap framework) for REST interface built on top of the Zap logging library (used for fast, structured logging)
+- [x] File operations - built-in `read_file` tool for reading local files with security restrictions
 
 ## Comparison with others
 
@@ -52,6 +53,7 @@ View more in [Features](docs/FEATURES.md).
 ⚡️ **Gateway System**: Single command runs all services together
 🤖 **Smart Memory**: RAG + VectorDB + GraphDB for intelligent context management
 🔧 **Skill Ecosystem**: Browse and install skills from <https://agent-skills.md/>
+📁 **File Operations**: Built-in tools for reading and analyzing local files
 🎙️ **Voice Ready**: Automatic voice transcription with Groq
 ⏰ **Proactive**: Heartbeat system wakes agent for pending tasks
 📅 **Scheduled**: Built-in cron for recurring tasks
@@ -104,7 +106,8 @@ libs/
 
 apps/
   ├── console/      - Console applications (sync + async)
-  └── telegram/     - Telegram bot
+  ├── telegram/     - Telegram bot
+  └── web/          - Web API backend (CORS support)
 ```
 
 ### 2. Configure
@@ -151,6 +154,9 @@ sati console
 
 # for telegram (sync version - simple & reliable)
 sati telegram-sync
+
+# for web api backend
+sati web
 ```
 
 ## Build Commands
@@ -163,11 +169,13 @@ zig build
 zig build console          # Async console app
 zig build console-sync     # Sync console app
 zig build telegram         # Telegram bot
+zig build web              # Web API backend
 
 # Run with build
 zig build run-console          # Build and run async console
 zig build run-console-sync     # Build and run sync console
 zig build run-telegram         # Build and run telegram bot
+zig build run-web -Dweb        # Build and run web backend
 ```
 
 ## CLI Options
@@ -217,6 +225,8 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
   - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
 - Terminal console: `sati console` or `sati console-sync`
   - [docs/CONSOLE.md](docs/CONSOLE.md)
+- Web API: `sati web`
+  - [docs/WEB_API.md](docs/WEB_API.md)
 
 ---
 
@@ -263,6 +273,65 @@ curl https://agent-skills.md/
 zig build console -- -- agent -m "Run: ls -la"
 ```
 
+#### Built-in Tools
+
+**📁 read_file** - Read local files
+
+The `read_file` tool allows the AI agent to read contents of local files on your system.
+
+**Usage Examples:**
+
+```bash
+# Ask the agent to read a file
+sati console-sync
+> Please read the contents of /home/user/config.txt
+
+# Read and analyze a log file
+> Can you read /var/log/system.log and summarize any errors?
+
+# Read a code file
+> Read the main.zig file and explain what it does
+```
+
+**Arguments:**
+
+- `path` (required): Absolute or relative path to the file to read
+
+**Example JSON:**
+
+```json
+{
+  "path": "/path/to/your/file.txt"
+}
+```
+
+**Features:**
+
+- ✅ Supports text files of any size (10MB limit)
+- ✅ Handles absolute and relative paths
+- ✅ Proper error handling for missing files
+- ✅ Built-in security restrictions for sensitive files
+- ✅ Memory-efficient with automatic cleanup
+
+**Security Restrictions:**
+
+For security reasons, the tool automatically blocks access to sensitive files:
+
+- **Environment files**: `.env`, `.env.local`, `.env.*` variations
+- **Private keys**: `id_rsa`, `id_ed25519`, `private_key.*`, `*.key`
+- **Credentials**: `credentials.*`, `secret.*`
+- **Sensitive directories**: `.ssh/`, `.aws/`, `.kube/`
+
+**Examples of blocked files:**
+
+- `.env` ❌
+- `id_rsa` ❌
+- `private_key.pem` ❌
+- `.ssh/config` ❌
+- `config.txt` ✅
+- `public_key.pem` ✅
+- `data.json` ✅
+
 ### ⏰ Automation
 
 **Heartbeat**: Proactive task checking
@@ -294,6 +363,8 @@ TODO: Cron: Schedule recurring tasks via configuration in `~/.bots/config.json`
 |[**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
 |[**RAG Guide**](docs/RAG.md)|Understanding the memory system|
 |[**OpenTelemetry**](docs/OPENTELEMETRY.md)|Distributed tracing setup with OTEL|
+|[**Web API Guide**](docs/WEB_API.md)|Backend setup for web interfaces & CORS|
+|[**⚠️ Security**](docs/SECURITY.md)|Security risks, best practices, and guidelines|
 |[**Release Guide**](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
 
 ---

@@ -78,18 +78,93 @@ pub const ToolRegistry = struct {
 //     return result.toOwnedSlice(ctx.allocator);
 // }
 
-// /// Read contents of a file specified by path in JSON arguments.
-// /// Max file size: 10MB (10485760 = 10 * 1024 * 1024)
-// pub fn read_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     // Basic arguments parsing (expecting just the filename as a string for now, or JSON)
-//     const parsed = try std.json.parseFromSlice(struct { path: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+/// Read contents of a file specified by path in JSON arguments.
+/// Max file size: 10MB (10485760 = 10 * 1024 * 1024)
+pub fn readFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    // Parse JSON arguments expecting a path field
+    const parsed = try std.json.parseFromSlice(struct { path: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     const file = try std.fs.cwd().openFile(parsed.value.path, .{});
-//     defer file.close();
+    const file_path = parsed.value.path;
 
-//     return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
-// }
+    // Security checks: prevent reading sensitive files
+    // Check for .env files and other sensitive patterns
+    if (isSensitiveFile(file_path)) {
+        return try ctx.allocator.dupe(u8, "Error: Access to sensitive files is not allowed for security reasons.");
+    }
+
+    // Open file for reading
+    const file = try std.fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    // Read entire file content with size limit
+    return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
+}
+
+/// Check if a file path matches sensitive file patterns that should be blocked
+fn isSensitiveFile(path: []const u8) bool {
+    // Get just the filename for checking
+    const filename = std.fs.path.basename(path);
+
+    // Block .env files and variations (must start with .env)
+    if (std.mem.startsWith(u8, filename, ".env")) {
+        return true;
+    }
+
+    // Block specific sensitive file patterns (more precise matching)
+    const sensitive_patterns = [_][]const u8{
+        "id_rsa",
+        "id_ed25519",
+        "private_key",
+        "secret_key",
+        "credentials",
+    };
+
+    for (sensitive_patterns) |pattern| {
+        if (std.mem.eql(u8, filename, pattern) or
+            std.mem.startsWith(u8, filename, pattern) or
+            std.mem.endsWith(u8, filename, pattern))
+        {
+            return true;
+        }
+    }
+
+    // Block files with sensitive extensions (but allow safe variations)
+    const sensitive_extensions = [_][]const u8{
+        ".key",
+        ".p12",
+        ".pfx",
+    };
+
+    for (sensitive_extensions) |ext| {
+        if (std.mem.endsWith(u8, filename, ext)) {
+            return true;
+        }
+    }
+
+    // Block files containing sensitive keywords in their name
+    const sensitive_keywords = [_][]const u8{
+        "private",
+        "secret",
+        "credential",
+    };
+
+    for (sensitive_keywords) |keyword| {
+        if (std.mem.indexOf(u8, filename, keyword) != null) {
+            return true;
+        }
+    }
+
+    // Block files in sensitive directories
+    if (std.mem.indexOf(u8, path, ".ssh/") != null or
+        std.mem.indexOf(u8, path, ".aws/") != null or
+        std.mem.indexOf(u8, path, ".kube/") != null)
+    {
+        return true;
+    }
+
+    return false;
+}
 
 // /// Write content to a file specified by path in JSON arguments.
 // /// Creates new file or overwrites existing.
@@ -957,17 +1032,333 @@ test "Tools: ToolRegistry overwrite tool" {
 //     try std.testing.expect(result.len > 0);
 // }
 
-// test "Tools: read_file non-existent" {
-//     const allocator = std.testing.allocator;
+test "Tools: readFile success" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
 
-//     const ctx = ToolContext{
-//         .allocator = allocator,
-//         .config = undefined,
-//     };
+    // Create a test file in the temporary directory
+    const test_content = "Hello, World!\nThis is a test file.\nWith multiple lines.";
+    const test_file_path = "test_read.txt";
+    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = test_content });
 
-//     const result = read_file(ctx, "{\"path\": \"/non/existent/file.txt\"}");
-//     try std.testing.expectError(error.FileNotFound, result);
-// }
+    // Get the absolute path to the test file
+    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    defer allocator.free(abs_path);
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    // Test reading the file
+    const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{abs_path});
+    defer allocator.free(args);
+
+    const result = try readFile(ctx, args);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings(test_content, result);
+}
+
+test "Tools: readFile non-existent" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = readFile(ctx, "{\"path\": \"/non/existent/file.txt\"}");
+    try std.testing.expectError(error.FileNotFound, result);
+}
+
+test "Tools: readFile invalid JSON" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = readFile(ctx, "invalid json");
+    // Accept any JSON parse error
+    const is_json_error = result == error.UnexpectedToken or
+        result == error.InvalidCharacter or
+        result == error.SyntaxError;
+    try std.testing.expect(is_json_error);
+}
+
+test "Tools: readFile missing path parameter" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const result = readFile(ctx, "{\"other\": \"value\"}");
+    try std.testing.expectError(error.MissingField, result);
+}
+
+test "Tools: readFile empty file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    // Create an empty test file
+    const test_file_path = "empty_test.txt";
+    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = "" });
+
+    // Get the absolute path to the test file
+    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    defer allocator.free(abs_path);
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = undefined,
+    };
+
+    const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{abs_path});
+    defer allocator.free(args);
+
+    const result = try readFile(ctx, args);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "Tools: readFile security blocks .env files" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test blocking various .env file patterns
+    const sensitive_files = [_][]const u8{
+        ".env",
+        ".env.local",
+        ".env.development",
+        ".env.production",
+        ".env.test",
+        "/path/to/.env",
+        "./.env.example",
+        "config/.env.backup",
+    };
+
+    for (sensitive_files) |file_path| {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{file_path});
+        defer allocator.free(args);
+
+        const result = try readFile(ctx, args);
+        defer allocator.free(result);
+
+        try std.testing.expect(std.mem.indexOf(u8, result, "Error: Access to sensitive files is not allowed") != null);
+    }
+}
+
+test "Tools: readFile security blocks private keys" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test blocking private key files
+    const sensitive_files = [_][]const u8{
+        "id_rsa",
+        "id_ed25519",
+        "private_key.pem",
+        "secret.key",
+        "credentials.json",
+        "/home/user/.ssh/id_rsa",
+        "./.aws/credentials",
+    };
+
+    for (sensitive_files) |file_path| {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{file_path});
+        defer allocator.free(args);
+
+        const result = try readFile(ctx, args);
+        defer allocator.free(result);
+
+        try std.testing.expect(std.mem.indexOf(u8, result, "Error: Access to sensitive files is not allowed") != null);
+    }
+}
+
+test "Tools: readFile security blocks sensitive directories" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test blocking files in sensitive directories
+    const sensitive_paths = [_][]const u8{
+        ".ssh/config",
+        ".aws/config",
+        ".kube/config",
+        "/home/user/.ssh/known_hosts",
+        "./.aws/credentials",
+    };
+
+    for (sensitive_paths) |file_path| {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{file_path});
+        defer allocator.free(args);
+
+        const result = try readFile(ctx, args);
+        defer allocator.free(result);
+
+        try std.testing.expect(std.mem.indexOf(u8, result, "Error: Access to sensitive files is not allowed") != null);
+    }
+}
+
+test "Tools: readFile security allows safe files" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    // Create a safe test file
+    const test_content = "This is a safe file content.";
+    const test_file_path = "safe_file.txt";
+    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = test_content });
+
+    // Get the absolute path to the test file
+    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    defer allocator.free(abs_path);
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{abs_path});
+    defer allocator.free(args);
+
+    const result = try readFile(ctx, args);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings(test_content, result);
+}
+
+test "Tools: isSensitiveFile function" {
+    // Test blocked files
+    try std.testing.expect(isSensitiveFile(".env"));
+    try std.testing.expect(isSensitiveFile(".env.local"));
+    try std.testing.expect(isSensitiveFile("id_rsa"));
+    try std.testing.expect(isSensitiveFile("private_key.pem"));
+    try std.testing.expect(isSensitiveFile("secret.key"));
+    try std.testing.expect(isSensitiveFile(".ssh/config"));
+    try std.testing.expect(isSensitiveFile("/path/to/.env"));
+
+    // Test allowed files
+    try std.testing.expect(!isSensitiveFile("config.txt"));
+    try std.testing.expect(!isSensitiveFile("readme.md"));
+    try std.testing.expect(!isSensitiveFile("main.zig"));
+    try std.testing.expect(!isSensitiveFile("data.json"));
+    try std.testing.expect(!isSensitiveFile("environment.txt")); // Similar but not .env
+    try std.testing.expect(!isSensitiveFile("public_key.pem")); // Safe certificate file
+}
+
+test "Tools: readFile edge cases and boundary conditions" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test edge case: files with similar but safe names
+    const edge_cases = [_][]const u8{
+        "environment.txt", // Similar to .env but safe
+        "env_backup.txt", // Contains env but not .env prefix
+        "public_key.pem", // Contains .pem but safe
+        "certificate.crt", // Certificate file
+        "api_key_example.txt", // Contains key but example
+        "config.json", // Safe config
+        "readme.env.md", // Contains .env but not starting with .env
+    };
+
+    for (edge_cases) |file_path| {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{file_path});
+        defer allocator.free(args);
+
+        // These should fail with FileNotFound, not security error
+        const result = readFile(ctx, args);
+        try std.testing.expectError(error.FileNotFound, result);
+    }
+}
+
+test "Tools: readFile security error message consistency" {
+    const allocator = std.testing.allocator;
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test that all blocked files return the same error message
+    const blocked_files = [_][]const u8{
+        ".env",
+        "id_rsa",
+        "private_key.pem",
+        ".ssh/config",
+    };
+
+    const expected_error = "Error: Access to sensitive files is not allowed for security reasons.";
+
+    for (blocked_files) |file_path| {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{file_path});
+        defer allocator.free(args);
+
+        const result = try readFile(ctx, args);
+        defer allocator.free(result);
+
+        try std.testing.expectEqualStrings(expected_error, result);
+    }
+}
+
+test "Tools: readFile with absolute and relative paths" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+
+    // Create test files
+    const test_content = "Test content for path handling.";
+    const safe_file = "safe_config.txt";
+    try tmp.dir.writeFile(.{ .sub_path = safe_file, .data = test_content });
+
+    const abs_path = try tmp.dir.realpathAlloc(allocator, safe_file);
+    defer allocator.free(abs_path);
+
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = {},
+    };
+
+    // Test absolute path
+    {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{abs_path});
+        defer allocator.free(args);
+
+        const result = try readFile(ctx, args);
+        defer allocator.free(result);
+        try std.testing.expectEqualStrings(test_content, result);
+    }
+
+    // Test relative path (should fail with FileNotFound since we're in different dir)
+    {
+        const args = try std.fmt.allocPrint(allocator, "{{\"path\": \"{s}\"}}", .{safe_file});
+        defer allocator.free(args);
+
+        const result = readFile(ctx, args);
+        try std.testing.expectError(error.FileNotFound, result);
+    }
+}
 
 // test "Tools: write_file with invalid JSON" {
 //     const allocator = std.testing.allocator;

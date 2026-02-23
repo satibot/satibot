@@ -186,6 +186,16 @@ pub const Agent = struct {
             };
         }
 
+        // Register file reading tool
+        @constCast(&self.registry).register(.{
+            .name = "read_file",
+            .description = "Read contents of a local file. Arguments: {\"path\": \"/path/to/file.txt\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"]}",
+            .execute = tools.readFile,
+        }) catch |err| {
+            std.log.err("Failed to register read_file tool: {any}", .{err});
+        };
+
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",
@@ -731,9 +741,43 @@ test "Agent: init and tool registration" {
     var agent = try Agent.init(allocator, parsed.value, "test-session", true);
     defer agent.deinit();
 
-    // Only vector tools are registered by default (others are commented out)
+    // Check that vector tools are registered when RAG is enabled
     try std.testing.expect(agent.registry.get("vector_upsert") != null);
     try std.testing.expect(agent.registry.get("vector_search") != null);
+
+    // Check that read_file tool is always registered
+    const read_file_tool = agent.registry.get("read_file");
+    try std.testing.expect(read_file_tool != null);
+    try std.testing.expectEqualStrings("read_file", read_file_tool.?.name);
+    try std.testing.expectEqualStrings("Read contents of a local file. Arguments: {\"path\": \"/path/to/file.txt\"}", read_file_tool.?.description);
+}
+
+test "Agent: read_file tool registration without RAG" {
+    const allocator = std.testing.allocator;
+    const config_json =
+        \\{
+        \\  "agents": { "defaults": { "model": "test-model" } },
+        \\  "providers": {},
+        \\  "tools": { "web": { "search": { "apiKey": "dummy" } } }
+        \\}
+    ;
+    const parsed = try std.json.parseFromSlice(Config, allocator, config_json, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    // Initialize agent with RAG disabled
+    var agent = try Agent.init(allocator, parsed.value, "test-session", false);
+    defer agent.deinit();
+
+    // Vector tools should not be registered when RAG is disabled
+    try std.testing.expect(agent.registry.get("vector_upsert") == null);
+    try std.testing.expect(agent.registry.get("vector_search") == null);
+
+    // But read_file tool should still be registered
+    const read_file_tool = agent.registry.get("read_file");
+    try std.testing.expect(read_file_tool != null);
+    try std.testing.expectEqualStrings("read_file", read_file_tool.?.name);
+    try std.testing.expectEqualStrings("Read contents of a local file. Arguments: {\"path\": \"/path/to/file.txt\"}", read_file_tool.?.description);
+    try std.testing.expectEqualStrings("{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"]}", read_file_tool.?.parameters);
 }
 
 test "Agent: message context management" {

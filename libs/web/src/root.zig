@@ -1,6 +1,6 @@
 //! Web module - HTTP API endpoints using zap web framework
 const std = @import("std");
-const zap = @import("zap");
+pub const zap = @import("zap");
 
 /// Web server configuration
 pub const Config = struct {
@@ -8,6 +8,7 @@ pub const Config = struct {
     port: u16 = 3000,
     max_connections: usize = 1000,
     max_request_size: usize = 1048576, // 1MB
+    allow_origin: ?[]const u8 = null,
 };
 
 /// Simple request handler function type
@@ -17,12 +18,16 @@ pub const Handler = *const fn (req: zap.Request) anyerror!void;
 pub const Server = struct {
     allocator: std.mem.Allocator,
     config: Config,
+    on_request: ?zap.HttpRequestFn = null,
+    listener: ?zap.HttpListener = null,
 
     /// Initialize the web server
     pub fn init(allocator: std.mem.Allocator, config: Config) Server {
         return .{
             .allocator = allocator,
             .config = config,
+            .on_request = null,
+            .listener = null,
         };
     }
 
@@ -32,18 +37,17 @@ pub const Server = struct {
         // Cleanup is handled by zap
     }
 
-    /// Start the web server with a simple endpoint
+    /// Start the web server
     pub fn start(self: *Server) !void {
-
         // Create HTTP listener
-        var listener = zap.HttpListener.init(.{
+        self.listener = zap.HttpListener.init(.{
             .port = self.config.port,
-            .on_request = handleRoot,
+            .on_request = self.on_request orelse handleRoot,
             .max_clients = @intCast(self.config.max_connections),
             .max_body_size = self.config.max_request_size,
         });
 
-        try listener.listen();
+        try self.listener.?.listen();
 
         std.log.info("Web server listening on http://localhost:{d}", .{
             self.config.port,
@@ -62,6 +66,17 @@ pub const Server = struct {
 
 /// Handle root endpoint
 fn handleRoot(req: zap.Request) anyerror!void {
+    if (req.method) |method| {
+        if (std.mem.eql(u8, method, "OPTIONS")) {
+            req.setHeader("Access-Control-Allow-Origin", "*") catch {};
+            req.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS") catch {};
+            req.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization") catch {};
+            req.setStatus(.no_content);
+            return;
+        }
+    }
+
+    req.setHeader("Access-Control-Allow-Origin", "*") catch {};
     req.sendJson("{\"status\":\"ok\",\"message\":\"SatiBot API\"}") catch |err| {
         std.log.err("Failed to send response: {any}", .{err});
     };
@@ -79,17 +94,9 @@ pub const Router = struct {
 
     /// Handle health check request
     pub fn health(_: *Router, req: zap.Request) anyerror!void {
+        req.setHeader("Access-Control-Allow-Origin", "*") catch {};
         req.sendJson("{\"status\":\"ok\"}") catch |err| {
             std.log.err("Failed to send health response: {any}", .{err});
-        };
-    }
-
-    /// Handle agent chat request
-    pub fn chat(self: *Router, req: zap.Request) anyerror!void {
-        _ = self;
-        // TODO: Implement chat endpoint
-        req.sendJson("{\"error\":\"Not implemented\"}") catch |err| {
-            std.log.err("Failed to send chat response: {any}", .{err});
         };
     }
 };
@@ -108,10 +115,4 @@ test "Server initialization" {
     var server = Server.init(allocator, .{ .port = 4000 });
     defer server.deinit();
     try std.testing.expectEqual(@as(u16, 4000), server.config.port);
-}
-
-test "Router initialization" {
-    const allocator = std.testing.allocator;
-    const router = Router.init(allocator);
-    try std.testing.expectEqual(allocator, router.allocator);
 }

@@ -88,12 +88,14 @@ Configuration for external tools and chat platforms.
 }
 ```
 
-#### Web Search (Brave)
-
+#### Web & Search
 ```json
 "web": {
   "search": {
     "apiKey": "BS-..." // Brave Search API Key
+  },
+  "server": {
+    "allowOrigin": "*" // CORS: sets Access-Control-Allow-Origin
   }
 }
 ```

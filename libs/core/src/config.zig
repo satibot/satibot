@@ -70,6 +70,12 @@ pub const WhatsAppConfig = struct {
 /// Configuration for web-based tools like search.
 pub const WebToolsConfig = struct {
     search: SearchToolConfig,
+    server: ?WebServerConfig = null,
+};
+
+/// Configuration for the web server.
+pub const WebServerConfig = struct {
+    allowOrigin: ?[]const u8 = null,
 };
 
 /// Search tool API configuration (e.g., Brave Search API key).
