@@ -33,11 +33,9 @@ const core = @import("core");
 const Config = core.config.Config;
 const http = @import("http");
 const constants = core.constants;
-const agent = @import("agent");
 const utils = @import("utils");
 const XevEventLoop = utils.xev_event_loop.XevEventLoop;
 const telegram_handlers = @import("telegram_handlers.zig");
-const providers = @import("providers");
 
 /// Global flag for shutdown signal
 /// Set to true when SIGINT (Ctrl+C) or SIGTERM is received

@@ -90,7 +90,7 @@ pub fn readFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     // Security checks: prevent reading sensitive files
     // Check for .env files and other sensitive patterns
     if (isSensitiveFile(file_path)) {
-        return try ctx.allocator.dupe(u8, "Error: Access to sensitive files is not allowed for security reasons.");
+        return ctx.allocator.dupe(u8, "Error: Access to sensitive files is not allowed for security reasons.");
     }
 
     // Open file for reading

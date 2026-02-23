@@ -549,7 +549,7 @@ pub const Agent = struct {
                 self,
             ) catch |err| {
                 // Record failed LLM response event
-                const duration_ms: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - timer_start)));
+                const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
                 const fail_event = ObserverEvent{ .llm_response = .{
                     .provider = "openrouter",
                     .model = model,
@@ -574,7 +574,7 @@ pub const Agent = struct {
             defer response.deinit();
 
             // Record successful LLM response event
-            const duration_ms: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - timer_start)));
+            const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
             const resp_event = ObserverEvent{ .llm_response = .{
                 .provider = "openrouter",
                 .model = model,
@@ -622,7 +622,7 @@ pub const Agent = struct {
                     if (self.registry.get(call.function.name)) |tool| {
                         const result = tool.execute(tool_ctx, call.function.arguments) catch |err| {
                             // Record tool failure event
-                            const tool_duration: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start)));
+                            const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
                             const tool_fail_event = ObserverEvent{ .tool_call = .{
                                 .tool = call.function.name,
                                 .duration_ms = tool_duration,
@@ -643,7 +643,7 @@ pub const Agent = struct {
                         defer self.allocator.free(result);
 
                         // Record tool success event
-                        const tool_duration: u64 = @as(u64, @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start)));
+                        const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
                         const tool_event = ObserverEvent{ .tool_call = .{
                             .tool = call.function.name,
                             .duration_ms = tool_duration,
@@ -684,7 +684,7 @@ pub const Agent = struct {
 
         // Record agent end event
         const duration_ms: u64 = if (self.agent_start_time > 0)
-            @as(u64, @intCast(std.time.milliTimestamp() - self.agent_start_time))
+            @intCast(std.time.milliTimestamp() - self.agent_start_time)
         else
             0;
         const end_event = ObserverEvent{ .agent_end = .{

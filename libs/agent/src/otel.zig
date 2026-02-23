@@ -32,8 +32,6 @@ pub const OtelObserver = struct {
     spans: std.ArrayList(OtelSpan),
     max_batch_size: usize,
 
-    const Self = @This();
-
     pub const Config = struct {
         /// OTEL collector endpoint. If null, uses OTEL_EXPORTER_OTLP_ENDPOINT env var
         endpoint: ?[]const u8 = null,
@@ -46,7 +44,7 @@ pub const OtelObserver = struct {
     };
 
     /// Initialize the OTEL observer with configuration from environment or provided values.
-    pub fn init(allocator: std.mem.Allocator, config: Config) !Self {
+    pub fn init(allocator: std.mem.Allocator, config: Config) !OtelObserver {
         var http_client = try http.Client.init(allocator);
         errdefer http_client.deinit();
 
@@ -98,7 +96,7 @@ pub const OtelObserver = struct {
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *OtelObserver) void {
         // Flush any pending spans
         self.flushInternal() catch |err| {
             std.log.warn("Failed to flush OTEL spans on deinit: {any}", .{err});
@@ -124,13 +122,14 @@ pub const OtelObserver = struct {
         self.resource_attrs.deinit();
 
         for (self.spans.items) |*span| {
-            span.deinit(self.allocator);
+            span.deinit(self.allocator, span);
         }
         self.spans.deinit();
+        self.* = undefined;
     }
 
     /// Get the Observer interface for this OTEL observer.
-    pub fn observer(self: *Self) Observer {
+    pub fn observer(self: *OtelObserver) Observer {
         return .{
             .ptr = @ptrCast(self),
             .vtable = &.{
@@ -143,7 +142,7 @@ pub const OtelObserver = struct {
     }
 
     /// Internal flush implementation.
-    fn flushInternal(self: *Self) !void {
+    fn flushInternal(self: *OtelObserver) !void {
         if (self.spans.items.len == 0) return;
 
         // Build OTLP JSON payload
@@ -176,13 +175,13 @@ pub const OtelObserver = struct {
 
         // Clear sent spans
         for (self.spans.items) |*span| {
-            span.deinit(self.allocator);
+            span.deinit(self.allocator, span);
         }
         self.spans.clearRetainingCapacity();
     }
 
     /// Build OTLP JSON payload from pending spans.
-    fn buildOtlpPayload(self: *Self) ![]const u8 {
+    fn buildOtlpPayload(self: *OtelObserver) ![]const u8 {
         var writer = std.ArrayList(u8).init(self.allocator);
         defer writer.deinit();
 
@@ -244,7 +243,7 @@ pub const OtelObserver = struct {
 
     // Observer interface implementation
     fn recordEvent(ptr: *anyopaque, event: *const ObserverEvent) void {
-        const self: *Self = @ptrCast(@alignCast(ptr));
+        const self: *OtelObserver = @ptrCast(@alignCast(ptr));
 
         const span = OtelSpan.fromEvent(self.allocator, event) catch |err| {
             std.log.warn("Failed to create OTEL span: {any}", .{err});
@@ -253,7 +252,7 @@ pub const OtelObserver = struct {
 
         self.spans.append(span) catch |err| {
             std.log.warn("Failed to append OTEL span: {any}", .{err});
-            span.deinit(self.allocator);
+            span.deinit(self.allocator, span);
             return;
         };
 
@@ -270,7 +269,7 @@ pub const OtelObserver = struct {
     }
 
     fn flush(ptr: *anyopaque) void {
-        const self: *Self = @ptrCast(@alignCast(ptr));
+        const self: *OtelObserver = @ptrCast(@alignCast(ptr));
         self.flushInternal() catch |err| {
             std.log.warn("Failed to flush OTEL spans: {any}", .{err});
         };
@@ -335,12 +334,13 @@ const OtelSpan = struct {
             bool: bool,
         },
 
-        fn deinit(self: *Attribute, allocator: std.mem.Allocator) void {
+        fn deinit(allocator: std.mem.Allocator, self: *Attribute) void {
             allocator.free(self.key);
             switch (self.value) {
                 .string => |s| allocator.free(s),
                 else => {},
             }
+            self.* = undefined;
         }
 
         fn toJson(self: Attribute, writer: anytype) !void {
@@ -355,16 +355,17 @@ const OtelSpan = struct {
         }
     };
 
-    fn deinit(self: *OtelSpan, allocator: std.mem.Allocator) void {
+    fn deinit(allocator: std.mem.Allocator, self: *OtelSpan) void {
         allocator.free(self.trace_id);
         allocator.free(self.span_id);
         if (self.parent_span_id) |ps| allocator.free(ps);
         allocator.free(self.name);
         if (self.status_message) |sm| allocator.free(sm);
         for (self.attributes.items) |*attr| {
-            attr.deinit(allocator);
+            attr.deinit(allocator, attr);
         }
         self.attributes.deinit();
+        self.* = undefined;
     }
 
     fn toJson(self: OtelSpan, writer: anytype) !void {
@@ -406,7 +407,7 @@ const OtelSpan = struct {
         var attributes = std.ArrayList(Attribute).init(allocator);
         errdefer {
             for (attributes.items) |*attr| {
-                attr.deinit(allocator);
+                attr.deinit(allocator, attr);
             }
             attributes.deinit();
         }
@@ -428,40 +429,40 @@ const OtelSpan = struct {
         // Set attributes based on event type
         switch (event.*) {
             .agent_start => |e| {
-                try appendStringAttr(&attributes, allocator, "provider", e.provider);
-                try appendStringAttr(&attributes, allocator, "model", e.model);
+                try appendStringAttr(allocator, &attributes, "provider", e.provider);
+                try appendStringAttr(allocator, &attributes, "model", e.model);
             },
             .llm_request => |e| {
-                try appendStringAttr(&attributes, allocator, "provider", e.provider);
-                try appendStringAttr(&attributes, allocator, "model", e.model);
-                try appendIntAttr(&attributes, allocator, "messages.count", @intCast(e.messages_count));
+                try appendStringAttr(allocator, &attributes, "provider", e.provider);
+                try appendStringAttr(allocator, &attributes, "model", e.model);
+                try appendIntAttr(allocator, &attributes, "messages.count", @intCast(e.messages_count));
             },
             .llm_response => |e| {
-                try appendStringAttr(&attributes, allocator, "provider", e.provider);
-                try appendStringAttr(&attributes, allocator, "model", e.model);
-                try appendIntAttr(&attributes, allocator, "duration_ms", @intCast(e.duration_ms));
-                try appendBoolAttr(&attributes, allocator, "success", e.success);
+                try appendStringAttr(allocator, &attributes, "provider", e.provider);
+                try appendStringAttr(allocator, &attributes, "model", e.model);
+                try appendIntAttr(allocator, &attributes, "duration_ms", @intCast(e.duration_ms));
+                try appendBoolAttr(allocator, &attributes, "success", e.success);
                 if (e.error_message) |err| {
-                    try appendStringAttr(&attributes, allocator, "error.message", err);
+                    try appendStringAttr(allocator, &attributes, "error.message", err);
                 }
             },
             .agent_end => |e| {
-                try appendIntAttr(&attributes, allocator, "duration_ms", @intCast(e.duration_ms));
+                try appendIntAttr(allocator, &attributes, "duration_ms", @intCast(e.duration_ms));
                 if (e.tokens_used) |tokens| {
-                    try appendIntAttr(&attributes, allocator, "tokens.used", @intCast(tokens));
+                    try appendIntAttr(allocator, &attributes, "tokens.used", @intCast(tokens));
                 }
             },
             .tool_call_start => |e| {
-                try appendStringAttr(&attributes, allocator, "tool.name", e.tool);
+                try appendStringAttr(allocator, &attributes, "tool.name", e.tool);
             },
             .tool_call => |e| {
-                try appendStringAttr(&attributes, allocator, "tool.name", e.tool);
-                try appendIntAttr(&attributes, allocator, "duration_ms", @intCast(e.duration_ms));
-                try appendBoolAttr(&attributes, allocator, "success", e.success);
+                try appendStringAttr(allocator, &attributes, "tool.name", e.tool);
+                try appendIntAttr(allocator, &attributes, "duration_ms", @intCast(e.duration_ms));
+                try appendBoolAttr(allocator, &attributes, "success", e.success);
             },
             .channel_message => |e| {
-                try appendStringAttr(&attributes, allocator, "channel", e.channel);
-                try appendStringAttr(&attributes, allocator, "direction", e.direction);
+                try appendStringAttr(allocator, &attributes, "channel", e.channel);
+                try appendStringAttr(allocator, &attributes, "direction", e.direction);
             },
             .turn_complete => {},
         }
@@ -487,7 +488,7 @@ const OtelSpan = struct {
         };
     }
 
-    fn appendStringAttr(attrs: *std.ArrayList(Attribute), allocator: std.mem.Allocator, key: []const u8, value: []const u8) !void {
+    fn appendStringAttr(allocator: std.mem.Allocator, attrs: *std.ArrayList(Attribute), key: []const u8, value: []const u8) !void {
         const key_copy = try allocator.dupe(u8, key);
         errdefer allocator.free(key_copy);
         const value_copy = try allocator.dupe(u8, value);
@@ -498,7 +499,7 @@ const OtelSpan = struct {
         });
     }
 
-    fn appendIntAttr(attrs: *std.ArrayList(Attribute), allocator: std.mem.Allocator, key: []const u8, value: i64) !void {
+    fn appendIntAttr(allocator: std.mem.Allocator, attrs: *std.ArrayList(Attribute), key: []const u8, value: i64) !void {
         const key_copy = try allocator.dupe(u8, key);
         errdefer allocator.free(key_copy);
         try attrs.append(.{
@@ -507,7 +508,7 @@ const OtelSpan = struct {
         });
     }
 
-    fn appendBoolAttr(attrs: *std.ArrayList(Attribute), allocator: std.mem.Allocator, key: []const u8, value: bool) !void {
+    fn appendBoolAttr(allocator: std.mem.Allocator, attrs: *std.ArrayList(Attribute), key: []const u8, value: bool) !void {
         const key_copy = try allocator.dupe(u8, key);
         errdefer allocator.free(key_copy);
         try attrs.append(.{
@@ -534,7 +535,7 @@ fn generateSpanId(allocator: std.mem.Allocator) ![]const u8 {
 /// Get environment variable value or use default.
 fn getEnvOrDefault(allocator: std.mem.Allocator, env_name: []const u8, config_value: ?[]const u8, default_value: []const u8) ![]const u8 {
     if (config_value) |cv| {
-        return try allocator.dupe(u8, cv);
+        return allocator.dupe(u8, cv);
     }
     const env = std.process.getEnvVarOwned(allocator, env_name) catch |err| switch (err) {
         error.EnvironmentVariableNotFound => return try allocator.dupe(u8, default_value),

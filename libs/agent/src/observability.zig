@@ -147,19 +147,19 @@ pub const VerboseObserver = struct {
         const stderr = &bw.interface;
         switch (event.*) {
             .llm_request => |e| {
-                stderr.print("> Send (provider={s}, model={s}, messages={d})\n", .{ e.provider, e.model, e.messages_count }) catch {};
+                stderr.print("> Send (provider={s}, model={s}, messages={d})\n", .{ e.provider, e.model, e.messages_count }) catch |err| std.debug.print("warn: verbose: {}\n", .{err});
             },
             .llm_response => |e| {
-                stderr.print("< Receive (success={}, duration_ms={d})\n", .{ e.success, e.duration_ms }) catch {};
+                stderr.print("< Receive (success={}, duration_ms={d})\n", .{ e.success, e.duration_ms }) catch |err| std.debug.print("warn: verbose: {}\n", .{err});
             },
             .tool_call_start => |e| {
-                stderr.print("> Tool {s}\n", .{e.tool}) catch {};
+                stderr.print("> Tool {s}\n", .{e.tool}) catch |err| std.debug.print("warn: verbose: {}\n", .{err});
             },
             .tool_call => |e| {
-                stderr.print("< Tool {s} (success={}, duration_ms={d})\n", .{ e.tool, e.success, e.duration_ms }) catch {};
+                stderr.print("< Tool {s} (success={}, duration_ms={d})\n", .{ e.tool, e.success, e.duration_ms }) catch |err| std.debug.print("warn: verbose: {}\n", .{err});
             },
             .turn_complete => {
-                stderr.print("< Complete\n", .{}) catch {};
+                stderr.print("< Complete\n", .{}) catch |err| std.debug.print("warn: verbose: {}\n", .{err});
             },
             else => {},
         }

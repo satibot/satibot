@@ -68,15 +68,15 @@ pub const Server = struct {
 fn handleRoot(req: zap.Request) anyerror!void {
     if (req.method) |method| {
         if (std.mem.eql(u8, method, "OPTIONS")) {
-            req.setHeader("Access-Control-Allow-Origin", "*") catch {};
-            req.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS") catch {};
-            req.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization") catch {};
+            req.setHeader("Access-Control-Allow-Origin", "*") catch |err| std.debug.print("warn: set header: {}\n", .{err});
+            req.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS") catch |err| std.debug.print("warn: set header: {}\n", .{err});
+            req.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization") catch |err| std.debug.print("warn: set header: {}\n", .{err});
             req.setStatus(.no_content);
             return;
         }
     }
 
-    req.setHeader("Access-Control-Allow-Origin", "*") catch {};
+    req.setHeader("Access-Control-Allow-Origin", "*") catch |err| std.debug.print("warn: set header: {}\n", .{err});
     req.sendJson("{\"status\":\"ok\",\"message\":\"SatiBot API\"}") catch |err| {
         std.log.err("Failed to send response: {any}", .{err});
     };
@@ -94,7 +94,7 @@ pub const Router = struct {
 
     /// Handle health check request
     pub fn health(_: *Router, req: zap.Request) anyerror!void {
-        req.setHeader("Access-Control-Allow-Origin", "*") catch {};
+        req.setHeader("Access-Control-Allow-Origin", "*") catch |err| std.debug.print("warn: set header: {}\n", .{err});
         req.sendJson("{\"status\":\"ok\"}") catch |err| {
             std.log.err("Failed to send health response: {any}", .{err});
         };

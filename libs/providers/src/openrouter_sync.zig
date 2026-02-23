@@ -58,11 +58,11 @@ pub const OpenRouterProvider = struct {
             return error.ApiRequestFailed;
         }
 
-        return try parseChatResponse(self.allocator, response.body);
+        return parseChatResponse(self.allocator, response.body);
     }
 
     pub fn createInterface() base.ProviderInterface {
-        return base.ProviderInterface{
+        return .{
             .chat = chatInterface,
         };
     }
@@ -75,7 +75,7 @@ fn chatInterface(allocator: std.mem.Allocator, config: Config, messages: []const
     var provider = try OpenRouterProvider.init(allocator, api_key);
     defer provider.deinit();
 
-    return try provider.chat(messages, model, tools);
+    return provider.chat(messages, model, tools);
 }
 
 fn buildChatRequestBody(messages: []const base.Message, model: []const u8, tools: ?[]const base.Tool) ![]u8 {
