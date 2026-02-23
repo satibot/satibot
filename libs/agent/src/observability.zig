@@ -57,7 +57,7 @@ pub const Observer = struct {
 /// Useful as a zero-cost default to avoid null checks throughout the codebase
 /// when observability is disabled.
 pub const NoopObserver = struct {
-    const vtable = Observer.VTable{
+    const vtable: Observer.VTable = .{
         .record_event = noopRecordEvent,
         .record_metric = noopRecordMetric,
         .flush = noopFlush,
@@ -82,7 +82,7 @@ pub const NoopObserver = struct {
 /// An observer that logs events and metrics using Zig's standard log facility (`std.log`).
 /// Best suited for debugging and persistent structured logging.
 pub const LogObserver = struct {
-    const vtable = Observer.VTable{
+    const vtable: Observer.VTable = .{
         .record_event = logRecordEvent,
         .record_metric = logRecordMetric,
         .flush = logFlush,
@@ -127,7 +127,7 @@ pub const LogObserver = struct {
 /// Designed to provide immediate visual feedback in CLI environments
 /// (e.g., `> Send`, `< Receive`) without the verbosity of full logs.
 pub const VerboseObserver = struct {
-    const vtable = Observer.VTable{
+    const vtable: Observer.VTable = .{
         .record_event = verboseRecordEvent,
         .record_metric = verboseRecordMetric,
         .flush = verboseFlush,
@@ -178,7 +178,7 @@ pub const VerboseObserver = struct {
 pub const MultiObserver = struct {
     observers: []Observer,
 
-    const vtable = Observer.VTable{
+    const vtable: Observer.VTable = .{
         .record_event = multiRecordEvent,
         .record_metric = multiRecordMetric,
         .flush = multiFlush,
@@ -220,55 +220,51 @@ pub const MultiObserver = struct {
 };
 
 test "NoopObserver name" {
-    var noop = NoopObserver{};
+    const noop: NoopObserver = .{};
     const obs = noop.observer();
     try std.testing.expectEqualStrings("noop", obs.getName());
 }
 
 test "NoopObserver does not panic" {
-    var noop = NoopObserver{};
+    const noop: NoopObserver = .{};
     const obs = noop.observer();
-    const event = ObserverEvent{ .turn_complete = {} };
+    const event: ObserverEvent = .{ .turn_complete = {} };
     obs.recordEvent(&event);
-    const metric = ObserverMetric{ .tokens_used = 42 };
+    const metric: ObserverMetric = .{ .tokens_used = 42 };
     obs.recordMetric(&metric);
     obs.flush();
 }
 
 test "LogObserver name" {
-    var log_obs = LogObserver{};
+    var log_obs: LogObserver = .{};
     const obs = log_obs.observer();
     try std.testing.expectEqualStrings("log", obs.getName());
 }
 
 test "VerboseObserver name" {
-    var verbose = VerboseObserver{};
+    var verbose: VerboseObserver = .{};
     const obs = verbose.observer();
     try std.testing.expectEqualStrings("verbose", obs.getName());
 }
 
 test "MultiObserver name" {
-    var multi = MultiObserver{ .observers = &.{} };
+    var multi: MultiObserver = .{ .observers = &.{} };
     const obs = multi.observer();
     try std.testing.expectEqualStrings("multi", obs.getName());
 }
 
 test "MultiObserver fans out" {
-    var noop1 = NoopObserver{};
-    var noop2 = NoopObserver{};
+    const noop1: NoopObserver = .{};
+    const noop2: NoopObserver = .{};
     var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
-    var multi = MultiObserver{ .observers = &observers_arr };
+    var multi: MultiObserver = .{ .observers = &observers_arr };
     const obs = multi.observer();
-    const event = ObserverEvent{ .turn_complete = {} };
+    const event: ObserverEvent = .{ .turn_complete = {} };
     obs.recordEvent(&event);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ObserverEvent Tests
-// ═══════════════════════════════════════════════════════════════════════════
-
 test "ObserverEvent: agent_start fields" {
-    const event = ObserverEvent{ .agent_start = .{ .provider = "openrouter", .model = "claude-sonnet" } };
+    const event: ObserverEvent = .{ .agent_start = .{ .provider = "openrouter", .model = "claude-sonnet" } };
     switch (event) {
         .agent_start => |e| {
             try std.testing.expectEqualStrings("openrouter", e.provider);
@@ -279,7 +275,7 @@ test "ObserverEvent: agent_start fields" {
 }
 
 test "ObserverEvent: llm_request fields" {
-    const event = ObserverEvent{ .llm_request = .{ .provider = "anthropic", .model = "claude-3", .messages_count = 5 } };
+    const event: ObserverEvent = .{ .llm_request = .{ .provider = "anthropic", .model = "claude-3", .messages_count = 5 } };
     switch (event) {
         .llm_request => |e| {
             try std.testing.expectEqualStrings("anthropic", e.provider);
@@ -291,7 +287,7 @@ test "ObserverEvent: llm_request fields" {
 }
 
 test "ObserverEvent: llm_response success fields" {
-    const event = ObserverEvent{ .llm_response = .{
+    const event: ObserverEvent = .{ .llm_response = .{
         .provider = "openrouter",
         .model = "gpt-4",
         .duration_ms = 1500,
@@ -311,7 +307,7 @@ test "ObserverEvent: llm_response success fields" {
 }
 
 test "ObserverEvent: llm_response failure fields" {
-    const event = ObserverEvent{ .llm_response = .{
+    const event: ObserverEvent = .{ .llm_response = .{
         .provider = "openrouter",
         .model = "gpt-4",
         .duration_ms = 500,
@@ -329,7 +325,7 @@ test "ObserverEvent: llm_response failure fields" {
 }
 
 test "ObserverEvent: agent_end fields" {
-    const event = ObserverEvent{ .agent_end = .{ .duration_ms = 3000, .tokens_used = 1500 } };
+    const event: ObserverEvent = .{ .agent_end = .{ .duration_ms = 3000, .tokens_used = 1500 } };
     switch (event) {
         .agent_end => |e| {
             try std.testing.expectEqual(@as(u64, 3000), e.duration_ms);
@@ -340,7 +336,7 @@ test "ObserverEvent: agent_end fields" {
 }
 
 test "ObserverEvent: agent_end without tokens" {
-    const event = ObserverEvent{ .agent_end = .{ .duration_ms = 1000, .tokens_used = null } };
+    const event: ObserverEvent = .{ .agent_end = .{ .duration_ms = 1000, .tokens_used = null } };
     switch (event) {
         .agent_end => |e| {
             try std.testing.expectEqual(@as(?u64, null), e.tokens_used);
@@ -350,7 +346,7 @@ test "ObserverEvent: agent_end without tokens" {
 }
 
 test "ObserverEvent: tool_call_start fields" {
-    const event = ObserverEvent{ .tool_call_start = .{ .tool = "vector_search" } };
+    const event: ObserverEvent = .{ .tool_call_start = .{ .tool = "vector_search" } };
     switch (event) {
         .tool_call_start => |e| {
             try std.testing.expectEqualStrings("vector_search", e.tool);
@@ -360,7 +356,7 @@ test "ObserverEvent: tool_call_start fields" {
 }
 
 test "ObserverEvent: tool_call success fields" {
-    const event = ObserverEvent{ .tool_call = .{ .tool = "read_file", .duration_ms = 50, .success = true } };
+    const event: ObserverEvent = .{ .tool_call = .{ .tool = "read_file", .duration_ms = 50, .success = true } };
     switch (event) {
         .tool_call => |e| {
             try std.testing.expectEqualStrings("read_file", e.tool);
@@ -372,7 +368,7 @@ test "ObserverEvent: tool_call success fields" {
 }
 
 test "ObserverEvent: tool_call failure fields" {
-    const event = ObserverEvent{ .tool_call = .{ .tool = "http_request", .duration_ms = 200, .success = false } };
+    const event: ObserverEvent = .{ .tool_call = .{ .tool = "http_request", .duration_ms = 200, .success = false } };
     switch (event) {
         .tool_call => |e| {
             try std.testing.expectEqual(false, e.success);
@@ -382,7 +378,7 @@ test "ObserverEvent: tool_call failure fields" {
 }
 
 test "ObserverEvent: turn_complete" {
-    const event = ObserverEvent{ .turn_complete = {} };
+    const event: ObserverEvent = .{ .turn_complete = {} };
     switch (event) {
         .turn_complete => {},
         else => unreachable,
@@ -390,7 +386,7 @@ test "ObserverEvent: turn_complete" {
 }
 
 test "ObserverEvent: channel_message fields" {
-    const event = ObserverEvent{ .channel_message = .{ .channel = "telegram", .direction = "inbound" } };
+    const event: ObserverEvent = .{ .channel_message = .{ .channel = "telegram", .direction = "inbound" } };
     switch (event) {
         .channel_message => |e| {
             try std.testing.expectEqualStrings("telegram", e.channel);
@@ -400,12 +396,8 @@ test "ObserverEvent: channel_message fields" {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ObserverMetric Tests
-// ═══════════════════════════════════════════════════════════════════════════
-
 test "ObserverMetric: request_latency_ms" {
-    const metric = ObserverMetric{ .request_latency_ms = 100 };
+    const metric: ObserverMetric = .{ .request_latency_ms = 100 };
     switch (metric) {
         .request_latency_ms => |v| try std.testing.expectEqual(@as(u64, 100), v),
         else => unreachable,
@@ -413,7 +405,7 @@ test "ObserverMetric: request_latency_ms" {
 }
 
 test "ObserverMetric: tokens_used" {
-    const metric = ObserverMetric{ .tokens_used = 500 };
+    const metric: ObserverMetric = .{ .tokens_used = 500 };
     switch (metric) {
         .tokens_used => |v| try std.testing.expectEqual(@as(u64, 500), v),
         else => unreachable,
@@ -421,11 +413,68 @@ test "ObserverMetric: tokens_used" {
 }
 
 test "ObserverMetric: active_sessions" {
-    const metric = ObserverMetric{ .active_sessions = 3 };
+    const metric: ObserverMetric = .{ .active_sessions = 3 };
     switch (metric) {
         .active_sessions => |v| try std.testing.expectEqual(@as(u64, 3), v),
         else => unreachable,
     }
+}
+
+test "MultiObserver: fans out events to multiple observers" {
+    const noop1: NoopObserver = .{};
+    const noop2: NoopObserver = .{};
+    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
+    var multi: MultiObserver = .{ .observers = &observers_arr };
+    const obs = multi.observer();
+
+    const event: ObserverEvent = .{ .turn_complete = {} };
+    obs.recordEvent(&event);
+    obs.recordEvent(&event);
+    obs.recordEvent(&event);
+}
+
+test "MultiObserver: fans out metrics to multiple observers" {
+    const noop1: NoopObserver = .{};
+    const noop2: NoopObserver = .{};
+    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
+    var multi: MultiObserver = .{ .observers = &observers_arr };
+    const obs = multi.observer();
+
+    const metric: ObserverMetric = .{ .request_latency_ms = 500 };
+    obs.recordMetric(&metric);
+    obs.recordMetric(&metric);
+}
+
+test "MultiObserver: fans out flush to multiple observers" {
+    const noop1: NoopObserver = .{};
+    const noop2: NoopObserver = .{};
+    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
+    var multi: MultiObserver = .{ .observers = &observers_arr };
+    const obs = multi.observer();
+
+    obs.flush();
+    obs.flush();
+}
+
+test "MultiObserver: empty observers list does not panic" {
+    var multi: MultiObserver = .{ .observers = @constCast(&[_]Observer{}) };
+    const obs = multi.observer();
+
+    obs.recordEvent(&ObserverEvent{ .turn_complete = {} });
+    obs.recordMetric(&ObserverMetric{ .tokens_used = 0 });
+    obs.flush();
+}
+
+test "MultiObserver: single observer works correctly" {
+    const noop: NoopObserver = .{};
+    var observers_arr = [_]Observer{noop.observer()};
+    var multi: MultiObserver = .{ .observers = &observers_arr };
+    const obs = multi.observer();
+
+    try std.testing.expectEqualStrings("multi", obs.getName());
+
+    const event: ObserverEvent = .{ .agent_start = .{ .provider = "p", .model = "m" } };
+    obs.recordEvent(&event);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -433,7 +482,7 @@ test "ObserverMetric: active_sessions" {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test "Observer: dispatches to NoopObserver" {
-    var noop = NoopObserver{};
+    var noop: NoopObserver = .{};
     const obs = noop.observer();
     try std.testing.expectEqualStrings("noop", obs.getName());
 
@@ -444,7 +493,7 @@ test "Observer: dispatches to NoopObserver" {
 }
 
 test "Observer: dispatches to LogObserver" {
-    var log_obs = LogObserver{};
+    var log_obs: LogObserver = .{};
     const obs = log_obs.observer();
     try std.testing.expectEqualStrings("log", obs.getName());
 
@@ -453,7 +502,7 @@ test "Observer: dispatches to LogObserver" {
 }
 
 test "Observer: dispatches to VerboseObserver" {
-    var verbose = VerboseObserver{};
+    var verbose: VerboseObserver = .{};
     const obs = verbose.observer();
     try std.testing.expectEqualStrings("verbose", obs.getName());
 
@@ -466,7 +515,7 @@ test "Observer: dispatches to VerboseObserver" {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test "NoopObserver: handles all event types without panic" {
-    var noop = NoopObserver{};
+    var noop: NoopObserver = .{};
     const obs = noop.observer();
 
     const events = [_]ObserverEvent{
@@ -486,7 +535,7 @@ test "NoopObserver: handles all event types without panic" {
 }
 
 test "NoopObserver: handles all metric types without panic" {
-    var noop = NoopObserver{};
+    var noop: NoopObserver = .{};
     const obs = noop.observer();
 
     const metrics = [_]ObserverMetric{
@@ -508,7 +557,7 @@ test "NoopObserver: handles all metric types without panic" {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test "LogObserver: handles all event types without panic" {
-    var log_obs = LogObserver{};
+    var log_obs: LogObserver = .{};
     const obs = log_obs.observer();
 
     const events = [_]ObserverEvent{
@@ -531,7 +580,7 @@ test "LogObserver: handles all event types without panic" {
 }
 
 test "LogObserver: handles all metric types without panic" {
-    var log_obs = LogObserver{};
+    var log_obs: LogObserver = .{};
     const obs = log_obs.observer();
 
     const metrics = [_]ObserverMetric{
@@ -550,7 +599,7 @@ test "LogObserver: handles all metric types without panic" {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test "VerboseObserver: handles all event types without panic" {
-    var verbose = VerboseObserver{};
+    var verbose: VerboseObserver = .{};
     const obs = verbose.observer();
 
     const events = [_]ObserverEvent{
@@ -570,7 +619,7 @@ test "VerboseObserver: handles all event types without panic" {
 }
 
 test "VerboseObserver: ignores metrics" {
-    var verbose = VerboseObserver{};
+    var verbose: VerboseObserver = .{};
     const obs = verbose.observer();
 
     const metrics = [_]ObserverMetric{
@@ -582,65 +631,4 @@ test "VerboseObserver: ignores metrics" {
     for (&metrics) |*metric| {
         obs.recordMetric(metric);
     }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MultiObserver Tests
-// ═══════════════════════════════════════════════════════════════════════════
-
-test "MultiObserver: fans out events to multiple observers" {
-    var noop1 = NoopObserver{};
-    var noop2 = NoopObserver{};
-    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
-    var multi = MultiObserver{ .observers = &observers_arr };
-    const obs = multi.observer();
-
-    const event = ObserverEvent{ .turn_complete = {} };
-    obs.recordEvent(&event);
-    obs.recordEvent(&event);
-    obs.recordEvent(&event);
-}
-
-test "MultiObserver: fans out metrics to multiple observers" {
-    var noop1 = NoopObserver{};
-    var noop2 = NoopObserver{};
-    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
-    var multi = MultiObserver{ .observers = &observers_arr };
-    const obs = multi.observer();
-
-    const metric = ObserverMetric{ .request_latency_ms = 500 };
-    obs.recordMetric(&metric);
-    obs.recordMetric(&metric);
-}
-
-test "MultiObserver: fans out flush to multiple observers" {
-    var noop1 = NoopObserver{};
-    var noop2 = NoopObserver{};
-    var observers_arr = [_]Observer{ noop1.observer(), noop2.observer() };
-    var multi = MultiObserver{ .observers = &observers_arr };
-    const obs = multi.observer();
-
-    obs.flush();
-    obs.flush();
-}
-
-test "MultiObserver: empty observers list does not panic" {
-    var multi = MultiObserver{ .observers = @constCast(&[_]Observer{}) };
-    const obs = multi.observer();
-
-    obs.recordEvent(&ObserverEvent{ .turn_complete = {} });
-    obs.recordMetric(&ObserverMetric{ .tokens_used = 0 });
-    obs.flush();
-}
-
-test "MultiObserver: single observer works correctly" {
-    var noop = NoopObserver{};
-    var observers_arr = [_]Observer{noop.observer()};
-    var multi = MultiObserver{ .observers = &observers_arr };
-    const obs = multi.observer();
-
-    try std.testing.expectEqualStrings("multi", obs.getName());
-
-    const event = ObserverEvent{ .agent_start = .{ .provider = "p", .model = "m" } };
-    obs.recordEvent(&event);
 }

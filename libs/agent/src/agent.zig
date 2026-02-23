@@ -48,7 +48,7 @@ pub const Agent = struct {
     /// Loads conversation history from session if available.
     /// Registers all default tools automatically.
     pub fn init(allocator: std.mem.Allocator, config: Config, session_id: []const u8, rag_enabled: bool) !Agent {
-        var noop_obs = observability.NoopObserver{};
+        var noop_obs: observability.NoopObserver = .{};
         return initWithObserver(allocator, config, session_id, rag_enabled, noop_obs.observer());
     }
 
