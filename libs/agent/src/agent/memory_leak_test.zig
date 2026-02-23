@@ -48,7 +48,7 @@ test "Memory Leak Test - Multiple Agent Init/Deinit Cycles" {
         var agent = try Agent.init(allocator, test_config, session_id, false);
 
         // Use noop observer
-        var noop = NoopObserver{};
+        var noop: NoopObserver = .{};
         agent.observer = noop.observer();
 
         // Run agent (this will call the mock provider in base.zig)
@@ -77,7 +77,7 @@ test "Memory Leak Test - Agent with Context" {
 
         var agent = try Agent.init(allocator, test_config, session_id, false);
 
-        var noop = NoopObserver{};
+        var noop: NoopObserver = .{};
         agent.observer = noop.observer();
 
         // Add some messages to context

@@ -158,6 +158,7 @@ pub const MockBot = struct {
         global_mock_context = null;
         self.event_loop.deinit();
         self.allocator.destroy(self);
+        self.* = undefined;
     }
 
     /// Read from console and add task to loop
