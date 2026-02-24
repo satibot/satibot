@@ -352,12 +352,12 @@ pub const XevEventLoop = struct {
         self.event_queue.deinit();
         self.event_mutex.unlock();
 
+        // Clean up worker threads
+        self.worker_threads.deinit(self.allocator);
+
         // Deinitialize libxev resources
         self.timer.deinit();
         self.loop.deinit();
-
-        // Clean up worker threads
-        self.worker_threads.deinit(self.allocator);
 
         self.* = undefined;
     }

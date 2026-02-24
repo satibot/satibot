@@ -154,11 +154,12 @@ pub const MockBot = struct {
     }
 
     /// Clean up resources
-    pub fn deinit(self: *MockBot) void {
+    pub fn deinit(self: *MockBot) void { // ziglint-ignore: Z030
         global_mock_context = null;
         self.event_loop.deinit();
         self.allocator.destroy(self);
-        self.* = undefined;
+        // `self.* = undefined;` is not needed here
+        // as the memory is deallocated by `allocator.destroy(self)`
     }
 
     /// Read from console and add task to loop

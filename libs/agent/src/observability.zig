@@ -64,9 +64,9 @@ pub const NoopObserver = struct {
         .name = noopName,
     };
 
-    pub fn observer(self: *NoopObserver) Observer {
+    pub fn observer(self: *const NoopObserver) Observer {
         return .{
-            .ptr = @ptrCast(self),
+            .ptr = @constCast(@ptrCast(self)),
             .vtable = &vtable,
         };
     }
