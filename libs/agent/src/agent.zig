@@ -372,7 +372,7 @@ pub const Agent = struct {
 
         // Record agent start event
         const provider_name: []const u8 = if (self.config.providers.openrouter != null) "openrouter" else "unknown";
-        const start_event = ObserverEvent{ .agent_start = .{
+        const start_event: ObserverEvent = .{ .agent_start = .{
             .provider = provider_name,
             .model = model,
         } };
@@ -531,7 +531,7 @@ pub const Agent = struct {
 
             // Record LLM request event
             const timer_start = std.time.milliTimestamp();
-            const req_event = ObserverEvent{ .llm_request = .{
+            const req_event: ObserverEvent = .{ .llm_request = .{
                 .provider = "openrouter",
                 .model = model,
                 .messages_count = filtered_messages.items.len,
@@ -550,7 +550,7 @@ pub const Agent = struct {
             ) catch |err| {
                 // Record failed LLM response event
                 const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
-                const fail_event = ObserverEvent{ .llm_response = .{
+                const fail_event: ObserverEvent = .{ .llm_response = .{
                     .provider = "openrouter",
                     .model = model,
                     .duration_ms = duration_ms,
@@ -575,7 +575,7 @@ pub const Agent = struct {
 
             // Record successful LLM response event
             const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
-            const resp_event = ObserverEvent{ .llm_response = .{
+            const resp_event: ObserverEvent = .{ .llm_response = .{
                 .provider = "openrouter",
                 .model = model,
                 .duration_ms = duration_ms,
@@ -614,7 +614,7 @@ pub const Agent = struct {
                     std.debug.print("Tool Call: {s}({s})\n", .{ call.function.name, call.function.arguments });
 
                     // Record tool start event
-                    const tool_start_event = ObserverEvent{ .tool_call_start = .{ .tool = call.function.name } };
+                    const tool_start_event: ObserverEvent = .{ .tool_call_start = .{ .tool = call.function.name } };
                     self.observer.recordEvent(&tool_start_event);
 
                     const tool_timer_start = std.time.milliTimestamp();
@@ -623,7 +623,7 @@ pub const Agent = struct {
                         const result = tool.execute(tool_ctx, call.function.arguments) catch |err| {
                             // Record tool failure event
                             const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
-                            const tool_fail_event = ObserverEvent{ .tool_call = .{
+                            const tool_fail_event: ObserverEvent = .{ .tool_call = .{
                                 .tool = call.function.name,
                                 .duration_ms = tool_duration,
                                 .success = false,
@@ -644,7 +644,7 @@ pub const Agent = struct {
 
                         // Record tool success event
                         const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
-                        const tool_event = ObserverEvent{ .tool_call = .{
+                        const tool_event: ObserverEvent = .{ .tool_call = .{
                             .tool = call.function.name,
                             .duration_ms = tool_duration,
                             .success = true,
@@ -674,7 +674,7 @@ pub const Agent = struct {
 
             // No tool calls, we are done
             // Record turn complete event
-            const complete_event = ObserverEvent{ .turn_complete = {} };
+            const complete_event: ObserverEvent = .{ .turn_complete = {} };
             self.observer.recordEvent(&complete_event);
 
             break;
@@ -687,7 +687,7 @@ pub const Agent = struct {
             @intCast(std.time.milliTimestamp() - self.agent_start_time)
         else
             0;
-        const end_event = ObserverEvent{ .agent_end = .{
+        const end_event: ObserverEvent = .{ .agent_end = .{
             .duration_ms = duration_ms,
             .tokens_used = null,
         } };
