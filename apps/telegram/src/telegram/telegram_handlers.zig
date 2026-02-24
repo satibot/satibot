@@ -5,7 +5,7 @@ const agent = @import("agent");
 const utils = @import("utils");
 const xev_event_loop = utils.xev_event_loop;
 const messages = agent.messages;
-const Config = core.config.Config;
+pub const Config = core.config.Config;
 const http = @import("http");
 const constants = core.constants;
 

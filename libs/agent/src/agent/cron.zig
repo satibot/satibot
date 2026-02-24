@@ -2,7 +2,7 @@
 //! Jobs can be scheduled to run at specific times or at regular intervals.
 //! Jobs are persisted to disk and survive application restarts.
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const Agent = @import("../agent.zig").Agent;
 
 /// Schedule types: one-time "at" a specific time, or recurring "every" N milliseconds.

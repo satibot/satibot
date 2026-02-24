@@ -1,5 +1,5 @@
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const WhatsAppConfig = @import("core").config.WhatsAppConfig;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("http");

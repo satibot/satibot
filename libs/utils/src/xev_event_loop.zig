@@ -1,6 +1,6 @@
 const std = @import("std");
 const xev = @import("xev");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 
 /// Task structure for work items
 pub const Task = struct {

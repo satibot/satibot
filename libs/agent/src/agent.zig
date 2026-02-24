@@ -1,5 +1,5 @@
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const bot_definition = @import("core").bot_definition;
 const context = @import("agent/context.zig");
 const tools = @import("agent/tools.zig");

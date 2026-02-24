@@ -30,7 +30,7 @@
 /// 3. Calling event_loop.updateOffset() after processing
 const std = @import("std");
 const core = @import("core");
-const Config = core.config.Config;
+pub const Config = core.config.Config;
 const http = @import("http");
 const constants = core.constants;
 const utils = @import("utils");

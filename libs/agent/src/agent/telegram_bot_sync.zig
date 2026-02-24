@@ -21,7 +21,7 @@
 /// For voice message support and high-performance concurrent processing,
 /// use the xev-based async version.
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const Agent = @import("../agent.zig").Agent;
 const http = @import("http");
 const constants = @import("core").constants;

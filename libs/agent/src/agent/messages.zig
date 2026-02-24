@@ -1,7 +1,7 @@
 /// Functional message processing module
 /// Pure functions for processing messages without state mutation
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const context = @import("context.zig");
 const tools = @import("tools.zig");
 const providers = @import("providers");

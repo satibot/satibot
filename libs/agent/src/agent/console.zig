@@ -14,7 +14,7 @@
 ///     Agent --> |Reply| Console[Print to Console]
 /// ```
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const config_load = @import("core").config.load;
 const Agent = @import("../agent.zig").Agent;
 const xev_event_loop = @import("utils").xev_event_loop;

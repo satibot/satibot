@@ -19,7 +19,7 @@
 /// For concurrent message processing with event loop,
 /// use the xev-based async version (`sati console`).
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const Agent = @import("../agent.zig").Agent;
 
 var shutdown_requested = std.atomic.Value(bool).init(false);

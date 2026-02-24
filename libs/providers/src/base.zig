@@ -3,7 +3,7 @@
 /// used across all LLM provider implementations (Anthropic, OpenRouter, Groq).
 const std = @import("std");
 const core = @import("core");
-const Config = core.config.Config;
+pub const Config = core.config.Config;
 const openrouter = @import("openrouter.zig");
 const OpenRouterError = openrouter.OpenRouterError;
 

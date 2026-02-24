@@ -1,7 +1,7 @@
 /// Gateway module that orchestrates all bot services.
 /// Runs the main event loop managing cron jobs and heartbeat checks.
 const std = @import("std");
-const Config = @import("core").config.Config;
+pub const Config = @import("core").config.Config;
 const CronStore = @import("cron.zig").CronStore;
 const HeartbeatService = @import("heartbeat.zig").HeartbeatService;
 const Agent = @import("../agent.zig").Agent;
