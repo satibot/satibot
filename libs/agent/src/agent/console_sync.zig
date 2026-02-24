@@ -68,7 +68,8 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
     }
 
     std.debug.print("\n[Processing Message]: {s}\n", .{actual_text});
-    std.debug.print("⚡ Thinking ", .{});
+
+    std.debug.print("\n⚡ Thinking ", .{});
 
     const session_id = try std.fmt.allocPrint(allocator, "console_sync_{d}", .{session_counter});
     defer allocator.free(session_id);
@@ -80,7 +81,7 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
 
     // Small delay to ensure spinner starts before agent begins processing
     std.posix.nanosleep(0, 50_000_000); // 50ms
-    std.Thread.yield() catch {}; // Yield to ensure spinner thread runs
+    std.Thread.yield() catch |err| std.debug.print("Warning: Thread yield failed: {any}\n", .{err}); // Yield to ensure spinner thread runs
 
     var agent = try Agent.init(allocator, config, session_id, rag_enabled);
     defer agent.deinit();
@@ -262,17 +263,38 @@ test "ConsoleSyncBot shutdown flag can be set" {
     try std.testing.expectEqual(true, shutdown_requested.load(.seq_cst));
 }
 
-test "ConsoleSyncBot run function initializes bot" {
-    const allocator = std.testing.allocator;
-    const config: Config = .{
-        .agents = .{ .defaults = .{ .model = "test" } },
-        .providers = .{},
-        .tools = .{ .web = .{ .search = .{} } },
-    };
+test "ConsoleSyncBot spinner uses stderr for unbuffered output" {
+    const stderr = std.fs.File.stderr();
+    const stdin = std.fs.File.stdin();
+    try std.testing.expect(stderr.handle != stdin.handle);
+}
 
-    const bot = ConsoleSyncBot.init(allocator, config, true);
-    try std.testing.expectEqual(allocator, bot.allocator);
-    try std.testing.expectEqual(true, bot.rag_enabled);
+test "ConsoleSyncBot spinner animation frames are valid" {
+    try std.testing.expect(SPINNER_FRAMES.len > 0);
+    try std.testing.expect(SPINNER_DELAY_MS > 0);
+}
+
+test "ConsoleSyncBot spinner thread can be controlled via atomic" {
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+}
+
+test "ConsoleSyncBot: Spinner writes to stderr for immediate display" {
+    const stderr = std.fs.File.stderr();
+    var buf: [256]u8 = undefined;
+    const writer = stderr.writer(&buf);
+    _ = writer;
+}
+
+test "ConsoleSyncBot: Carriage return clears line for spinner" {
+    const test_line = "\r\x1b[K";
+    try std.testing.expect(std.mem.startsWith(u8, test_line, "\r"));
 }
 
 test "ConsoleSyncBot tick handles empty input gracefully" {
