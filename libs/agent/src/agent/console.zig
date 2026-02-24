@@ -29,6 +29,53 @@ var shutdown_message_printed = std.atomic.Value(bool).init(false);
 /// Global event loop pointer for signal handler access
 var global_event_loop: ?*XevEventLoop = null;
 
+/// Global flag to track when AI is processing
+var is_processing = std.atomic.Value(bool).init(false);
+
+/// Global flag to track loading animation state
+var loading_active = std.atomic.Value(bool).init(false);
+
+/// Show loading spinner animation
+fn showLoadingSpinner() void {
+    if (!loading_active.load(.seq_cst)) return;
+
+    const spin_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+    const start_time = std.time.nanoTimestamp();
+    var frame: usize = 0;
+
+    while (loading_active.load(.seq_cst) and !shutdown_requested.load(.seq_cst)) {
+        const current_time = std.time.nanoTimestamp();
+        const elapsed_ms = @as(u64, @intCast(@divTrunc(current_time - start_time, 1_000_000)));
+        frame = @as(usize, @intCast(@divTrunc(elapsed_ms, 100))) % spin_chars.len;
+
+        // Carriage return to overwrite current line
+        std.debug.print("\r🤔 Thinking {c}...", .{spin_chars[frame]});
+        std.posix.nanosleep(0, 100_000_000); // 100ms
+    }
+
+    // Clear the loading line when done
+    std.debug.print("\r{s}", .{" " ** 30});
+    std.debug.print("\r", .{});
+}
+
+/// Start loading animation in background thread
+fn startLoadingAnimation() void {
+    if (loading_active.load(.seq_cst)) return; // Already loading
+
+    loading_active.store(true, .seq_cst);
+
+    // Spawn loading animation thread
+    const loading_thread = std.Thread.spawn(.{
+        .stack_size = 65536, // 64KB stack is enough for spinner
+    }, showLoadingSpinner, .{}) catch return;
+    loading_thread.detach();
+}
+
+/// Stop loading animation
+fn stopLoadingAnimation() void {
+    loading_active.store(false, .seq_cst);
+}
+
 /// Signal handler for SIGINT (Ctrl+C) and SIGTERM
 fn signalHandler(sig: i32) callconv(.c) void {
     _ = sig;
@@ -40,6 +87,9 @@ fn signalHandler(sig: i32) callconv(.c) void {
     }
 
     shutdown_requested.store(true, .seq_cst);
+    // Stop loading animation during shutdown
+    stopLoadingAnimation();
+
     if (global_event_loop) |el| {
         el.requestShutdown();
     }
@@ -90,6 +140,16 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
 
     std.debug.print("\n[Processing Message]: {s}\n", .{actual_text});
 
+    // Start loading animation
+    is_processing.store(true, .seq_cst);
+    startLoadingAnimation();
+
+    // Ensure loading stops when we exit this function
+    defer {
+        is_processing.store(false, .seq_cst);
+        stopLoadingAnimation();
+    }
+
     // Use counter in session ID so /new creates a fresh session without loading old history
     const session_id = try std.fmt.allocPrint(allocator, "mock_tg_99999_{d}", .{mock_session_counter});
     defer allocator.free(session_id);
@@ -100,6 +160,9 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     defer agent.deinit();
 
     agent.run(actual_text) catch |err| {
+        // Stop loading on error
+        stopLoadingAnimation();
+
         if (err == error.Interrupted) {
             std.debug.print("\n🛑 Agent task cancelled\n", .{});
             return;
@@ -112,6 +175,8 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     if (messages.len > 0) {
         const last_msg = messages[messages.len - 1];
         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
+            // Stop loading before showing response
+            stopLoadingAnimation();
             std.debug.print("\n🤖 [Bot]: {s}\n", .{last_msg.content.?});
         }
     }
@@ -120,6 +185,9 @@ fn mockTaskHandler(allocator: std.mem.Allocator, task: xev_event_loop.Task) anye
     agent.indexConversation() catch |err| {
         std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
     };
+
+    // Ensure loading is stopped after all processing
+    stopLoadingAnimation();
 }
 
 /// Session counter to generate unique session IDs when /new is used

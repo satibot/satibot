@@ -25,6 +25,11 @@ const Agent = @import("../agent.zig").Agent;
 var shutdown_requested = std.atomic.Value(bool).init(false);
 var shutdown_message_printed = std.atomic.Value(bool).init(false);
 
+// Spinner animation for loading state
+const SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+const SPINNER_DELAY_MS = 100; // 100ms between frames
+var spinner_active = std.atomic.Value(bool).init(false);
+
 fn signalHandler(sig: i32) callconv(.c) void {
     _ = sig;
 
@@ -63,9 +68,19 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
     }
 
     std.debug.print("\n[Processing Message]: {s}\n", .{actual_text});
+    std.debug.print("⚡ Thinking ", .{});
 
     const session_id = try std.fmt.allocPrint(allocator, "console_sync_{d}", .{session_counter});
     defer allocator.free(session_id);
+
+    // Start spinner animation
+    spinner_active.store(true, .seq_cst);
+    const spinner_thread = try std.Thread.spawn(.{}, spinnerThread, .{});
+    defer spinner_thread.join();
+
+    // Small delay to ensure spinner starts before agent begins processing
+    std.posix.nanosleep(0, 50_000_000); // 50ms
+    std.Thread.yield() catch {}; // Yield to ensure spinner thread runs
 
     var agent = try Agent.init(allocator, config, session_id, rag_enabled);
     defer agent.deinit();
@@ -73,27 +88,53 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
     agent.shutdown_flag = &shutdown_requested;
 
     agent.run(actual_text) catch |err| {
+        // Stop spinner on error
+        spinner_active.store(false, .seq_cst);
+        spinner_thread.join();
+
         if (err == error.Interrupted) {
-            std.debug.print("\n🛑 Agent task cancelled\n", .{});
+            std.debug.print("\r🛑 Agent task cancelled\n", .{});
             return;
         }
-        std.debug.print("Agent error: {any}\n", .{err});
+        std.debug.print("\rAgent error: {any}\n", .{err});
         return;
     };
+
+    // Stop spinner before showing result
+    spinner_active.store(false, .seq_cst);
 
     const messages = agent.ctx.getMessages();
     if (messages.len > 0) {
         const last_msg = messages[messages.len - 1];
         if (std.mem.eql(u8, last_msg.role, "assistant") and last_msg.content != null) {
-            std.debug.print("\n🤖 [Bot]: {s}\n", .{last_msg.content.?});
+            std.debug.print("\r🤖 [Bot]: {s}\n", .{last_msg.content.?});
         }
     }
+
+    // Reset shutdown flag for next message
+    shutdown_requested.store(false, .seq_cst);
 
     if (rag_enabled) {
         agent.indexConversation() catch |err| {
             std.debug.print("Warning: Failed to index conversation: {any}\n", .{err});
         };
     }
+}
+
+// Spinner animation thread function
+fn spinnerThread() void {
+    var frame_idx: usize = 0;
+
+    while (spinner_active.load(.seq_cst)) {
+        // Print spinner with carriage return to stay on same line
+        std.debug.print("\r⚡ Thinking {c} ", .{SPINNER_FRAMES[frame_idx]});
+        std.posix.nanosleep(0, SPINNER_DELAY_MS * 1_000_000); // Convert ms to ns
+
+        frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len;
+    }
+
+    // Clear the spinner line
+    std.debug.print("\r\x1b[K", .{});
 }
 
 pub const ConsoleSyncBot = struct {
