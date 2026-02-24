@@ -156,16 +156,16 @@ var mock_session_counter: u32 = 0                  // For unique session IDs
 
 ```bash
 # Build console version
-zig build console
+zig build s-console
 
 # Run
-./zig-out/bin/console
+./zig-out/bin/s-console
 ```
 
 ### Interactive Session
 
 ```bash
-$ ./zig-out/bin/console
+$ ./zig-out/bin/s-console
 🎮 Mock Xev Bot started. Type 'exit' to quit.
 
 User > hello
@@ -217,7 +217,7 @@ This allows testing session isolation without real Telegram chats.
 zig test src/agent/console.zig
 
 # Test with full agent (requires valid config)
-zig build console && ./zig-out/bin/console
+zig build s-console && ./zig-out/bin/s-console
 ```
 
 ## Comparison with Telegram Bot

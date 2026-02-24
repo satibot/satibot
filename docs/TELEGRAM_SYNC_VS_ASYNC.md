@@ -94,22 +94,22 @@ graph LR
 
 ```bash
 # Build and run sync version
-zig build telegram-sync
-./zig-out/bin/telegram-sync
+zig build s-telegram-sync
+./zig-out/bin/s-telegram-sync
 
 # Or via main CLI
-sati telegram-sync
+sati s-telegram-sync
 ```
 
 ### Async Version
 
 ```bash
 # Build and run async version
-zig build telegram
-./zig-out/bin/xev-telegram-bot
+zig build s-telegram
+./zig-out/bin/s-telegram
 
 # Or via main CLI
-sati telegram
+sati s-telegram
 ```
 
 ## 📊 Feature Comparison

@@ -171,10 +171,10 @@ The `run()` function:
 
 ```bash
 # Build sync version
-zig build telegram-sync
+zig build s-telegram-sync
 
 # Run
-./zig-out/bin/telegram-sync
+./zig-out/bin/s-telegram-sync
 ```
 
 ### Configuration

@@ -118,7 +118,7 @@ pub fn build(b: *std.Build) void {
 
     // Console App (sync)
     const console_sync = b.addExecutable(.{
-        .name = "console-sync",
+        .name = "s-console-sync",
         .root_module = b.createModule(.{
             .root_source_file = b.path("apps/console/src/main.zig"),
             .target = target,
@@ -137,7 +137,7 @@ pub fn build(b: *std.Build) void {
 
     // Console App (async with xev)
     const console_xev = b.addExecutable(.{
-        .name = "console",
+        .name = "s-console",
         .root_module = b.createModule(.{
             .root_source_file = b.path("apps/console/src/xev_main.zig"),
             .target = target,
@@ -157,7 +157,7 @@ pub fn build(b: *std.Build) void {
 
     // Telegram Bot
     const telegram = b.addExecutable(.{
-        .name = "telegram",
+        .name = "s-telegram",
         .root_module = b.createModule(.{
             .root_source_file = b.path("apps/telegram/src/main.zig"),
             .target = target,
@@ -175,6 +175,23 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(telegram);
+
+    // Sati CLI executable
+    const sati_exe = b.addExecutable(.{
+        .name = "sati",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "agent", .module = agent },
+                .{ .name = "core", .module = core },
+                .{ .name = "db", .module = db },
+                .{ .name = "build_opts", .module = build_options.createModule() },
+            },
+        }),
+    });
+    b.installArtifact(sati_exe);
 
     // Web App (HTTP API)
     if (include_web) {
@@ -223,6 +240,19 @@ pub fn build(b: *std.Build) void {
     }
     const run_telegram = b.step("run-telegram", "Run telegram bot");
     run_telegram.dependOn(&run_telegram_cmd.step);
+
+    // Build steps for individual binaries
+    const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
+    build_console_sync.dependOn(&console_sync.step);
+
+    const build_console = b.step("s-console", "Build s-console binary");
+    build_console.dependOn(&console_xev.step);
+
+    const build_telegram_binary = b.step("s-telegram", "Build s-telegram binary");
+    build_telegram_binary.dependOn(&telegram.step);
+
+    const build_sati = b.step("sati", "Build sati CLI binary");
+    build_sati.dependOn(&sati_exe.step);
 
     // Test step for all libraries
     const test_step = b.step("test", "Run library tests");

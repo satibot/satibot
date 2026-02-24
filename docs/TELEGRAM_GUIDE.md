@@ -85,7 +85,7 @@ code ~/.bots/config.json
 In your terminal, run the following command from the project root:
 
 ```bash
-zig build run -- telegram
+zig build run -- s-telegram
 ```
 
 You should see:

@@ -76,6 +76,12 @@ cd satibot
 
 # build all targets
 zig build
+# output: zig-out/bin/
+# run:
+# ./zig-out/bin/sati
+# ./zig-out/bin/s-console-sync
+# ./zig-out/bin/s-console
+# ./zig-out/bin/s-telegram
 
 # build release version
 zig build -Doptimize=ReleaseFast --prefix $HOME/.local
@@ -143,9 +149,14 @@ Add `sati` to your PATH, for example add to `~/.zshrc`:
 export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 ```
 
-## Run
+## 🎮 Run
+
+### Using the Sati CLI (Recommended)
 
 ```bash
+# Show help and available commands
+sati help
+
 # for console (sync version - simple & reliable)
 sati console-sync
 
@@ -155,8 +166,32 @@ sati console
 # for telegram (sync version - simple & reliable)
 sati telegram-sync
 
+# for telegram (async version)
+sati telegram
+
 # for web api backend
 sati web
+
+# Check system status
+sati status
+
+# Vector database operations
+sati vector-db stats
+sati vector-db add "Your text here"
+sati vector-db search "query text"
+
+# Test LLM provider connectivity
+sati test-llm
+```
+
+### Direct Binary Execution
+
+```bash
+# Run binaries directly from zig-out/bin/
+./zig-out/bin/s-console-sync
+./zig-out/bin/s-console
+./zig-out/bin/s-telegram
+./zig-out/bin/sati
 ```
 
 ## Build Commands
@@ -166,12 +201,20 @@ sati web
 zig build
 
 # Build specific targets
-zig build console          # Async console app
-zig build console-sync     # Sync console app
-zig build telegram         # Telegram bot
+zig build sati              # Sati CLI
+zig build s-console          # Async console app
+zig build s-console-sync     # Sync console app
+zig build s-telegram         # Telegram bot
 zig build web              # Web API backend
 
-# Run with build
+# Run with build steps
+zig build sati              # Build sati CLI
+zig build s-console          # Build async console
+zig build s-console-sync     # Build sync console
+zig build s-telegram         # Build telegram bot
+zig build web              # Build web backend
+
+# Build and run
 zig build run-console          # Build and run async console
 zig build run-console-sync     # Build and run sync console
 zig build run-telegram         # Build and run telegram bot
@@ -199,7 +242,7 @@ sati agent -s chat123 --no-rag
 
 satibot offers two Telegram bot implementations:
 
-**🔄 Sync Version** (`telegram-sync`)
+**🔄 Sync Version** (`s-telegram-sync`)
 
 - Simple, reliable, single-threaded
 - Processes one message at a time
@@ -207,7 +250,7 @@ satibot offers two Telegram bot implementations:
 - Text messages only (no voice support)
 - Best for: development, small deployments, resource-constrained environments
 
-**⚡ Async Version** (`telegram`)
+**⚡ Async Version** (`s-telegram`)
 
 - High-performance, event-driven (xev-based)
 - Processes multiple messages concurrently
@@ -219,11 +262,11 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ## 💬 Chat Integrations
 
-- Telegram: `sati telegram` or `sati telegram-sync`
+- Telegram: `sati telegram-sync` or `sati telegram`
   - [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
   - [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md)
   - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
-- Terminal console: `sati console` or `sati console-sync`
+- Terminal console: `sati console-sync` or `sati console`
   - [docs/CONSOLE.md](docs/CONSOLE.md)
 - Web API: `sati web`
   - [docs/WEB_API.md](docs/WEB_API.md)
@@ -270,7 +313,7 @@ curl https://agent-skills.md/
 ./scripts/install-skill.sh <github-url-or-path>
 
 # Use built-in tools
-zig build console -- -- agent -m "Run: ls -la"
+zig build s-console -- -- agent -m "Run: ls -la"
 ```
 
 #### Built-in Tools
