@@ -264,3 +264,7 @@ How Buddhism deepened the meaning:
 In Buddhist psychology, the word was expanded.
 
 > remembering the present experience
+
+## Notes
+
+Every time codebase updated, please update "docs/" folder and `.agents/skills/codebase/SKILL.md` file.

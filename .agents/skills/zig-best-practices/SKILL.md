@@ -655,7 +655,7 @@ defer allocator.free(response_body);
 
 CLI tool for browsing Zig std library and project dependency docs.
 
-**Install:**
+Install:
 
 ```bash
 git clone https://github.com/rockorager/zigdoc
@@ -663,7 +663,7 @@ cd zigdoc
 zig build install -Doptimize=ReleaseFast --prefix $HOME/.local
 ```
 
-**Usage:**
+Usage:
 
 ```bash
 zigdoc std.ArrayList       # std lib symbol
@@ -676,23 +676,28 @@ zigdoc @init               # create AGENTS.md with API patterns
 
 Linter for Zig source code enforcing coding standards.
 
-**Install:**
+Build and install from source:
 
 ```bash
-git clone https://github.com/rockorager/ziglint
+git clone git@github.com:rockorager/ziglint.git
 cd ziglint
 zig build install -Doptimize=ReleaseFast --prefix $HOME/.local
 ```
 
-**Usage:**
+Executable file: `ziglint` built at `$HOME/.local/bin/ziglint`. So it automatically added to the PATH, which is set in `~/.zshrc`. We can run `ziglint` directly from the terminal from now on.
+
+Usage:
 
 ```bash
-ziglint                    # lint current directory (uses .ziglint.zon if present)
-ziglint src build.zig      # lint specific paths
-ziglint --ignore Z001      # suppress specific rule
+# lint current directory (uses .ziglint.zon if present)
+ziglint
+# lint specific paths
+ziglint src build.zig
+# suppress specific rule
+ziglint --ignore Z001
 ```
 
-**Configuration (`.ziglint.zon`):**
+Configuration (`.ziglint.zon`):
 
 ```zig
 .{
@@ -704,14 +709,54 @@ ziglint --ignore Z001      # suppress specific rule
 }
 ```
 
-**Inline suppression:**
+Inline suppression:
 
 ```zig
 fn MyBadName() void {} // ziglint-ignore: Z001
+
+// ziglint-ignore: Z001
+fn AnotherBadName() void {}
 ```
+
+Rules:
+
+- Z001: Function names should be camelCase
+- Z002: Unused variable that has a value
+- Z003: Parse error
+- Z004: Prefer `const x: T = .{}` over `const x = T{}`
+- Z005: Type function names should be PascalCase
+- Z006: Variable names should be snake_case
+- Z007: Duplicate import
+- Z009: Files with top-level fields should be PascalCase
+- Z010: Redundant type specifier; prefer `.value` over explicit type
+- Z011: Deprecated method call
+- Z012: Public function exposes private type
+- Z013: Unused import
+- Z014: Error set names should be PascalCase
+- Z015: Public function exposes private error set
+- Z016: Split compound assert: `assert(a and b)` -> `assert(a); assert(b);`
+- Z017: Redundant try in return: `return try expr` -> `return expr`
+- Z018: Redundant `@as` when type is already known from context
+- Z019: `@This()` in named struct; use the type name instead
+- Z020: Inline `@This()`; assign to a constant first
+- Z021: File-struct `@This()` alias should match filename
+- Z022: `@This()` alias in anonymous/local struct should be Self
+- Z023: Parameter order: comptime before runtime, pointers before values
+- Z024: Line exceeds maximum length (default: 120)
+- Z025: Redundant `catch`
+- Z026: Empty catch block suppresses errors
+- Z027: Access declaration through type instead of instance
+- Z028: Inline `@import`; assign to a top-level const
+- Z029: Redundant `@as` cast; type already known from context
+- Z030: `deinit` should set `self.* = undefined`
+- Z031: Avoid underscore prefix in identifiers
+- Z032: Acronyms should use standard casing
+- Z033: Avoid redundant words in identifiers (disabled by default)
 
 ## References
 
+- ziglint: <https://github.com/rockorager/ziglint>
+- zigdoc: <https://github.com/rockorager/zigdoc>
 - Language Reference: <https://ziglang.org/documentation/0.15.2/>
 - Standard Library: <https://ziglang.org/documentation/0.15.2/std/>
 - Code Samples: <https://ziglang.org/learn/samples/>
