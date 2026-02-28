@@ -17,6 +17,7 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 - [x] OpenTelemetry tracing for observability
 - [x] HTTP Web API (zap framework) for REST interface built on top of the Zap logging library (used for fast, structured logging)
 - [x] File operations - built-in `read_file` tool for reading local files with security restrictions
+- [x] Web fetching - built-in `web_fetch` tool for fetching and extracting readable content from URLs
 
 ## Comparison with others
 
@@ -374,6 +375,10 @@ For security reasons, the tool automatically blocks access to sensitive files:
 - `config.txt` ✅
 - `public_key.pem` ✅
 - `data.json` ✅
+
+**🌐 web_fetch** - Fetch web content
+
+See [docs/tasks/web-fetch.md](docs/tasks/web-fetch.md) for detailed documentation.
 
 ### ⏰ Automation
 

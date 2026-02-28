@@ -8,6 +8,8 @@ const providers = @import("providers");
 const base = providers.base;
 const db = @import("db");
 const vector_db = db.vector_db;
+const http = @import("http");
+const utils = @import("utils");
 
 /// Context passed to tool functions containing allocator, config, and helper functions.
 pub const ToolContext = struct {
@@ -99,6 +101,174 @@ pub fn readFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     // Read entire file content with size limit
     return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
+}
+
+fn htmlToText(allocator: std.mem.Allocator, html: []const u8) ![]u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var i: usize = 0;
+    while (i < html.len) {
+        if (html[i] == '<') {
+            if (utils.html.isTagStartWith(html, i, "<script") or
+                utils.html.isTagStartWith(html, i, "<style") or
+                utils.html.isTagStartWith(html, i, "<head"))
+            {
+                i += 1;
+                var depth: usize = 1;
+                while (i < html.len and depth > 0) {
+                    if (i + 1 < html.len and html[i] == '<' and html[i + 1] == '/') {
+                        depth -= 1;
+                        if (depth == 0) break;
+                    } else if (i + 1 < html.len and html[i] == '<') {
+                        if (utils.html.isTagStartWith(html, i + 1, "script") or
+                            utils.html.isTagStartWith(html, i + 1, "style") or
+                            utils.html.isTagStartWith(html, i + 1, "head"))
+                        {
+                            depth += 1;
+                        }
+                    }
+                    i += 1;
+                }
+                while (i < html.len and html[i] != '>') i += 1;
+                i += 1;
+                continue;
+            }
+
+            var tag_end = i + 1;
+            while (tag_end < html.len and html[tag_end] != '>') tag_end += 1;
+
+            const in_script = utils.html.isTagStartWith(html, i, "<br") or
+                utils.html.isTagStartWith(html, i, "<p") or
+                utils.html.isTagStartWith(html, i, "<div") or
+                utils.html.isTagStartWith(html, i, "<li") or
+                utils.html.isTagStartWith(html, i, "<tr") or
+                utils.html.isTagStartWith(html, i, "<h1") or
+                utils.html.isTagStartWith(html, i, "<h2") or
+                utils.html.isTagStartWith(html, i, "<h3") or
+                utils.html.isTagStartWith(html, i, "<h4") or
+                utils.html.isTagStartWith(html, i, "<h5") or
+                utils.html.isTagStartWith(html, i, "<h6") or
+                utils.html.isTagStartWith(html, i, "</");
+
+            const is_li = utils.html.isTagStartWith(html, i, "<li>");
+            const is_ul = utils.html.isTagStartWith(html, i, "<ul");
+            const is_ol = utils.html.isTagStartWith(html, i, "<ol");
+
+            i = tag_end + 1;
+
+            if (in_script) try result.append(allocator, '\n');
+            if (is_li or is_ul or is_ol) try result.appendSlice(allocator, "• ");
+            continue;
+        }
+
+        if (html[i] == '&') {
+            const entity_end = std.mem.indexOfScalarPos(u8, html, i + 1, ';') orelse html.len;
+            const entity = html[i .. entity_end + 1];
+
+            if (std.mem.eql(u8, entity, "&nbsp;")) {
+                try result.append(allocator, ' ');
+            } else if (std.mem.eql(u8, entity, "&lt;")) {
+                try result.append(allocator, '<');
+            } else if (std.mem.eql(u8, entity, "&gt;")) {
+                try result.append(allocator, '>');
+            } else if (std.mem.eql(u8, entity, "&amp;")) {
+                try result.appendSlice(allocator, "&");
+            } else if (std.mem.eql(u8, entity, "&quot;")) {
+                try result.append(allocator, '"');
+            } else if (std.mem.eql(u8, entity, "&apos;")) {
+                try result.append(allocator, '\'');
+            } else if (entity.len > 2 and entity[1] == '#') {
+                var num_start: usize = 2;
+                if (entity.len > 2 and (entity[2] == 'x' or entity[2] == 'X')) {
+                    num_start = 3;
+                }
+                if (num_start < entity.len) {
+                    const digits = entity[num_start..entity_end];
+                    if (digits.len > 0) {
+                        const codepoint = std.fmt.parseInt(u21, digits, 0) catch 0;
+                        if (codepoint > 0) {
+                            var buf: [4]u8 = undefined;
+                            const len = std.unicode.utf8Encode(codepoint, &buf) catch 0;
+                            if (len > 0) {
+                                try result.appendSlice(allocator, buf[0..len]);
+                            }
+                        }
+                    }
+                }
+                i = entity_end + 1;
+                continue;
+            } else {
+                try result.appendSlice(allocator, entity);
+            }
+            i = entity_end + 1;
+            continue;
+        }
+
+        try result.append(allocator, html[i]);
+        i += 1;
+    }
+
+    const output = try result.toOwnedSlice(allocator);
+    var cleaned: std.ArrayList(u8) = .empty;
+    errdefer cleaned.deinit(allocator);
+
+    var prev_was_space = false;
+    for (output) |c| {
+        if (c == ' ' or c == '\n' or c == '\t' or c == '\r') {
+            if (!prev_was_space) {
+                try cleaned.append(allocator, ' ');
+                prev_was_space = true;
+            }
+        } else {
+            try cleaned.append(allocator, c);
+            prev_was_space = false;
+        }
+    }
+
+    allocator.free(output);
+
+    return cleaned.toOwnedSlice(allocator);
+}
+
+const max_html_size = 5 * 1024 * 1024;
+
+pub fn webFetch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { url: []const u8, format: ?[]const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const url = parsed.value.url;
+    const format = parsed.value.format orelse "markdown";
+
+    var client = try http.Client.init(ctx.allocator);
+    defer client.deinit();
+
+    const headers = &[_]std.http.Header{
+        .{ .name = "User-Agent", .value = "SatiBot/1.0 (LLM Assistant)" },
+        .{ .name = "Accept", .value = "text/html,application/xhtml+xml" },
+    };
+
+    var response = try client.get(url, headers);
+
+    if (response.status != .ok) {
+        const err_msg = try std.fmt.allocPrint(ctx.allocator, "HTTP Error: {d} {s}", .{ @intFromEnum(response.status), @tagName(response.status) });
+        response.deinit();
+        return err_msg;
+    }
+
+    if (response.body.len > max_html_size) {
+        response.deinit();
+        return std.fmt.allocPrint(ctx.allocator, "Content too large: {d} bytes (max: {d} bytes). URL: {s}", .{ response.body.len, max_html_size, url });
+    }
+
+    const text = try htmlToText(ctx.allocator, response.body);
+    response.deinit();
+
+    if (std.mem.eql(u8, format, "raw")) {
+        return text;
+    }
+
+    return text;
 }
 
 /// Check if a file path matches sensitive file patterns that should be blocked
@@ -756,6 +926,63 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //         return try ctx.allocator.dupe(u8, "(No output)");
 //     }
 // }
+
+test "htmlToText: basic HTML conversion" {
+    const allocator = std.testing.allocator;
+    const html = "<html><body><h1>Hello</h1><p>World</p></body></html>";
+    const result = try htmlToText(allocator, html);
+    defer allocator.free(result);
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "Hello") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "World") != null);
+}
+
+test "htmlToText: strips script and style tags" {
+    const allocator = std.testing.allocator;
+    const html = "<html><head><script>alert('xss')</script><style>.hidden{display:none}</style></head><body><p>Visible</p></body></html>";
+    const result = try htmlToText(allocator, html);
+    defer allocator.free(result);
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "alert") == null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "display") == null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "Visible") != null);
+}
+
+test "htmlToText: converts HTML entities" {
+    const allocator = std.testing.allocator;
+    const html = "&lt;div&gt;&amp;";
+    const result = try htmlToText(allocator, html);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("<div>&", result);
+}
+
+test "htmlToText: handles lists" {
+    const allocator = std.testing.allocator;
+    const html = "<ul><li>Item 1</li><li>Item 2</li></ul>";
+    const result = try htmlToText(allocator, html);
+    defer allocator.free(result);
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "• Item 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "• Item 2") != null);
+}
+
+test "htmlToText: handles empty input" {
+    const allocator = std.testing.allocator;
+    const result = try htmlToText(allocator, "");
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "htmlToText: handles plain text without HTML" {
+    const allocator = std.testing.allocator;
+    const text = "Just plain text with no HTML tags.";
+    const result = try htmlToText(allocator, text);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings(text, result);
+}
 
 test "ToolRegistry: register and get" {
     const allocator = std.testing.allocator;

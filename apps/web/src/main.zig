@@ -22,7 +22,6 @@ pub fn main() !void {
         }
     }
 
-    // Initialize web server
     var server = web.Server.init(allocator, .{
         .host = "0.0.0.0",
         .port = 8080,
@@ -34,7 +33,6 @@ pub fn main() !void {
 
     std.log.info("Starting web server on http://localhost:8080", .{});
 
-    // Start server
     try server.start();
 
     // Run event loop
@@ -76,6 +74,9 @@ fn handleRequestInternal(req: web.zap.Request) anyerror!void {
         if (std.mem.eql(u8, path, "/api/chat")) {
             return handleChat(req);
         }
+        if (std.mem.eql(u8, path, "/openapi.json")) {
+            return openapi.handleOpenApi(req);
+        }
     }
 
     req.sendJson("{\"status\":\"ok\",\"message\":\"SatiBot API\"}") catch |err| {
@@ -110,7 +111,6 @@ fn handleChat(req: web.zap.Request) anyerror!void {
             return;
         }
 
-        // Load config
         const parsed_config = core.config.load(allocator) catch |err| {
             std.log.err("Failed to load config: {any}", .{err});
             req.sendJson("{\"error\":\"Configuration error\"}") catch |e| {
@@ -152,7 +152,7 @@ fn handleChat(req: web.zap.Request) anyerror!void {
         if (bot_messages.len > 0) {
             const assistant_msg = bot_messages[bot_messages.len - 1];
             if (assistant_msg.content) |content| {
-                var aw: std.Io.Writer.Allocating = .init(allocator);
+                var aw: std.io.Writer.Allocating = .init(allocator);
                 defer aw.deinit();
                 try std.json.Stringify.value(content, .{}, &aw.writer);
                 const response_json = try std.fmt.allocPrint(allocator, "{{\"content\":{s}}}", .{aw.written()});
@@ -172,3 +172,5 @@ fn handleChat(req: web.zap.Request) anyerror!void {
         };
     }
 }
+
+const openapi = @import("openapi.zig");

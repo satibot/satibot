@@ -201,6 +201,16 @@ pub const Agent = struct {
             std.log.err("Failed to register read_file tool: {any}", .{err});
         };
 
+        // Register web fetch tool
+        @constCast(&self.registry).register(.{
+            .name = "web_fetch",
+            .description = "Fetch content from a URL and extract readable text from HTML. Arguments: {\"url\": \"https://example.com\", \"format\": \"markdown\"} - format can be \"markdown\" (default) or \"raw\"",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"url\": {\"type\": \"string\", \"description\": \"The URL to fetch\"}, \"format\": {\"type\": \"string\", \"description\": \"Output format: 'markdown' (default, extracts readable text) or 'raw' (raw HTML)\"}}, \"required\": [\"url\"]}",
+            .execute = tools.webFetch,
+        }) catch |err| {
+            std.log.err("Failed to register web_fetch tool: {any}", .{err});
+        };
+
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",

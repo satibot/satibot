@@ -401,3 +401,171 @@ test "ConsoleSyncBot: Memory leak test - multiple init/deinit cycles with --no-r
     }
     // If we reach here without memory leaks, test passes
 }
+
+// ===== Animation Loading Tests =====
+
+test "ConsoleSyncBot: Spinner frames constant is properly defined" {
+    // Verify spinner frames contain valid characters
+    try std.testing.expect(SPINNER_FRAMES.len > 0);
+
+    // Check that all frames are valid UTF-8 characters
+    for (SPINNER_FRAMES) |frame| {
+        // Each spinner character should be a single Unicode character
+        // In UTF-8, spinner characters are 3 bytes each
+        try std.testing.expect(frame > 0); // Should be valid character
+    }
+
+    // Expected spinner sequence for verification
+    const expected_frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+    try std.testing.expectEqualStrings(expected_frames, SPINNER_FRAMES);
+}
+
+test "ConsoleSyncBot: Spinner delay constant is reasonable" {
+    // 100ms delay is reasonable for smooth animation
+    try std.testing.expect(SPINNER_DELAY_MS == 100);
+    try std.testing.expect(SPINNER_DELAY_MS > 0);
+    try std.testing.expect(SPINNER_DELAY_MS < 1000); // Should be less than 1 second
+}
+
+test "ConsoleSyncBot: Spinner active flag atomic operations" {
+    // Test initial state
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+
+    // Test setting to true
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+
+    // Test setting back to false
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+
+    // Test multiple rapid state changes
+    for (0..10) |i| {
+        const state = i % 2 == 0;
+        spinner_active.store(state, .seq_cst);
+        try std.testing.expectEqual(state, spinner_active.load(.seq_cst));
+    }
+}
+
+test "ConsoleSyncBot: Spinner frame index progression logic" {
+    // Test the frame progression logic used in spinnerThread
+    const frame_count = SPINNER_FRAMES.len;
+
+    // Test frame index wraps around correctly
+    var frame_idx: usize = 0;
+
+    // Simulate frame progression
+    for (0..frame_count * 2) |i| {
+        const expected_frame = i % frame_count;
+        try std.testing.expectEqual(expected_frame, frame_idx);
+        frame_idx = (frame_idx + 1) % frame_count;
+    }
+}
+
+test "ConsoleSyncBot: Spinner output format" {
+    // Test the spinner output format string
+    const test_frame = SPINNER_FRAMES[0];
+    const expected_output = "\r⚡ Thinking ";
+
+    // Build the actual output format
+    var output_buf: [32]u8 = undefined;
+    const output = std.fmt.bufPrint(&output_buf, "\r⚡ Thinking {c} ", .{test_frame}) catch unreachable;
+
+    try std.testing.expect(std.mem.startsWith(u8, output, expected_output));
+    try std.testing.expect(output.len > expected_output.len);
+}
+
+test "ConsoleSyncBot: Spinner clear line sequence" {
+    // Test the clear line escape sequence
+    const clear_sequence = "\r\x1b[K";
+
+    // Verify it starts with carriage return
+    try std.testing.expect(std.mem.startsWith(u8, clear_sequence, "\r"));
+
+    // Verify it contains the escape sequence
+    try std.testing.expect(std.mem.indexOf(u8, clear_sequence, "\x1b[K") != null);
+
+    // Test the complete sequence matches expected
+    try std.testing.expectEqualStrings("\r\x1b[K", clear_sequence);
+}
+
+test "ConsoleSyncBot: Spinner thread lifecycle simulation" {
+    // Simulate the spinner thread lifecycle without actually spawning threads
+    spinner_active.store(false, .seq_cst);
+
+    // Simulate starting the spinner
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+
+    // Simulate spinner running for a few frames
+    var frame_idx: usize = 0;
+    for (0..3) |_| {
+        // Simulate one frame of animation
+        frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len;
+    }
+
+    // Simulate stopping the spinner
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+}
+
+test "ConsoleSyncBot: Spinner timing constraints" {
+    // Test that spinner timing parameters are within reasonable bounds
+    try std.testing.expect(SPINNER_DELAY_MS >= 50); // Not too fast (flicker)
+    try std.testing.expect(SPINNER_DELAY_MS <= 200); // Not too slow (unresponsive)
+
+    // Test frame count is reasonable for smooth animation
+    try std.testing.expect(SPINNER_FRAMES.len >= 4); // Minimum frames for animation
+}
+
+test "ConsoleSyncBot: Spinner concurrent access simulation" {
+    // Simulate concurrent access to spinner_active flag
+    spinner_active.store(false, .seq_cst);
+
+    // Simulate multiple rapid state changes (like thread contention)
+    for (0..100) |i| {
+        const state = i % 3 == 0; // Vary the pattern
+        spinner_active.store(state, .seq_cst);
+
+        // Read back immediately to test atomicity
+        const read_back = spinner_active.load(.seq_cst);
+        try std.testing.expectEqual(state, read_back);
+    }
+}
+
+test "ConsoleSyncBot: Animation integration with processMessage" {
+    // Test that the animation components work together in processMessage context
+    const allocator = std.testing.allocator;
+
+    // Reset spinner state
+    spinner_active.store(false, .seq_cst);
+
+    // Simulate the spinner setup that happens in processMessage
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+
+    // Simulate the spinner cleanup that happens in processMessage
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+
+    // Test session ID generation (used in processMessage)
+    const session_id = try std.fmt.allocPrint(allocator, "console_sync_{d}", .{0});
+    defer allocator.free(session_id);
+    try std.testing.expectEqualStrings("console_sync_0", session_id);
+}
+
+test "ConsoleSyncBot: Animation error handling simulation" {
+    // Test spinner behavior during error conditions
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+
+    // Simulate error condition (like agent.run() error)
+    // In real code, spinner is stopped on error
+    spinner_active.store(false, .seq_cst);
+    try std.testing.expectEqual(false, spinner_active.load(.seq_cst));
+
+    // Verify spinner can be restarted after error
+    spinner_active.store(true, .seq_cst);
+    try std.testing.expectEqual(true, spinner_active.load(.seq_cst));
+}
