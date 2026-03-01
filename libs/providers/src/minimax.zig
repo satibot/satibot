@@ -1,3 +1,41 @@
+//! MiniMax API Provider Implementation
+//!
+//! This module provides a implementation of the MiniMax API for SatiBot.
+//! MiniMax offers language models with capabilities including:
+//! - Text generation and completion
+//! - Tool/function calling support
+//! - Streaming responses with thinking blocks
+//! - Embeddings generation
+//!
+//! ## Features
+//! - Synchronous and streaming chat completions
+//! - Full tool calling support with proper JSON schema handling
+//! - Thinking block processing for enhanced reasoning transparency
+//! - Memory-efficient streaming with chunked callbacks
+//! - Comprehensive error handling with detailed error messages
+//!
+//! ## API Endpoints
+//! - Base URL: https://api.minimax.io/anthropic
+//! - Messages endpoint: /messages
+//! - Authentication: x-api-key header
+//!
+//! ## Supported Models
+//! - MiniMax-M2.5: General purpose text model
+//! - Additional models can be specified by name
+//!
+//! ## Usage
+//! ```zig
+//! var provider = try MinimaxProvider.init(allocator, "your-api-key");
+//! defer provider.deinit();
+//!
+//! const response = try provider.chat(messages, "MiniMax-M2.5", null);
+//! defer response.deinit();
+//! ```
+//!
+//! ## Streaming
+//! The provider supports Server-Sent Events (SSE) for streaming responses,
+//! including both text content and thinking blocks for transparency.
+
 const std = @import("std");
 const http = @import("http");
 const base = @import("base.zig");

@@ -176,6 +176,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(telegram);
 
+    // Search CLI App
+    const search_cli = b.addExecutable(.{
+        .name = "s-search",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/search/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "http", .module = http },
+                .{ .name = "tls", .module = tls_mod },
+            },
+        }),
+    });
+    b.installArtifact(search_cli);
+
     // Sati CLI executable
     const sati_exe = b.addExecutable(.{
         .name = "sati",
@@ -241,6 +256,13 @@ pub fn build(b: *std.Build) void {
     const run_telegram = b.step("run-telegram", "Run telegram bot");
     run_telegram.dependOn(&run_telegram_cmd.step);
 
+    const run_search_cmd = b.addRunArtifact(search_cli);
+    if (b.args) |args| {
+        run_search_cmd.addArgs(args);
+    }
+    const run_search = b.step("run-search", "Run search CLI app");
+    run_search.dependOn(&run_search_cmd.step);
+
     // Build steps for individual binaries
     const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
     build_console_sync.dependOn(&console_sync.step);
@@ -250,6 +272,9 @@ pub fn build(b: *std.Build) void {
 
     const build_telegram_binary = b.step("s-telegram", "Build s-telegram binary");
     build_telegram_binary.dependOn(&telegram.step);
+
+    const build_search_binary = b.step("s-search", "Build s-search binary");
+    build_search_binary.dependOn(&search_cli.step);
 
     const build_sati = b.step("sati", "Build sati CLI binary");
     build_sati.dependOn(&sati_exe.step);
