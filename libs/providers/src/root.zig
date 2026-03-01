@@ -4,6 +4,7 @@ pub const openrouter = @import("openrouter.zig");
 pub const openrouter_sync = @import("openrouter_sync.zig");
 pub const anthropic = @import("anthropic.zig");
 pub const groq = @import("groq.zig");
+pub const minimax = @import("minimax.zig");
 
 test {
     _ = base;
@@ -11,4 +12,5 @@ test {
     _ = openrouter_sync;
     _ = anthropic;
     _ = groq;
+    _ = minimax;
 }

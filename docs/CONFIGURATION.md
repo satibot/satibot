@@ -74,6 +74,14 @@ Access almost any model (Claudia, GPT-4, Llama 3) via a single API.
 }
 ```
 
+#### MiniMax
+
+```json
+"minimax": {
+  "apiKey": "your-minimax-api-key"
+}
+```
+
 #### Groq (Fast & Voice)
 
 Required for **Voice Transcription** and ultra-fast inference.
@@ -101,6 +109,7 @@ Configuration for external tools and chat platforms.
 ```
 
 #### Web & Search
+
 ```json
 "web": {
   "search": {

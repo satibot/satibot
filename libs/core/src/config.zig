@@ -33,6 +33,7 @@ pub const ProvidersConfig = struct {
     anthropic: ?ProviderConfig = null,
     openai: ?ProviderConfig = null,
     groq: ?ProviderConfig = null,
+    minimax: ?ProviderConfig = null,
 };
 
 /// API configuration for a single LLM provider.
