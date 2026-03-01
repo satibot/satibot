@@ -11,6 +11,7 @@
         "deiniting",
         "Doptimize",
         "Dtarget",
+        "Embedder",
         "getenv",
         "groq",
         "milli",
