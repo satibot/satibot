@@ -110,6 +110,12 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const memory = b.addModule("memory", .{
+        .root_source_file = b.path("libs/memory/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
         .root_source_file = b.path("apps/telegram/src/telegram/telegram.zig"),
@@ -244,6 +250,7 @@ pub fn build(b: *std.Build) void {
                     .{ .name = "agent", .module = agent },
                     .{ .name = "web", .module = web_mod.? },
                     .{ .name = "core", .module = core },
+                    .{ .name = "memory", .module = memory },
                     .{ .name = "build_opts", .module = build_options.createModule() },
                 },
             }),
@@ -333,6 +340,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "providers", .module = providers },
             .{ .name = "utils", .module = utils },
         } },
+        .{ .name = "memory", .path = "libs/memory/src/root.zig", .imports = &.{} },
     };
 
     for (lib_tests) |lib| {

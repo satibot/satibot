@@ -2,8 +2,10 @@ const std = @import("std");
 const web = @import("web");
 const agent = @import("agent");
 const core = @import("core");
+const memory = @import("memory");
 
 var allow_origin: []const u8 = "*";
+var memory_store: ?memory.memory.MemoryStore = null;
 
 pub fn main() !void {
     // Allocates memory directly from the operating system using page mappings
@@ -21,6 +23,12 @@ pub fn main() !void {
             allow_origin = origin;
         }
     }
+
+    // Initialize memory store
+    const home = std.posix.getenv("HOME") orelse ".";
+    const memory_path = try std.fs.path.join(allocator, &.{ home, ".bots", "memory" });
+    defer allocator.free(memory_path);
+    memory_store = memory.memory.MemoryStore.init(allocator, memory_path);
 
     var server = web.Server.init(allocator, .{
         .host = "0.0.0.0",
@@ -55,7 +63,7 @@ fn handleRequestInternal(req: web.zap.Request) anyerror!void {
             req.setHeader("Access-Control-Allow-Origin", allow_origin) catch |e| {
                 std.log.err("Failed to set CORS header: {any}", .{e});
             };
-            req.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS") catch |e| {
+            req.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS") catch |e| {
                 std.log.err("Failed to set CORS methods: {any}", .{e});
             };
             req.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization") catch |e| {
@@ -73,6 +81,23 @@ fn handleRequestInternal(req: web.zap.Request) anyerror!void {
     if (req.path) |path| {
         if (std.mem.eql(u8, path, "/api/chat")) {
             return handleChat(req);
+        }
+        if (std.mem.eql(u8, path, "/api/memory")) {
+            return handleMemoryList(req);
+        }
+        if (std.mem.startsWith(u8, path, "/api/memory/")) {
+            const id = path[12..];
+            if (req.method) |method| {
+                if (std.mem.eql(u8, method, "GET")) {
+                    return handleMemoryGet(req, id);
+                } else if (std.mem.eql(u8, method, "POST")) {
+                    return handleMemoryCreate(req);
+                } else if (std.mem.eql(u8, method, "PUT")) {
+                    return handleMemoryUpdate(req, id);
+                } else if (std.mem.eql(u8, method, "DELETE")) {
+                    return handleMemoryDelete(req, id);
+                }
+            }
         }
         if (std.mem.eql(u8, path, "/openapi.json")) {
             return openapi.handleOpenApi(req);
@@ -168,6 +193,220 @@ fn handleChat(req: web.zap.Request) anyerror!void {
         };
     } else {
         req.sendJson("{\"error\":\"Empty body\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn handleMemoryList(req: web.zap.Request) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (memory_store) |*store| {
+        const docs = store.list() catch |err| {
+            std.log.err("Failed to list memory docs: {any}", .{err});
+            req.sendJson("{\"error\":\"Failed to list docs\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+        defer {
+            for (docs) |doc| {
+                allocator.free(doc.id);
+                allocator.free(doc.title);
+                allocator.free(doc.content);
+            }
+            allocator.free(docs);
+        }
+
+        var aw: std.io.Writer.Allocating = .init(allocator);
+        defer aw.deinit();
+        try std.json.Stringify.value(docs, .{}, &aw.writer);
+        const response_json = try std.fmt.allocPrint(allocator, "{{\"docs\":{s}}}", .{aw.written()});
+        req.sendJson(response_json) catch |e| {
+            std.log.err("Failed to send response: {any}", .{e});
+        };
+    } else {
+        req.sendJson("{\"error\":\"Memory store not initialized\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn handleMemoryGet(req: web.zap.Request, id: []const u8) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (memory_store) |*store| {
+        const doc = store.read(id) catch |err| {
+            std.log.err("Failed to read memory doc: {any}", .{err});
+            req.sendJson("{\"error\":\"Failed to read doc\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        if (doc) |d| {
+            defer {
+                allocator.free(d.id);
+                allocator.free(d.title);
+                allocator.free(d.content);
+            }
+
+            var aw: std.io.Writer.Allocating = .init(allocator);
+            defer aw.deinit();
+            try std.json.Stringify.value(d, .{}, &aw.writer);
+            const response_json = try std.fmt.allocPrint(allocator, "{{\"doc\":{s}}}", .{aw.written()});
+            req.sendJson(response_json) catch |e| {
+                std.log.err("Failed to send response: {any}", .{e});
+            };
+        } else {
+            req.sendJson("{\"error\":\"Doc not found\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+        }
+    } else {
+        req.sendJson("{\"error\":\"Memory store not initialized\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn handleMemoryCreate(req: web.zap.Request) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (req.body) |body| {
+        const CreateRequest = struct {
+            title: []const u8,
+            content: []const u8,
+        };
+
+        const parsed = std.json.parseFromSlice(CreateRequest, allocator, body, .{ .ignore_unknown_fields = true }) catch |err| {
+            std.log.err("Failed to parse create request: {any}", .{err});
+            req.sendJson("{\"error\":\"Invalid JSON\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        if (memory_store) |*store| {
+            const doc = store.create(parsed.value.title, parsed.value.content) catch |err| {
+                std.log.err("Failed to create memory doc: {any}", .{err});
+                req.sendJson("{\"error\":\"Failed to create doc\"}") catch |e| {
+                    std.log.err("Failed to send error response: {any}", .{e});
+                };
+                return;
+            };
+
+            defer {
+                allocator.free(doc.id);
+                allocator.free(doc.title);
+                allocator.free(doc.content);
+            }
+
+            var aw: std.io.Writer.Allocating = .init(allocator);
+            defer aw.deinit();
+            try std.json.Stringify.value(doc, .{}, &aw.writer);
+            const response_json = try std.fmt.allocPrint(allocator, "{{\"doc\":{s}}}", .{aw.written()});
+            req.sendJson(response_json) catch |e| {
+                std.log.err("Failed to send response: {any}", .{e});
+            };
+        } else {
+            req.sendJson("{\"error\":\"Memory store not initialized\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+        }
+    } else {
+        req.sendJson("{\"error\":\"Empty body\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn handleMemoryUpdate(req: web.zap.Request, id: []const u8) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (req.body) |body| {
+        const UpdateRequest = struct {
+            title: ?[]const u8 = null,
+            content: ?[]const u8 = null,
+        };
+
+        const parsed = std.json.parseFromSlice(UpdateRequest, allocator, body, .{ .ignore_unknown_fields = true }) catch |err| {
+            std.log.err("Failed to parse update request: {any}", .{err});
+            req.sendJson("{\"error\":\"Invalid JSON\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        if (memory_store) |*store| {
+            const doc = store.update(id, parsed.value.title, parsed.value.content) catch |err| {
+                std.log.err("Failed to update memory doc: {any}", .{err});
+                req.sendJson("{\"error\":\"Failed to update doc\"}") catch |e| {
+                    std.log.err("Failed to send error response: {any}", .{e});
+                };
+                return;
+            };
+
+            if (doc) |d| {
+                defer {
+                    allocator.free(d.id);
+                    allocator.free(d.title);
+                    allocator.free(d.content);
+                }
+
+                var aw: std.io.Writer.Allocating = .init(allocator);
+                defer aw.deinit();
+                try std.json.Stringify.value(d, .{}, &aw.writer);
+                const response_json = try std.fmt.allocPrint(allocator, "{{\"doc\":{s}}}", .{aw.written()});
+                req.sendJson(response_json) catch |e| {
+                    std.log.err("Failed to send response: {any}", .{e});
+                };
+            } else {
+                req.sendJson("{\"error\":\"Doc not found\"}") catch |e| {
+                    std.log.err("Failed to send error response: {any}", .{e});
+                };
+            }
+        } else {
+            req.sendJson("{\"error\":\"Memory store not initialized\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+        }
+    } else {
+        req.sendJson("{\"error\":\"Empty body\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn handleMemoryDelete(req: web.zap.Request, id: []const u8) anyerror!void {
+    if (memory_store) |*store| {
+        const deleted = store.delete(id) catch |err| {
+            std.log.err("Failed to delete memory doc: {any}", .{err});
+            req.sendJson("{\"error\":\"Failed to delete doc\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        if (deleted) {
+            req.sendJson("{\"success\":true}") catch |e| {
+                std.log.err("Failed to send response: {any}", .{e});
+            };
+        } else {
+            req.sendJson("{\"error\":\"Doc not found\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+        }
+    } else {
+        req.sendJson("{\"error\":\"Memory store not initialized\"}") catch |e| {
             std.log.err("Failed to send error response: {any}", .{e});
         };
     }

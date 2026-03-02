@@ -1,7 +1,8 @@
 //! OpenAPI specification and handler for SatiBot web API
 
 const std = @import("std");
-const web = @import("zap");
+const web_mod = @import("web");
+const zap = web_mod.zap;
 
 const OpenApiSpec = struct {
     openapi: []const u8,
@@ -49,8 +50,8 @@ const MediaType = struct {
 
 const Schema = struct {
     type: []const u8,
-    properties: ?std.json.Value, // Use std.json.Value to avoid circular dependency
-    items: ?*const Schema, // Use pointer to avoid circular dependency
+    properties: ?Properties,
+    items: ?*const Schema,
     required: ?[]const []const u8,
     @"enum": ?[]const []const u8,
 };
@@ -81,7 +82,7 @@ const Response = struct {
 };
 
 /// Handle OpenAPI specification endpoint
-pub fn handleOpenApi(req: web.zap.Request) !void {
+pub fn handleOpenApi(req: zap.Request) !void {
     const openapi_spec: OpenApiSpec = .{
         .openapi = "3.0.0",
         .info = .{
@@ -103,7 +104,7 @@ pub fn handleOpenApi(req: web.zap.Request) !void {
                         .required = true,
                         .content = .{
                             .@"application/json" = .{
-                                .schema = .{
+                                .schema = &.{
                                     .type = "object",
                                     .properties = .{
                                         .messages = .{
@@ -128,7 +129,7 @@ pub fn handleOpenApi(req: web.zap.Request) !void {
                             .description = "Successful response",
                             .content = .{
                                 .@"application/json" = .{
-                                    .schema = .{
+                                    .schema = &.{
                                         .type = "object",
                                         .properties = .{
                                             .content = .{ .type = "string" },
@@ -158,7 +159,7 @@ pub fn handleOpenApi(req: web.zap.Request) !void {
                             .description = "API is running",
                             .content = .{
                                 .@"application/json" = .{
-                                    .schema = .{
+                                    .schema = &.{
                                         .type = "object",
                                         .properties = .{
                                             .status = .{ .type = "string" },
@@ -185,7 +186,7 @@ pub fn handleOpenApi(req: web.zap.Request) !void {
                             .description = "OpenAPI specification",
                             .content = .{
                                 .@"application/json" = .{
-                                    .schema = .{
+                                    .schema = &.{
                                         .type = "object",
                                         .properties = null,
                                         .items = null,
