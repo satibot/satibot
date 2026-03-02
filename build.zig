@@ -85,6 +85,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const facebook = b.addModule("facebook", .{
+        .root_source_file = b.path("libs/facebook/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http", .module = http },
+        },
+    });
+
     const agent = b.addModule("agent", .{
         .root_source_file = b.path("libs/agent/src/root.zig"),
         .target = target,
@@ -191,6 +200,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(search_cli);
 
+    // Facebook CLI App
+    const facebook_cli = b.addExecutable(.{
+        .name = "s-facebook",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/facebook/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "facebook", .module = facebook },
+                .{ .name = "http", .module = http },
+            },
+        }),
+    });
+    b.installArtifact(facebook_cli);
+
     // Sati CLI executable
     const sati_exe = b.addExecutable(.{
         .name = "sati",
@@ -263,6 +287,13 @@ pub fn build(b: *std.Build) void {
     const run_search = b.step("run-search", "Run search CLI app");
     run_search.dependOn(&run_search_cmd.step);
 
+    const run_facebook_cmd = b.addRunArtifact(facebook_cli);
+    if (b.args) |args| {
+        run_facebook_cmd.addArgs(args);
+    }
+    const run_facebook = b.step("run-facebook", "Run facebook CLI app");
+    run_facebook.dependOn(&run_facebook_cmd.step);
+
     // Build steps for individual binaries
     const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
     build_console_sync.dependOn(&console_sync.step);
@@ -276,6 +307,9 @@ pub fn build(b: *std.Build) void {
     const build_search_binary = b.step("s-search", "Build s-search binary");
     build_search_binary.dependOn(&search_cli.step);
 
+    const build_facebook_binary = b.step("s-facebook", "Build s-facebook binary");
+    build_facebook_binary.dependOn(&facebook_cli.step);
+
     const build_sati = b.step("sati", "Build sati CLI binary");
     build_sati.dependOn(&sati_exe.step);
 
@@ -287,6 +321,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "http", .path = "libs/http/src/root.zig", .imports = &.{.{ .name = "tls", .module = tls_mod }} },
         .{ .name = "utils", .path = "libs/utils/src/root.zig", .imports = &.{ .{ .name = "xev", .module = xev_mod }, .{ .name = "core", .module = core } } },
         .{ .name = "providers", .path = "libs/providers/src/root.zig", .imports = &.{ .{ .name = "http", .module = http }, .{ .name = "core", .module = core }, .{ .name = "utils", .module = utils } } },
+        .{ .name = "facebook", .path = "libs/facebook/src/root.zig", .imports = &.{.{ .name = "http", .module = http }} },
         .{ .name = "db", .path = "libs/db/src/root.zig", .imports = &.{.{ .name = "providers", .module = providers }} },
         .{ .name = "agent", .path = "libs/agent/src/root.zig", .imports = &.{
             .{ .name = "build_opts", .module = build_options.createModule() },
