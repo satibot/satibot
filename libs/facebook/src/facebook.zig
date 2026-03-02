@@ -5,7 +5,7 @@ const http = @import("http");
 
 const BASE_URL = "https://graph.facebook.com/v21.0";
 
-fn urlEncode(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
+pub fn urlEncode(allocator: std.mem.Allocator, s: []const u8) ![]u8 {
     var buf: std.ArrayList(u8) = .empty;
     errdefer buf.deinit(allocator);
 

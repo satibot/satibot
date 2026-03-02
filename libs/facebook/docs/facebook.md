@@ -10,33 +10,36 @@ The Facebook library provides a Zig client for interacting with the Facebook Gra
 
 ```mermaid
 graph TB
-    subgraph "Facebook Client"
+    subgraph "Client"
         Client[Client]
-        BuildUrl[buildUrl]
-        Get[get]
+        init[init]
+        deinit[deinit]
+        buildUrl[buildUrl]
+        get[get]
+        testConnection[testConnection]
     end
     
     subgraph "Pure Functions"
-        UrlEncode[urlEncode]
+        urlEncode[urlEncode]
     end
     
-    subgraph "API Endpoints"
-        Me[/me]
-        Page[/page_id]
-        Posts[/posts]
-        Comments[/comments]
-        Conversations[/conversations]
-        Messages[/messages]
-        Feed[/feed]
+    subgraph "Data Fetching"
+        getMe[getMe]
+        getPage[getPage]
+        getPagePosts[getPagePosts]
+        getPostComments[getPostComments]
+        getConversations[getConversations]
+        getConversationMessages[getConversationMessages]
+        getGroupFeed[getGroupFeed]
     end
     
-    subgraph "Parsers"
-        ParseUser[parseUser]
-        ParsePage[parsePage]
-        ParsePosts[parsePosts]
-        ParseComments[parseComments]
-        ParseConversations[parseConversations]
-        ParseMessages[parseMessages]
+    subgraph "JSON Parsers"
+        parseUser[parseUser]
+        parsePage[parsePage]
+        parsePosts[parsePosts]
+        parseComments[parseComments]
+        parseConversations[parseConversations]
+        parseMessages[parseMessages]
     end
     
     subgraph "Data Models"
@@ -49,30 +52,44 @@ graph TB
     end
     
     subgraph "External"
-        FBAPI[Facebook Graph API]
+        FBAPI[Facebook Graph API v21.0]
     end
     
-    Client --> BuildUrl
-    Client --> Get
-    BuildUrl --> UrlEncode
-    Get --> FBAPI
+    Client --> init
+    Client --> deinit
+    Client --> buildUrl
+    Client --> get
+    Client --> testConnection
     
-    Me --> ParseUser
-    Page --> ParsePage
-    Posts --> ParsePosts
-    Comments --> ParseComments
-    Conversations --> ParseConversations
-    Messages --> ParseMessages
+    buildUrl --> urlEncode
     
-    ParseUser --> User
-    ParsePage --> PageModel
-    ParsePosts --> Post
-    ParseComments --> Comment
-    ParseConversations --> Conversation
-    ParseMessages --> Message
+    getMe --> buildUrl
+    getPage --> buildUrl
+    getPagePosts --> buildUrl
+    getPostComments --> buildUrl
+    getConversations --> buildUrl
+    getConversationMessages --> buildUrl
+    getGroupFeed --> buildUrl
+    
+    get --> FBAPI
+    
+    getMe --> parseUser
+    getPage --> parsePage
+    getPagePosts --> parsePosts
+    getPostComments --> parseComments
+    getConversations --> parseConversations
+    getConversationMessages --> parseMessages
+    
+    parseUser --> User
+    parsePage --> PageModel
+    parsePosts --> Post
+    parseComments --> Comment
+    parseConversations --> Conversation
+    parseMessages --> Message
     
     style Client fill:#e3f2fd
     style FBAPI fill:#ffcdd2
+    style urlEncode fill:#e8f5e9
 ```
 
 ### UML Class Diagram
