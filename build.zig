@@ -94,6 +94,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const x = b.addModule("x", .{
+        .root_source_file = b.path("libs/x/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http", .module = http },
+        },
+    });
+
     const agent = b.addModule("agent", .{
         .root_source_file = b.path("libs/agent/src/root.zig"),
         .target = target,
@@ -145,6 +154,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "http", .module = http },
                 .{ .name = "tls", .module = tls_mod },
                 .{ .name = "build_opts", .module = build_options.createModule() },
+                .{ .name = "x", .module = x },
             },
         }),
     });
