@@ -125,6 +125,15 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const minimax_music = b.addModule("minimax-music", .{
+        .root_source_file = b.path("libs/minimax-music/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http", .module = http },
+        },
+    });
+
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
         .root_source_file = b.path("apps/telegram/src/telegram/telegram.zig"),
@@ -216,6 +225,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(search_cli);
 
+    // Music CLI App
+    const music_cli = b.addExecutable(.{
+        .name = "s-music",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/music/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "minimax-music", .module = minimax_music },
+                .{ .name = "http", .module = http },
+            },
+        }),
+    });
+    b.installArtifact(music_cli);
+
     // Facebook CLI App
     const facebook_cli = b.addExecutable(.{
         .name = "s-facebook",
@@ -304,6 +328,13 @@ pub fn build(b: *std.Build) void {
     const run_search = b.step("run-search", "Run search CLI app");
     run_search.dependOn(&run_search_cmd.step);
 
+    const run_music_cmd = b.addRunArtifact(music_cli);
+    if (b.args) |args| {
+        run_music_cmd.addArgs(args);
+    }
+    const run_music = b.step("run-music", "Run music CLI app");
+    run_music.dependOn(&run_music_cmd.step);
+
     const run_facebook_cmd = b.addRunArtifact(facebook_cli);
     if (b.args) |args| {
         run_facebook_cmd.addArgs(args);
@@ -323,6 +354,9 @@ pub fn build(b: *std.Build) void {
 
     const build_search_binary = b.step("s-search", "Build s-search binary");
     build_search_binary.dependOn(&search_cli.step);
+
+    const build_music_binary = b.step("s-music", "Build s-music binary");
+    build_music_binary.dependOn(&music_cli.step);
 
     const build_facebook_binary = b.step("s-facebook", "Build s-facebook binary");
     build_facebook_binary.dependOn(&facebook_cli.step);
