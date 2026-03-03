@@ -18,6 +18,7 @@
         "openrouter",
         "orelse",
         "Pico",
+        "rsbuild",
         "satibot",
         "Sigaction",
         "sigset",
