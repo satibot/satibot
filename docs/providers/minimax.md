@@ -2,16 +2,15 @@
 
 ## Overview
 
-The MiniMax provider is a high-performance implementation that provides access to MiniMax's language models through their API. It follows the same functional programming approach as other providers, separating pure logic from I/O operations.
+The MiniMax provider provides access to MiniMax's language models through their Anthropic-compatible API. It follows the same functional programming approach as other providers, separating pure logic from I/O operations.
 
 ## Features
 
-- **Synchronous & Asynchronous Chat**: Support for both blocking and non-blocking chat completions
-- **Streaming Responses**: Real-time streaming of chat responses with chunk callbacks
-- **Tool/Function Calling**: Full support for OpenAI-compatible tool calling
-- **Embeddings**: Text embedding generation for vector search
-- **Rate Limit Handling**: Automatic rate limit detection and reporting
-- **Event Loop Integration**: Optional integration with XevEventLoop for async operations
+- **Synchronous Chat**: Blocking chat completions
+- **Streaming Responses**: Real-time SSE streaming with chunk callbacks
+- **Tool/Function Calling**: Full OpenAI-compatible tool calling support
+- **Thinking Blocks**: Support for reasoning/thinking content in responses
+- **Error Handling**: Detailed error messages from API responses
 
 ## Architecture
 
@@ -20,82 +19,83 @@ The MiniMax provider is a high-performance implementation that provides access t
 ```mermaid
 graph TB
     subgraph "MiniMax Provider"
-        MM[MiniMaxProvider]
+        MP[MinimaxProvider]
         HTTP[HTTP Client]
-        AsyncHTTP[Async HTTP Client]
-        EL[Event Loop]
+        Builder[buildRequestBody]
+        Parser[parseResponse]
     end
     
-    subgraph "Core Functions"
-        BuildReq[buildChatRequestBody]
-        ParseResp[parseChatResponse]
-        ParseErr[parseErrorBody]
-        BuildEmb[buildEmbeddingRequestBody]
-        ParseEmb[parseEmbeddingsResponse]
+    subgraph "Request Processing"
+        Sys[Extract System Prompt]
+        Msg[Build Messages]
+        Tool[Build Tools JSON]
+        JSON[Serialize to JSON]
     end
     
-    subgraph "External APIs"
-        MAPI[MiniMax API]
+    subgraph "Response Processing"
+        ParseJSON[Parse JSON]
+        ExtractText[Extract Text Blocks]
+        ExtractThinking[Extract Thinking Blocks]
+        ExtractTools[Extract Tool Calls]
     end
     
-    MM --> HTTP
-    MM --> AsyncHTTP
-    MM --> EL
-    HTTP --> BuildReq
-    HTTP --> ParseResp
-    HTTP --> ParseErr
-    AsyncHTTP --> BuildReq
-    AsyncHTTP --> ParseResp
-    AsyncHTTP --> ParseErr
-    HTTP --> MAPI
-    AsyncHTTP --> MAPI
-    EL --> AsyncHTTP
+    subgraph "External"
+        API[MiniMax API<br/>/messages<br/>x-api-key auth]
+    end
     
-    style AsyncHTTP fill:#e1f5fe
-    style EL fill:#e1f5fe
+    MP --> HTTP
+    HTTP --> Builder
+    Builder --> Sys
+    Builder --> Msg
+    Builder --> Tool
+    Builder --> JSON
+    JSON --> API
+    API --> Parser
+    Parser --> ParseJSON
+    ParseJSON --> ExtractText
+    ParseJSON --> ExtractThinking
+    ParseJSON --> ExtractTools
+    
+    style MP fill:#e3f2fd
+    style Builder fill:#fff3e0
+    style Parser fill:#e8f5e9
 ```
 
 ## API Reference
 
+### Endpoints
+
+- **Base URL**: `https://api.minimax.io/anthropic`
+- **Messages Endpoint**: `/messages`
+- **Authentication**: `x-api-key` header
+
 ### Structs
 
-#### MiniMaxProvider
+#### MinimaxProvider
 
-Main provider struct holding HTTP clients and configuration.
+Main provider struct holding HTTP client and configuration.
 
 ```zig
-pub const MiniMaxProvider = struct {
+pub const MinimaxProvider = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
-    async_client: ?http_async.AsyncClient,
     api_key: []const u8,
-    api_base: []const u8,
-    event_loop: ?*XevEventLoop,
+    api_base: []const u8 = "https://api.minimax.io/anthropic",
 };
 ```
 
-#### CompletionResponse
+#### ContentBlock
 
-Response structure for chat completions.
-
-```zig
-pub const CompletionResponse = struct {
-    id: []const u8,
-    model: []const u8,
-    choices: []Choice,
-};
-```
-
-#### ChatAsyncResult
-
-Result structure for async operations.
+Response content block types.
 
 ```zig
-pub const ChatAsyncResult = struct {
-    request_id: []const u8,
-    success: bool,
-    response: ?base.LLMResponse,
-    err_msg: ?[]const u8,
+const ContentBlock = struct {
+    type: []const u8,        // "text", "thinking", "tool_use"
+    text: ?[]const u8 = null,
+    thinking: ?[]const u8 = null,
+    id: ?[]const u8 = null,
+    name: ?[]const u8 = null,
+    input: ?std.json.Value = null,
 };
 ```
 
@@ -103,74 +103,35 @@ pub const ChatAsyncResult = struct {
 
 #### Initialization
 
-- `init(allocator, api_key)` - Create synchronous provider
-- `initWithEventLoop(allocator, api_key, event_loop)` - Create async-capable provider
+- `init(allocator, api_key)` - Create provider instance
 - `deinit()` - Clean up resources
 
 #### Chat Operations
 
 - `chat(messages, model, tools)` - Synchronous chat completion
-- `chatAsync(request_id, messages, model, tools, callback)` - Asynchronous chat
-- `chatStream(messages, model, tools, callback, ctx)` - Streaming chat
-
-#### Other Operations
-
-- `embeddings(request)` - Generate text embeddings
+- `chatStream(messages, model, tools, callback, ctx)` - Streaming chat with SSE
 
 ### Pure Functions
 
-These functions are separated from I/O for better testability:
-
-- `buildChatRequestBody(allocator, messages, model, tools, stream)` - Build JSON request
-- `parseChatResponse(allocator, body)` - Parse API response
-- `parseErrorBody(allocator, body)` - Parse error responses
-- `parseEmbeddingsResponse(allocator, body)` - Parse embedding responses
-- `processStreamResponse(allocator, response, callback, ctx)` - Process streaming data
+- `buildRequestBody(messages, model, tools, stream)` - Build JSON request body
+- `parseResponse(body)` - Parse API response into LlmResponse
 
 ## Usage Examples
 
 ### Basic Chat Completion
 
 ```zig
-const allocator = std.heap.page_allocator;
-var provider = try MiniMaxProvider.init(allocator, "your-api-key");
+var provider = try MinimaxProvider.init(allocator, "your-api-key");
 defer provider.deinit();
 
-const messages = &[_]base.LLMMessage{
+const messages = &[_]base.LlmMessage{
     .{ .role = "user", .content = "Hello, world!" },
 };
 
-const response = try provider.chat(messages, "MiniMax-text-01", null);
+const response = try provider.chat(messages, "MiniMax-M2.5", null);
 defer response.deinit();
 
 std.debug.print("Response: {s}\n", .{response.content.?});
-```
-
-### Async Chat with Event Loop
-
-```zig
-var event_loop = try XevEventLoop.init(allocator);
-defer event_loop.deinit();
-
-var provider = try MiniMaxProvider.initWithEventLoop(
-    allocator, 
-    "your-api-key", 
-    &event_loop
-);
-defer provider.deinit();
-
-const callback = struct {
-    fn func(result: ChatAsyncResult) void {
-        if (result.success) {
-            std.debug.print("Async response: {s}\n", .{result.response.?.content.?});
-            result.response.?.deinit();
-        } else {
-            std.debug.print("Error: {s}\n", .{result.err_msg.?});
-        }
-    }
-}.func;
-
-try provider.chatAsync("req-123", messages, "MiniMax-text-01", null, &callback);
 ```
 
 ### Streaming Chat
@@ -200,7 +161,7 @@ Add MiniMax to your `~/.bots/config.json`:
 {
   "agents": {
     "defaults": {
-      "model": "MiniMax-text-01"
+      "model": "MiniMax-M2.5"
     }
   },
   "providers": {
@@ -211,29 +172,27 @@ Add MiniMax to your `~/.bots/config.json`:
 }
 ```
 
-## Available Models
+Or set environment variable: `MINIMAX_API_KEY`
 
-MiniMax supports various models including:
+## Supported Models
 
-- `MiniMax-text-01` - General purpose text model
-- `MiniMax-text-02` - Enhanced text model
-- `MiniMax-music-01` - Music generation model
+- `MiniMax-M2.5` - General purpose text model (recommended)
+- Other MiniMax models can be specified by name
+
+## Thinking Blocks
+
+MiniMax responses can include thinking blocks for reasoning transparency:
+
+```zig
+// Thinking content is extracted and included in response.content
+// alongside text blocks
+```
 
 ## Error Handling
 
-The provider uses Zig's error union system for comprehensive error handling:
-
 - `error.ApiRequestFailed` - HTTP request failed
-- `error.AsyncNotInitialized` - Async operations without event loop
 - `error.NoChoicesReturned` - Empty response from API
 - JSON parsing errors for malformed responses
-
-## Performance Considerations
-
-1. **Memory Management**: All allocated memory is tracked and must be freed
-2. **Rate Limits**: Automatic rate limit detection helps avoid throttling
-3. **Async Operations**: Use event loop for non-blocking operations
-4. **Streaming**: Prefer streaming for long responses to reduce latency
 
 ## Testing
 
@@ -242,22 +201,3 @@ Run tests with:
 ```bash
 zig test src/providers/minimax.zig
 ```
-
-The provider includes comprehensive unit tests for:
-
-- Struct initialization and cleanup
-- Pure function logic
-- Request building and response parsing
-- Error handling scenarios
-- Async operation validation
-- ChatAsyncResult lifecycle management
-
-## Integration with Event Loop
-
-When initialized with an event loop, the provider can:
-
-- Execute HTTP requests asynchronously
-- Handle multiple concurrent requests
-- Integrate with other async operations
-
-The event loop integration is optional - the provider works perfectly in synchronous mode as well.

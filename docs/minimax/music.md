@@ -1,132 +1,247 @@
-> ## Documentation Index
->
-> Fetch the complete documentation index at: <https://platform.minimax.io/docs/llms.txt>
-> Use this file to discover all available pages before exploring further.
+# MiniMax Music API - SatiBot Integration
 
-# Music Generation
+## Overview
 
-> Use the prompt parameter to define the music's style, mood, and scenario, and the lyrics parameter to provide the vocal content. This feature is ideal for quickly generating unique theme songs for videos, games, or applications.
+The MiniMax Music API enables music and lyrics generation through SatiBot. This module provides a Zig implementation for generating music from prompts and lyrics.
 
-## Music 2.5:  Full-Dimensional Breakthrough
+## Features
 
-Music 2.5 achieves a full-dimensional breakthrough with "High Fidelity + Strong Control", bringing significant improvements across four key dimensions: **Instrumentation & Mixing, Vocal Performance, Structural Precision, and Sound Design**.
+- **Music Generation**: Create music from style prompts and lyrics
+- **Lyrics Generation**: Generate song lyrics from themes
+- **Configurable Audio**: Sample rate, bitrate, and format options
+- **Streaming Response**: URL-based output for audio retrieval
 
-<AccordionGroup>
-  <Accordion title=" Instrumentation & Mixing">
-    Expanded high-sample-rate sound library (including orchestral and traditional instruments); optimized soundstage algorithms for more rational spectral distribution, allowing vocals and accompaniment to achieve complete spectral characteristics independently for a more transparent listening experience.
-  </Accordion>
+## Architecture
 
-  <Accordion title=" Vocal Performance">
-    Deep optimization targeting AI synthesis artifacts, introducing humanized timbre simulation with significantly enhanced Flow expressiveness, achieving physically authentic "real voice" quality.
-  </Accordion>
+### Logic Graph
 
-  <Accordion title=" Structural Precision">
-    * **Full Section Tag Control**: Precise support for 14+ music structure variants including Intro / Bridge / Interlude / Build-up / Hook, meeting the creative logic of complex compositions
-    * **Dynamic Evolution Control**: Vocals can be fine-tuned for emotion and singing techniques section by section; instruments now feature precise control over orchestration, articulation, and sound texture—every sonic detail at your fingertips
-  </Accordion>
+```mermaid
+graph TB
+    subgraph "MusicClient"
+        Client[MusicClient]
+        HTTP[HTTP Client]
+    end
+    
+    subgraph "Request Building"
+        BuildMusic[buildMusicRequestBody]
+        BuildLyrics[buildLyricsRequestBody]
+        JsonStr[writeJsonString]
+    end
+    
+    subgraph "Response Parsing"
+        ParseMusic[parseMusicResponse]
+        ParseLyrics[parseLyricsResponse]
+    end
+    
+    subgraph "External APIs"
+        MusicAPI[MiniMax Music API<br/>/v1/music_generation<br/>Bearer auth]
+        LyricsAPI[MiniMax Lyrics API<br/>/v1/lyrics_generation<br/>Bearer auth]
+    end
+    
+    Client --> HTTP
+    HTTP --> BuildMusic
+    HTTP --> BuildLyrics
+    BuildMusic --> JsonStr
+    BuildLyrics --> JsonStr
+    JsonStr --> MusicAPI
+    JsonStr --> LyricsAPI
+    MusicAPI --> ParseMusic
+    LyricsAPI --> ParseLyrics
+    
+    style Client fill:#e3f2fd
+    style BuildMusic fill:#fff3e0
+    style BuildLyrics fill:#fff3e0
+    style ParseMusic fill:#e8f5e9
+    style ParseLyrics fill:#e8f5e9
+```
 
-  <Accordion title=" Sound Design">
-    Stylized filters for music—delivering more genre-specific mixing characteristics based on different music styles. The system can automatically identify and reproduce the physical characteristics of specific genres, such as:
+## API Reference
 
-    * Rock's saturated distortion
-    * The "Minneapolis Sound" of the 80s
-    * Modern electronic's wide-frequency transients
-    * Classic jazz's warm low-pass feel
-  </Accordion>
-</AccordionGroup>
+### Endpoints
 
-## Music Generation Example
+- **Base URL**: `https://api.minimax.io`
+- **Music Generation**: `/v1/music_generation`
+- **Lyrics Generation**: `/v1/lyrics_generation`
+- **Authentication**: `Bearer` token in `Authorization` header
 
-Let's walk through how to create a soulful blues track from scratch in two simple steps: first, use the Lyrics Generation API to write lyrics based on a theme; then, feed those lyrics into the Music Generation API to compose and produce a complete song.
+### Structs
 
-<Steps>
-  <Step title="Call the Lyrics Generation API to generate lyrics from a theme (optional)">
-    Simply tell the model what you're looking for — for example, "a soulful blues song about a rainy night" — and the Lyrics Generation API will automatically write complete lyrics with proper song structure (Verse, Chorus, Bridge, etc.). If you already have your own lyrics, feel free to skip this step.
+#### AudioSetting
 
-    <CodeGroup>
-      ```python Lyrics Generation theme={null}
-      import requests
-      import os
+Audio output configuration.
 
-      url = "https://api.minimax.io/v1/lyrics_generation"
-      api_key = os.environ.get("MINIMAX_API_KEY")
+```zig
+pub const AudioSetting = struct {
+    sample_rate: u32 = 44100,
+    bitrate: u32 = 256000,
+    format: []const u8 = "mp3",
+};
+```
 
-      payload = {
-          "mode": "write_full_song",
-          "prompt": "A soulful blues song about a rainy night"
-      }
-      headers = {
-          "Content-Type": "application/json",
-          "Authorization": f"Bearer {api_key}"
-      }
+#### MusicGenerationRequest
 
-      response = requests.post(url, json=payload, headers=headers)
+Request for music generation.
 
-      print(response.text)
-      ```
-    </CodeGroup>
-  </Step>
+```zig
+pub const MusicGenerationRequest = struct {
+    model: []const u8 = "music-2.5",
+    prompt: []const u8,
+    lyrics: []const u8 = "",
+    audio_setting: AudioSetting = .{},
+    output_format: []const u8 = "url",
+};
+```
 
-  <Step title="Call the Music Generation API to compose and produce the full song">
-    Once you have your lyrics, set the music style via the `prompt` parameter (e.g., "Blues, Soulful, Rainy Night, Electric Guitar"), pass the lyrics into the `lyrics` parameter, and the Music Generation API will arrange, perform, and output a complete song.
+#### LyricsGenerationRequest
 
-    <CodeGroup>
-      ```python Music Generation theme={null}
-      import requests
-      import json
-      import os
+Request for lyrics generation.
 
-      url = "https://api.minimax.io/v1/music_generation"
-      api_key = os.environ.get("MINIMAX_API_KEY")
+```zig
+pub const LyricsGenerationRequest = struct {
+    mode: []const u8 = "write_full_song",
+    prompt: []const u8,
+};
+```
 
-      headers = {
-          "Content-Type": "application/json",
-          "Authorization": f"Bearer {api_key}"
-      }
+#### MusicClient
 
-      payload = {
-          "model": "music-2.5",
-          "prompt": "Soulful Blues, Rainy Night, Melancholy, Male Vocals, Slow Tempo",
-          "lyrics": "[Intro]\n(Ooh, yeah)\n(Listen to that rain)\nOh, Lord...\nIt's fallin' down so hard tonight...\n\n[Verse 1]\nThe sky is cryin', Lord, I can hear it on the roof\n(Hear it on the roof)\nEach drop a memory, ain't that the mournful truth?\nThis old guitar is my only friend in this lonely room\nSingin' the midnight rain blues, lost in the gloom\nStreetlights paintin' shadows, dancin' on the wall\nWishin' I could wash away this feelin' with it all\n(Wash it all away)\n\n[Chorus]\nMidnight rain, fallin' down on me\n(Fallin' on me)\nLike tears I can't cry, for all the world to see\nThis ain't just water, baby, it's a soulful sound\nWashin' over my heart, nowhere to be found\n(Nowhere to be found)\nJust the rhythm of the rain, and the blues in my soul\nTryna make me feel whole, but it's takin' its toll\n\n[Verse 2]\nRemember when we danced in the summer shower?\n(Summer shower)\nLaughin' like fools, in that golden hour\nNow the cold, hard rain, it chills me to the bone\nReminds me that I'm standin' here, all alone\nEvery rumble of thunder, shakes me deep inside\nGot nowhere to run, baby, nowhere left to hide\n(Nowhere to hide)\n\n[Pre-Chorus]\nThis lonely melody, it keeps playin' on\n(On and on)\nEver since you been gone\n(You been gone)\nOh, this rainy night, it just won't let me be\n\n[Chorus]\nMidnight rain, fallin' down on me\n(Fallin' on me)\nLike tears I can't cry, for all the world to see\nThis ain't just water, baby, it's a soulful sound\nWashin' over my heart, nowhere to be found\n(Nowhere to be found)\nJust the rhythm of the rain, and the blues in my soul\nTryna make me feel whole, but it's takin' its toll\n\n[Bridge]\n(Oh, the rain...)\nIs it washin' away the good times?\nOr just remindin' me of all the past crimes?\nThis emptiness inside, it cuts me like a knife\nJust me and this rain, livin' this lonely life\n(Lonely life)\nI need a little sunshine, Lord, to dry these tears\nChase away these lonely, rainy night fears\n\n[Solo]\n(Guitar solo - slow, mournful, bluesy)\n(Yeah... play it, boy)\n(Feel that rain)\n(Mmm-hmm)\n\n[Chorus]\nMidnight rain, fallin' down on me\n(Fallin' on me)\nLike tears I can't cry, for all the world to see\nThis ain't just water, baby, it's a soulful sound\nWashin' over my heart, nowhere to be found\n(Nowhere to be found)\nJust the rhythm of the rain, and the blues in my soul\nTryna make me feel whole, but it's takin' its toll\n\n[Outro]\n(Midnight rain...)\nOh, the rain...\n(Fallin' down)\nJust keep fallin'...\n(Wash me clean)\nLord, wash me clean...\n(Yeah...)\n(Blues...\nFade out...)",
-          "audio_setting": {
-              "sample_rate": 44100,
-              "bitrate": 256000,
-              "format": "mp3"
-          },
-          "output_format": "url"
-      }
+Main client for music/lyrics generation.
 
-      response = requests.post(url, headers=headers, json=payload)
-      result = response.json()
+```zig
+pub const MusicClient = struct {
+    allocator: std.mem.Allocator,
+    client: http.Client,
+    api_key: []const u8,
+    api_base: []const u8 = "https://api.minimax.io",
+};
+```
 
-      print(json.dumps(result, ensure_ascii=False, indent=2))
-      ```
-    </CodeGroup>
-  </Step>
+### Methods
 
-  <Step title="Listen to the result">
-    After completing the steps above, you'll have a complete song:
+- `init(allocator, api_key)` - Create client instance
+- `deinit()` - Clean up resources
+- `generateMusic(request)` - Generate music from prompt/lyrics
+- `generateLyrics(request)` - Generate lyrics from theme
 
-    <video controls className="w-full aspect-video rounded-xl audio-container" src="https://file.cdn.minimax.io/public/71fa0e3f-6ea2-4ecf-b2e7-89ee3815fdc3.mp3" />
-  </Step>
-</Steps>
+## Usage Examples
 
-## Recommended Reading
+### Initialize Client
 
-<Columns cols={2}>
-  <Card title="Music Generation API" icon="book-open" href="/api-reference/music-generation" arrow="true" cta="Click here">
-    Use this API to generate a song from lyrics and a prompt.
-  </Card>
+```zig
+var client = try MusicClient.init(allocator, "your-api-key");
+defer client.deinit();
+```
 
-  <Card title="Lyrics Generation API" icon="book-open" href="/api-reference/lyrics-generation" arrow="true" cta="Click here">
-    Use this API to generate or edit lyrics from a song description.
-  </Card>
+### Generate Music
 
-  <Card title="Pricing" icon="book-open" href="/guides/pricing-paygo#music" arrow="true" cta="Click here">
-    Detailed information on model pricing and API packages.
-  </Card>
+```zig
+const request: MusicGenerationRequest = .{
+    .model = "music-2.5",
+    .prompt = "Soulful Blues, Rainy Night, Melancholy, Male Vocals, Slow Tempo",
+    .lyrics = 
+        \\[Verse 1]
+        \\The sky is cryin' tonight...
+    ,
+    .audio_setting = .{
+        .sample_rate = 44100,
+        .bitrate = 256000,
+        .format = "mp3",
+    },
+    .output_format = "url",
+};
 
-  <Card title="Rate Limits" icon="book-open" href="/guides/rate-limits#3-rate-limits-for-our-api" arrow="true" cta="Click here">
-    Rate limits are restrictions that our API imposes on the number of times a user or client can access our services within a specified period of time.
-  </Card>
-</Columns>
+const response = try client.generateMusic(request);
+defer response.deinit();
+
+if (response.data) |data| {
+    std.debug.print("Audio URL: {s}\n", .{data.audio.?});
+}
+```
+
+### Generate Lyrics First
+
+```zig
+const lyrics_request: LyricsGenerationRequest = .{
+    .mode = "write_full_song",
+    .prompt = "A soulful blues song about a rainy night",
+};
+
+const lyrics_response = try client.generateLyrics(lyrics_request);
+defer lyrics_response.deinit();
+
+if (lyrics_response.data) |data| {
+    std.debug.print("Generated lyrics:\n{s}\n", .{data.lyrics.?});
+}
+```
+
+### Full Workflow: Generate Lyrics + Music
+
+```zig
+var client = try MusicClient.init(allocator, api_key);
+defer client.deinit();
+
+// Step 1: Generate lyrics
+const lyrics_req = LyricsGenerationRequest{
+    .prompt = "A soulful blues song about a rainy night",
+};
+const lyrics_resp = try client.generateLyrics(lyrics_req);
+defer lyrics_resp.deinit();
+
+// Step 2: Generate music with lyrics
+const music_req = MusicGenerationRequest{
+    .prompt = "Soulful Blues, Rainy Night, Melancholy",
+    .lyrics = lyrics_resp.data.?.lyrics.?,
+};
+const music_resp = try client.generateMusic(music_req);
+defer music_resp.deinit();
+
+// Get the audio URL
+if (music_resp.data) |data| {
+    std.debug.print("Your song: {s}\n", .{data.audio.?});
+}
+```
+
+## Music 2.5 Features
+
+The music-2.5 model includes:
+
+- **High Fidelity + Strong Control**
+- **Instrumentation & Mixing**: High-sample-rate sound library, optimized soundstage
+- **Vocal Performance**: Humanized timbre, enhanced flow expressiveness
+- **Structural Precision**: 14+ music structure variants (Intro, Bridge, Chorus, etc.)
+- **Sound Design**: Genre-specific mixing characteristics
+
+## Configuration
+
+The music API uses the same API key as the text API. Configure in `~/.bots/config.json`:
+
+```json
+{
+  "providers": {
+    "minimax": {
+      "apiKey": "your-minimax-api-key"
+    }
+  }
+}
+```
+
+Or set environment variable: `MINIMAX_API_KEY`
+
+## Response Codes
+
+- `code: 0` - Success
+- Non-zero codes indicate errors (see `msg` field for details)
+
+## Testing
+
+Run tests with:
+
+```bash
+zig test libs/minimax-music/src/music.zig
+```
+
+## Error Handling
+
+- `error.ApiRequestFailed` - HTTP request failed
+- JSON parsing errors for malformed responses
+- Check `response.code` and `response.msg` for API-level errors
