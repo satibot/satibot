@@ -9,13 +9,16 @@ flowchart TB
     subgraph Apps["Applications"]
         Console[Console App]
         Telegram[Telegram Bot]
+        WhatsApp[WhatsApp Bot]
         Web[Web API Server]
+        Gateway[Gateway Service]
     end
 
     subgraph Agent["libs/agent - Core Agent"]
         AgentCore[Agent]
         Context[Context]
         ToolRegistry[Tool Registry]
+        Observability[Observability<br/>OTEL/Logger]
     end
 
     subgraph Providers["LLM Providers"]
@@ -37,13 +40,25 @@ flowchart TB
         RAG[RAG Search]
     end
 
+    subgraph Automation["Automation Services"]
+        Cron[Cron Jobs]
+        Heartbeat[Heartbeat Service]
+    end
+
     Console --> AgentCore
     Telegram --> AgentCore
+    WhatsApp --> AgentCore
     Web --> AgentCore
+    Gateway --> Cron
+    Gateway --> Heartbeat
+    Gateway --> Telegram
+    Cron --> AgentCore
+    Heartbeat --> AgentCore
 
     AgentCore --> Context
     AgentCore --> ToolRegistry
     AgentCore --> Providers
+    AgentCore --> Observability
 
     ToolRegistry --> Tools
     Tools --> WebSearch
@@ -142,14 +157,18 @@ flowchart TB
     Loop -->|Iteration| LLM[Call LLM Provider]
     LLM --> Response{Response Type}
     
-    Response -->|Text| Save[Save to Context]
+    Response -->|Text| Stream[Stream to User<br/>via chunk callback]
     Response -->|Tool Calls| Execute[Execute Tools]
     Execute --> Results[Get Results]
-    Results --> LLM
+    Results --> CheckLoop{iterations > 1?}
+    CheckLoop -->|Yes| Warning[Inject Loop Warning<br/>to prevent infinite loops]
+    CheckLoop -->|No| LLM
+    Warning --> LLM
     
-    Save --> Done{More iterations?}
-    Done -->|Yes| Loop
-    Done -->|No| Return[Return Response]
+    Stream --> Save[Save to Context]
+    Save --> CheckMore{More iterations?}
+    CheckMore -->|Yes| Loop
+    CheckMore -->|No| Return[Return Response]
     
     Return --> GetMsgs[ctx.getMessages]
     GetMsgs --> LastMsg[Last Assistant Message]
@@ -225,23 +244,26 @@ flowchart LR
     Find -->|Found| Execute[Execute Tool]
     Find -->|Not Found| Error[Error]
     
-    Execute --> web_search[web_search]
     Execute --> web_fetch[web_fetch]
     Execute --> read_file[read_file]
     Execute --> write_file[write_file]
-    Execute --> list_files[list_files]
+    Execute --> edit_file[edit_file]
+    Execute --> vector_upsert[vector_upsert]
+    Execute --> vector_search[vector_search]
     
-    web_search --> Result1[Search Results]
-    web_fetch --> Result2[Fetched Content]
-    read_file --> Result3[File Content]
-    write_file --> Result4[Write Success]
-    list_files --> Result5[File List]
+    web_fetch --> Result1[Fetched Content]
+    read_file --> Result2[File Content]
+    write_file --> Result3[Write Success]
+    edit_file --> Result4[Edit Success]
+    vector_upsert --> Result5[Upsert Success]
+    vector_search --> Result6[Search Results]
     
     Result1 --> Return[Return to LLM]
     Result2 --> Return
     Result3 --> Return
     Result4 --> Return
     Result5 --> Return
+    Result6 --> Return
 ```
 
 ## Web Server Endpoints
@@ -273,10 +295,15 @@ flowchart TB
 | Agent | `libs/agent/src/agent.zig` |
 | Context | `libs/agent/src/agent/context.zig` |
 | Tools | `libs/agent/src/agent/tools.zig` |
+| Gateway | `libs/agent/src/agent/gateway.zig` |
+| Cron | `libs/agent/src/agent/cron.zig` |
+| Heartbeat | `libs/agent/src/agent/heartbeat.zig` |
 | Web Server | `apps/web/src/main.zig` |
 | Telegram Bot | `apps/telegram/src/telegram/telegram.zig` |
 | Console | `apps/console/src/main.zig` |
+| WhatsApp | `libs/agent/src/agent/whatsapp_bot.zig` |
 | Config | `libs/core/src/config.zig` |
+| Observability | `libs/agent/src/observability.zig` |
 
 ## Configuration Flow
 
