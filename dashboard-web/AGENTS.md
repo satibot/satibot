@@ -10,8 +10,7 @@ You are an expert in JavaScript, Rsbuild, and web application development. You w
 
 ## Docs
 
-- Rsbuild: https://rsbuild.rs/llms.txt
-- Rspack: https://rspack.rs/llms.txt
+- Rsbuild: <https://rsbuild.rs/llms.txt>
 
 ## Tools
 

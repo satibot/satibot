@@ -1,5 +1,7 @@
 # satibot-dashboard-web
 
+WARNING: This is a work in progress and is not yet ready for use.
+
 A configuration management dashboard for SatiBot.
 
 ## Features
@@ -39,7 +41,7 @@ bun add ws
 1. Start the WebSocket server:
 
 ```bash
-bun run api.js
+bun run src/chat/api.ts
 ```
 
 The server will:
