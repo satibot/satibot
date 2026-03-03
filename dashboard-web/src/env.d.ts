@@ -1,5 +1,10 @@
 /// <reference types="@rsbuild/core/types" />
 
+declare module '*.css' {
+  const content: Record<string, string>;
+  export default content;
+}
+
 /**
  * Imports the SVG file as a React component.
  * @requires [@rsbuild/plugin-svgr](https://npmjs.com/package/@rsbuild/plugin-svgr)

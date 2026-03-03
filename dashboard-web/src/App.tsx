@@ -1,10 +1,11 @@
 import './App.css';
+import { ConfigFileManager } from './config/ConfigFileManager';
 
 const App = () => {
   return (
     <div className="content">
-      <h1>Rsbuild with React</h1>
-      <p>Start building amazing things with Rsbuild.</p>
+      <h1>Config File Manager</h1>
+      <ConfigFileManager />
     </div>
   );
 };
