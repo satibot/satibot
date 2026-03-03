@@ -14,24 +14,22 @@ pub const MemoryStore = struct {
     allocator: std.mem.Allocator,
     base_path: []const u8,
 
-    const Self = @This();
-
-    pub fn init(allocator: std.mem.Allocator, base_path: []const u8) Self {
+    pub fn init(allocator: std.mem.Allocator, base_path: []const u8) MemoryStore {
         return .{
             .allocator = allocator,
             .base_path = base_path,
         };
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *MemoryStore) void {
         self.* = undefined;
     }
 
-    fn getDocPath(self: *const Self, id: []const u8) ![]const u8 {
+    fn getDocPath(self: *const MemoryStore, id: []const u8) ![]const u8 {
         return std.fs.path.join(self.allocator, &.{ self.base_path, id });
     }
 
-    fn parseFrontmatter(content: []const u8, allocator: std.mem.Allocator) !struct { meta: std.StringHashMap([]const u8), body: []const u8 } {
+    fn parseFrontmatter(allocator: std.mem.Allocator, content: []const u8) !struct { meta: std.StringHashMap([]const u8), body: []const u8 } {
         var meta = std.StringHashMap([]const u8).init(allocator);
         errdefer meta.deinit();
 
@@ -63,13 +61,13 @@ pub const MemoryStore = struct {
         return .{ .meta = meta, .body = body };
     }
 
-    fn generateMarkdown(self: *const Self, doc: *const MemoryDoc) ![]const u8 {
+    fn generateMarkdown(self: *const MemoryStore, doc: *const MemoryDoc) ![]const u8 {
         const header = std.fmt.allocPrint(self.allocator, "---\nid: {s}\ntitle: {s}\ncreated_at: {d}\nupdated_at: {d}\n---\n\n", .{ doc.id, doc.title, doc.created_at, doc.updated_at }) catch unreachable;
         defer self.allocator.free(header);
         return std.fmt.allocPrint(self.allocator, "{s}{s}", .{ header, doc.content });
     }
 
-    pub fn create(self: *Self, title: []const u8, content: []const u8) !MemoryDoc {
+    pub fn create(self: *MemoryStore, title: []const u8, content: []const u8) !MemoryDoc {
         const id = try generateId(self.allocator);
         defer self.allocator.free(id);
 
@@ -88,7 +86,7 @@ pub const MemoryStore = struct {
         return doc;
     }
 
-    pub fn read(self: *const Self, id: []const u8) !?MemoryDoc {
+    pub fn read(self: *const MemoryStore, id: []const u8) !?MemoryDoc {
         const path = try self.getDocPath(id);
         defer self.allocator.free(path);
 
@@ -101,7 +99,7 @@ pub const MemoryStore = struct {
         const file_content = try file.readToEndAlloc(self.allocator, 1048576);
         defer self.allocator.free(file_content);
 
-        var parsed = try parseFrontmatter(file_content, self.allocator);
+        var parsed = try parseFrontmatter(self.allocator, file_content);
         defer parsed.meta.deinit();
 
         const title = parsed.meta.get("title") orelse "Untitled";
@@ -112,7 +110,7 @@ pub const MemoryStore = struct {
         const title_copy = try self.allocator.dupe(u8, title);
         const content_copy = try self.allocator.dupe(u8, parsed.body);
 
-        return MemoryDoc{
+        return .{
             .id = id_copy,
             .title = title_copy,
             .content = content_copy,
@@ -121,7 +119,7 @@ pub const MemoryStore = struct {
         };
     }
 
-    pub fn update(self: *Self, id: []const u8, title: ?[]const u8, content: ?[]const u8) !?MemoryDoc {
+    pub fn update(self: *MemoryStore, id: []const u8, title: ?[]const u8, content: ?[]const u8) !?MemoryDoc {
         const existing = try self.read(id) orelse return null;
 
         const new_title = if (title) |t| t else existing.title;
@@ -140,7 +138,7 @@ pub const MemoryStore = struct {
         return doc;
     }
 
-    pub fn delete(self: *Self, id: []const u8) !bool {
+    pub fn delete(self: *MemoryStore, id: []const u8) !bool {
         const path = try self.getDocPath(id);
         defer self.allocator.free(path);
 
@@ -152,7 +150,7 @@ pub const MemoryStore = struct {
         return true;
     }
 
-    pub fn list(self: *const Self) ![]MemoryDoc {
+    pub fn list(self: *const MemoryStore) ![]MemoryDoc {
         var docs: std.ArrayList(MemoryDoc) = .empty;
 
         const dir = std.fs.openDirAbsolute(self.base_path, .{}) catch |err| {
@@ -178,7 +176,7 @@ pub const MemoryStore = struct {
         return docs.items;
     }
 
-    fn saveDoc(self: *const Self, doc: *const MemoryDoc) !void {
+    fn saveDoc(self: *const MemoryStore, doc: *const MemoryDoc) !void {
         try std.fs.cwd().makePath(self.base_path);
 
         const path = try self.getDocPath(doc.id);

@@ -219,7 +219,7 @@ pub fn handleOpenApi(req: zap.Request) !void {
 const testing = std.testing;
 
 test "OpenApiSpec structure validation" {
-    const spec = OpenApiSpec{
+    const spec: OpenApiSpec = .{
         .openapi = "3.0.0",
         .info = .{
             .title = "Test API",
@@ -258,7 +258,7 @@ test "OpenApiSpec structure validation" {
 }
 
 test "Schema with enum values" {
-    const schema = Schema{
+    const schema: Schema = .{
         .type = "string",
         .properties = null,
         .items = null,
@@ -275,7 +275,7 @@ test "Schema with enum values" {
 }
 
 test "BoxSchema structure" {
-    const box_schema = BoxSchema{
+    const box_schema: BoxSchema = .{
         .type = "object",
         .properties = null,
         .@"enum" = &.{ "value1", "value2" },
@@ -287,7 +287,7 @@ test "BoxSchema structure" {
 }
 
 test "RequestBody with required content" {
-    const schema = Schema{
+    const schema: Schema = .{
         .type = "object",
         .properties = null,
         .items = null,
@@ -295,7 +295,7 @@ test "RequestBody with required content" {
         .@"enum" = null,
     };
 
-    const request_body = RequestBody{
+    const request_body: RequestBody = .{
         .required = true,
         .content = .{
             .@"application/json" = .{
@@ -309,7 +309,7 @@ test "RequestBody with required content" {
 }
 
 test "Response structure" {
-    const schema = Schema{
+    const schema: Schema = .{
         .type = "string",
         .properties = null,
         .items = null,
@@ -317,7 +317,7 @@ test "Response structure" {
         .@"enum" = null,
     };
 
-    const response = Response{
+    const response: Response = .{
         .description = "Test response",
         .content = .{
             .@"application/json" = .{
@@ -334,7 +334,7 @@ test "Response structure" {
 test "OpenAPI JSON serialization" {
     const allocator = testing.allocator;
 
-    const spec = OpenApiSpec{
+    const spec: OpenApiSpec = .{
         .openapi = "3.0.0",
         .info = .{
             .title = "Test API",
