@@ -85,6 +85,9 @@ fn handleRequestInternal(req: web.zap.Request) anyerror!void {
         if (std.mem.eql(u8, path, "/api/memory")) {
             return handleMemoryList(req);
         }
+        if (std.mem.eql(u8, path, "/api/system/ram")) {
+            return handleSystemRam(req);
+        }
         if (std.mem.startsWith(u8, path, "/api/memory/")) {
             const id = path[12..];
             if (req.method) |method| {
@@ -410,6 +413,74 @@ fn handleMemoryDelete(req: web.zap.Request, id: []const u8) anyerror!void {
             std.log.err("Failed to send error response: {any}", .{e});
         };
     }
+}
+
+// Get current process RAM usage
+fn handleSystemRam(req: web.zap.Request) anyerror!void {
+    const allocator = std.heap.c_allocator;
+
+    // Get current process info - use platform-specific approach
+    const pid = std.posix.getpid();
+
+    // For macOS, use `ps` command to get memory info
+    // For Linux, would read /proc/[pid]/status
+    const ps_cmd = try std.fmt.allocPrint(allocator, "ps -o rss,vsz -p {d}", .{pid});
+    defer allocator.free(ps_cmd);
+
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "sh", "-c", ps_cmd },
+    }) catch |err| {
+        std.log.err("Failed to run ps command: {any}", .{err});
+        req.sendJson("{\"error\":\"Failed to read process memory\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+        return;
+    };
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
+
+    if (result.stderr.len > 0) {
+        std.log.err("ps command stderr: {s}", .{result.stderr});
+    }
+
+    // Parse ps output
+    // Format: " RSS  VSZ\n1234 5678\n"
+    var lines = std.mem.tokenizeScalar(u8, result.stdout, '\n');
+    _ = lines.next(); // Skip header line
+
+    var rss_kb: u64 = 0;
+    var vsz_kb: u64 = 0;
+
+    if (lines.next()) |data_line| {
+        var parts = std.mem.tokenizeScalar(u8, data_line, ' ');
+        if (parts.next()) |rss_str| {
+            rss_kb = try std.fmt.parseInt(u64, std.mem.trim(u8, rss_str, " \t"), 10);
+        }
+        if (parts.next()) |vsz_str| {
+            vsz_kb = try std.fmt.parseInt(u64, std.mem.trim(u8, vsz_str, " \t"), 10);
+        }
+    }
+
+    // Convert KB to MB
+    const used_mb = rss_kb / 1024;
+    const total_mb = vsz_kb / 1024;
+    const percentage = if (total_mb > 0) @as(u32, @intCast((used_mb * 100) / total_mb)) else 0;
+
+    const response = try std.fmt.allocPrint(allocator, "{{" ++
+        "\"used\":{d}," ++
+        "\"total\":{d}," ++
+        "\"percentage\":{d}," ++
+        "\"timestamp\":{d}," ++
+        "\"process\":\"sati\"" ++
+        "}}", .{ used_mb, total_mb, percentage, std.time.timestamp() });
+    defer allocator.free(response);
+
+    req.sendJson(response) catch |e| {
+        std.log.err("Failed to send RAM response: {any}", .{e});
+    };
 }
 
 const openapi = @import("openapi.zig");

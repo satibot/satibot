@@ -1,5 +1,70 @@
 const std = @import("std");
 
+const VendoredFileHash = struct {
+    path: []const u8,
+    sha256_hex: []const u8,
+};
+
+const VENDORED_SQLITE_HASHES = [_]VendoredFileHash{
+    .{
+        .path = "libs/sqlite3/sqlite3.c",
+        .sha256_hex = "dc58f0b5b74e8416cc29b49163a00d6b8bf08a24dd4127652beaaae307bd1839",
+    },
+    .{
+        .path = "libs/sqlite3/sqlite3.h",
+        .sha256_hex = "05c48cbf0a0d7bda2b6d0145ac4f2d3a5e9e1cb98b5d4fa9d88ef620e1940046",
+    },
+    .{
+        .path = "libs/sqlite3/sqlite3ext.h",
+        .sha256_hex = "ea81fb7bd05882e0e0b92c4d60f677b205f7f1fbf085f218b12f0b5b3f0b9e48",
+    },
+};
+
+fn hashWithCanonicalLineEndings(bytes: []const u8) [std.crypto.hash.sha2.Sha256.digest_length]u8 {
+    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+    var chunk_start: usize = 0;
+    var i: usize = 0;
+    while (i < bytes.len) : (i += 1) {
+        if (bytes[i] == '\r' and i + 1 < bytes.len and bytes[i + 1] == '\n') {
+            if (i > chunk_start) hasher.update(bytes[chunk_start..i]);
+            hasher.update("\n");
+            i += 1;
+            chunk_start = i + 1;
+        }
+    }
+    if (chunk_start < bytes.len) hasher.update(bytes[chunk_start..]);
+
+    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+    hasher.final(&digest);
+    return digest;
+}
+
+fn verifyVendoredSqliteHashes(b: *std.Build) !void {
+    const max_vendor_file_size = 16 * 1024 * 1024;
+    for (VENDORED_SQLITE_HASHES) |entry| {
+        const file_path = b.pathFromRoot(entry.path);
+        defer b.allocator.free(file_path);
+
+        const bytes = std.fs.cwd().readFileAlloc(b.allocator, file_path, max_vendor_file_size) catch |err| {
+            std.log.err("failed to read {s}: {s}", .{ file_path, @errorName(err) });
+            return err;
+        };
+        defer b.allocator.free(bytes);
+
+        const digest = hashWithCanonicalLineEndings(bytes);
+
+        const actual_hex_buf = std.fmt.bytesToHex(digest, .lower);
+        const actual_hex = actual_hex_buf[0..];
+
+        if (!std.mem.eql(u8, actual_hex, entry.sha256_hex)) {
+            std.log.err("vendored sqlite checksum mismatch for {s}", .{entry.path});
+            std.log.err("expected: {s}", .{entry.sha256_hex});
+            std.log.err("actual:   {s}", .{actual_hex});
+            return error.VendoredSqliteChecksumMismatch;
+        }
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -18,6 +83,26 @@ pub fn build(b: *std.Build) void {
     build_options.addOption([]const u8, "version", version);
     build_options.addOption(bool, "include_whatsapp", false);
     const include_web = b.option(bool, "web", "Build with web module (zap)") orelse false;
+    const enable_sqlite = b.option(bool, "sqlite", "Enable SQLite support") orelse true;
+    const enable_memory_sqlite = b.option(bool, "memory-sqlite", "Enable SQLite memory backend") orelse true;
+
+    // Verify vendored sqlite hashes
+    if (enable_sqlite) {
+        verifyVendoredSqliteHashes(b) catch {};
+    }
+
+    const sqlite3 = if (enable_sqlite) blk: {
+        const sqlite3_dep = b.dependency("sqlite3", .{
+            .target = target,
+            .optimize = optimize,
+        });
+        const sqlite3_artifact = sqlite3_dep.artifact("sqlite3");
+        sqlite3_artifact.root_module.addCMacro("SQLITE_ENABLE_FTS5", "1");
+        break :blk sqlite3_artifact;
+    } else null;
+
+    build_options.addOption(bool, "enable_sqlite", enable_sqlite);
+    build_options.addOption(bool, "enable_memory_sqlite", enable_sqlite and enable_memory_sqlite);
 
     // External dependencies
     const tls_mod = b.dependency("tls", .{
@@ -123,6 +208,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("libs/memory/src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "build_opts", .module = build_options.createModule() },
+        },
     });
 
     const minimax_music = b.addModule("minimax-music", .{
@@ -255,6 +343,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(facebook_cli);
 
+    // Graph Memory CLI App
+    const graph_memory_cli = b.addExecutable(.{
+        .name = "s-graph-memory",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/graph-memory/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "memory", .module = memory },
+            },
+        }),
+    });
+    b.installArtifact(graph_memory_cli);
+
     // Sati CLI executable
     const sati_exe = b.addExecutable(.{
         .name = "sati",
@@ -297,6 +399,18 @@ pub fn build(b: *std.Build) void {
         }
         const run_web = b.step("run-web", "Run web API server");
         run_web.dependOn(&run_web_cmd.step);
+
+        // Link SQLite to web app if enabled
+        if (sqlite3) |lib| {
+            web_app.root_module.linkLibrary(lib);
+        }
+    } else {
+        // Link SQLite to executables that need it (non-web)
+        if (sqlite3) |lib| {
+            console_sync.root_module.linkLibrary(lib);
+            console_xev.root_module.linkLibrary(lib);
+            telegram.root_module.linkLibrary(lib);
+        }
     }
 
     // Run steps
@@ -342,6 +456,13 @@ pub fn build(b: *std.Build) void {
     const run_facebook = b.step("run-facebook", "Run facebook CLI app");
     run_facebook.dependOn(&run_facebook_cmd.step);
 
+    const run_graph_memory_cmd = b.addRunArtifact(graph_memory_cli);
+    if (b.args) |args| {
+        run_graph_memory_cmd.addArgs(args);
+    }
+    const run_graph_memory = b.step("run-graph-memory", "Run graph memory CLI app");
+    run_graph_memory.dependOn(&run_graph_memory_cmd.step);
+
     // Build steps for individual binaries
     const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
     build_console_sync.dependOn(&console_sync.step);
@@ -360,6 +481,9 @@ pub fn build(b: *std.Build) void {
 
     const build_facebook_binary = b.step("s-facebook", "Build s-facebook binary");
     build_facebook_binary.dependOn(&facebook_cli.step);
+
+    const build_graph_memory_binary = b.step("s-graph-memory", "Build s-graph-memory binary");
+    build_graph_memory_binary.dependOn(&graph_memory_cli.step);
 
     const build_sati = b.step("sati", "Build sati CLI binary");
     build_sati.dependOn(&sati_exe.step);
@@ -384,7 +508,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "providers", .module = providers },
             .{ .name = "utils", .module = utils },
         } },
-        .{ .name = "memory", .path = "libs/memory/src/root.zig", .imports = &.{} },
+        .{ .name = "memory", .path = "libs/memory/src/root.zig", .imports = &.{
+            .{ .name = "build_opts", .module = build_options.createModule() },
+        } },
     };
 
     for (lib_tests) |lib| {

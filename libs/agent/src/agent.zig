@@ -211,6 +211,26 @@ pub const Agent = struct {
             std.log.err("Failed to register web_fetch tool: {any}", .{err});
         };
 
+        // Register file writing tool
+        @constCast(&self.registry).register(.{
+            .name = "write_file",
+            .description = "Write content to a file. Creates new file or overwrites existing. Arguments: {\"path\": \"/path/to/file.txt\", \"content\": \"file content here\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"The file path to write to\"}, \"content\": {\"type\": \"string\", \"description\": \"The content to write\"}}, \"required\": [\"path\", \"content\"]}",
+            .execute = tools.writeFile,
+        }) catch |err| {
+            std.log.err("Failed to register write_file tool: {any}", .{err});
+        };
+
+        // Register file editing tool (precise find-and-replace like opencode)
+        @constCast(&self.registry).register(.{
+            .name = "edit_file",
+            .description = "Edit a file by replacing specific text with new content. Use for precise code modifications. Arguments: {\"path\": \"file.txt\", \"oldString\": \"text to find\", \"newString\": \"replacement text\", \"replaceAll\": false}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"The file path to edit\"}, \"oldString\": {\"type\": \"string\", \"description\": \"The exact text to find and replace\"}, \"newString\": {\"type\": \"string\", \"description\": \"The replacement text\"}, \"replaceAll\": {\"type\": \"boolean\", \"description\": \"Replace all occurrences (default: false)\"}}, \"required\": [\"path\", \"oldString\", \"newString\"]}",
+            .execute = tools.editFile,
+        }) catch |err| {
+            std.log.err("Failed to register edit_file tool: {any}", .{err});
+        };
+
         // Graph, RAG, cron, subagent, and run_command tools are commented out
         // @constCast(&self.registry).register(.{
         //     .name = "graph_upsert_node",

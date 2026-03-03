@@ -336,18 +336,100 @@ fn isSensitiveFile(path: []const u8) bool {
     return false;
 }
 
-// /// Write content to a file specified by path in JSON arguments.
-// /// Creates new file or overwrites existing.
-// pub fn write_file(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     const parsed = try std.json.parseFromSlice(struct { path: []const u8, content: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+/// Write content to a file specified by path in JSON arguments.
+/// Creates new file or overwrites existing.
+pub fn writeFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { path: []const u8, content: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     const file = try std.fs.cwd().createFile(parsed.value.path, .{});
-//     defer file.close();
+    if (isSensitiveFile(parsed.value.path)) {
+        return ctx.allocator.dupe(u8, "Error: Writing to sensitive files is not allowed for security reasons.");
+    }
 
-//     try file.writeAll(parsed.value.content);
-//     return try ctx.allocator.dupe(u8, "File written successfully");
-// }
+    const file = try std.fs.cwd().createFile(parsed.value.path, .{});
+    defer file.close();
+
+    try file.writeAll(parsed.value.content);
+    return ctx.allocator.dupe(u8, "File written successfully");
+}
+
+/// Edit a file by replacing a specific string with new content.
+/// This enables precise code modifications like opencode.
+/// Arguments: {"path": "file.txt", "oldString": "old text", "newString": "new text", "replaceAll": false}
+pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct {
+        path: []const u8,
+        oldString: []const u8,
+        newString: []const u8,
+        replaceAll: ?bool = false,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    if (isSensitiveFile(parsed.value.path)) {
+        return ctx.allocator.dupe(u8, "Error: Editing sensitive files is not allowed for security reasons.");
+    }
+
+    const file_path = parsed.value.path;
+    const old_string = parsed.value.oldString;
+    const new_string = parsed.value.newString;
+    const replace_all = parsed.value.replaceAll orelse false;
+
+    if (old_string.len == 0) {
+        return ctx.allocator.dupe(u8, "Error: oldString cannot be empty.");
+    }
+
+    const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+        return std.fmt.allocPrint(ctx.allocator, "Error opening file: {any}", .{err});
+    };
+    defer file.close();
+
+    const content = file.readToEndAlloc(ctx.allocator, 10485760) catch |err| {
+        return std.fmt.allocPrint(ctx.allocator, "Error reading file: {any}", .{err});
+    };
+    defer ctx.allocator.free(content);
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(ctx.allocator);
+
+    if (replace_all) {
+        var remaining = content;
+        var found = false;
+        while (std.mem.indexOf(u8, remaining, old_string)) |idx| {
+            found = true;
+            try result.appendSlice(ctx.allocator, remaining[0..idx]);
+            try result.appendSlice(ctx.allocator, new_string);
+            remaining = remaining[idx + old_string.len ..];
+        }
+        try result.appendSlice(ctx.allocator, remaining);
+
+        if (!found) {
+            return std.fmt.allocPrint(ctx.allocator, "Error: oldString not found in file: {s}", .{old_string});
+        }
+    } else {
+        const idx = std.mem.indexOf(u8, content, old_string) orelse {
+            return std.fmt.allocPrint(ctx.allocator, "Error: oldString not found in file: {s}", .{old_string});
+        };
+        try result.appendSlice(ctx.allocator, content[0..idx]);
+        try result.appendSlice(ctx.allocator, new_string);
+        try result.appendSlice(ctx.allocator, content[idx + old_string.len ..]);
+    }
+
+    const file_write = try std.fs.cwd().createFile(file_path, .{});
+    defer file_write.close();
+    try file_write.writeAll(result.items);
+
+    const replace_count = if (replace_all) blk: {
+        var count: usize = 0;
+        var search_start: usize = 0;
+        while (std.mem.indexOf(u8, result.items[search_start..], old_string)) |idx| {
+            count += 1;
+            search_start += idx + old_string.len;
+        }
+        break :blk count;
+    } else 1;
+
+    return std.fmt.allocPrint(ctx.allocator, "File edited successfully. Replaced {} occurrence(s).", .{replace_count});
+}
 
 // /// Search the web using Brave Search API.
 // /// Requires API key to be configured in settings.
