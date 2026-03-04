@@ -8,4 +8,5 @@ pub const graph = @import("graph.zig");
 pub const enable_sqlite = if (@hasField(build_options, "enable_sqlite")) build_options.enable_sqlite else false;
 pub const enable_memory_sqlite = if (@hasField(build_options, "enable_memory_sqlite")) build_options.enable_memory_sqlite else false;
 
-pub const sqlite = if (enable_memory_sqlite) @import("sqlite.zig") else null;
+const sqlite_import = @import("sqlite.zig");
+pub const sqlite = if (enable_memory_sqlite) sqlite_import else null;

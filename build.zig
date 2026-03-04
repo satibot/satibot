@@ -88,7 +88,9 @@ pub fn build(b: *std.Build) void {
 
     // Verify vendored sqlite hashes
     if (enable_sqlite) {
-        verifyVendoredSqliteHashes(b) catch {};
+        verifyVendoredSqliteHashes(b) catch |err| {
+            std.log.warn("Failed to verify SQLite hashes: {}", .{err});
+        };
     }
 
     const sqlite3 = if (enable_sqlite) blk: {
@@ -361,7 +363,7 @@ pub fn build(b: *std.Build) void {
     const web_cli = b.addExecutable(.{
         .name = "s-web-cli",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/web-cli/src/main.zig"),
+            .root_source_file = b.path("apps/web-cli/src/Main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

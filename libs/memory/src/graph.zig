@@ -12,6 +12,7 @@ pub const Entity = struct {
         allocator.free(self.id);
         allocator.free(self.label);
         self.properties.deinit();
+        self.* = undefined;
     }
 };
 
@@ -29,21 +30,22 @@ pub const Relationship = struct {
         allocator.free(self.target_id);
         allocator.free(self.relation_type);
         self.properties.deinit();
+        self.* = undefined;
     }
 };
 
 pub const GraphMemory = struct {
     allocator: std.mem.Allocator,
-    entities: std.StringHashMapUnmanaged(Entity),
-    relationships: std.ArrayListUnmanaged(Relationship),
-    entity_index: std.StringHashMapUnmanaged(std.ArrayListUnmanaged(usize)),
+    entities: std.StringHashMap(Entity),
+    relationships: std.ArrayList(Relationship),
+    entity_index: std.StringHashMap(std.ArrayList(usize)),
 
     pub fn init(allocator: std.mem.Allocator) GraphMemory {
         return .{
             .allocator = allocator,
-            .entities = .empty,
-            .relationships = .empty,
-            .entity_index = .empty,
+            .entities = std.StringHashMap(Entity).init(allocator),
+            .relationships = std.ArrayList(Relationship).initCapacity(allocator, 0) catch unreachable,
+            .entity_index = std.StringHashMap(std.ArrayList(usize)).init(allocator),
         };
     }
 
@@ -52,7 +54,7 @@ pub const GraphMemory = struct {
         while (entity_iter.next()) |entry| {
             entry.value_ptr.deinit(self.allocator);
         }
-        self.entities.deinit(self.allocator);
+        self.entities.deinit();
 
         for (self.relationships.items) |*rel| {
             rel.deinit(self.allocator);
@@ -63,7 +65,8 @@ pub const GraphMemory = struct {
         while (index_iter.next()) |entry| {
             entry.value_ptr.deinit(self.allocator);
         }
-        self.entity_index.deinit(self.allocator);
+        self.entity_index.deinit();
+        self.* = undefined;
     }
 
     fn generateId(allocator: std.mem.Allocator) ![]const u8 {
@@ -97,11 +100,11 @@ pub const GraphMemory = struct {
             .created_at = std.time.timestamp(),
         };
 
-        try self.entities.put(self.allocator, id_copy, entity);
+        try self.entities.put(id_copy, entity);
 
-        var index_list: std.ArrayListUnmanaged(usize) = .empty;
+        var index_list: std.ArrayList(usize) = .empty;
         try index_list.append(self.allocator, self.relationships.items.len);
-        try self.entity_index.put(self.allocator, id_copy, index_list);
+        try self.entity_index.put(id_copy, index_list);
 
         return entity;
     }
@@ -167,7 +170,9 @@ pub const GraphMemory = struct {
         try self.relationships.append(self.allocator, relationship);
 
         if (self.entity_index.getPtr(source_id)) |list| {
-            list.append(self.allocator, self.relationships.items.len - 1) catch {};
+            list.append(self.allocator, self.relationships.items.len - 1) catch |err| {
+                log.warn("Failed to append to entity index: {}", .{err});
+            };
         }
 
         return relationship;
@@ -178,7 +183,9 @@ pub const GraphMemory = struct {
 
         for (self.relationships.items) |rel| {
             if (std.mem.eql(u8, rel.source_id, source_id)) {
-                results.append(self.allocator, &rel) catch {};
+                results.append(self.allocator, &rel) catch |err| {
+                    log.warn("Failed to append relationship: {}", .{err});
+                };
             }
         }
 
@@ -190,7 +197,9 @@ pub const GraphMemory = struct {
 
         for (self.relationships.items) |rel| {
             if (std.mem.eql(u8, rel.target_id, target_id)) {
-                results.append(self.allocator, &rel) catch {};
+                results.append(self.allocator, &rel) catch |err| {
+                    log.warn("Failed to append relationship: {}", .{err});
+                };
             }
         }
 
@@ -207,7 +216,9 @@ pub const GraphMemory = struct {
 
         var iter = self.entities.valueIterator();
         while (iter.next()) |entity| {
-            results.append(self.allocator, entity.*) catch {};
+            results.append(self.allocator, entity.*) catch |err| {
+                log.warn("Failed to append entity: {}", .{err});
+            };
         }
 
         return results.toOwnedSlice(self.allocator) catch &[_]Entity{};
@@ -216,7 +227,7 @@ pub const GraphMemory = struct {
     pub fn deleteEntity(self: *GraphMemory, id: []const u8) !bool {
         const entity = self.entities.get(id) orelse return false;
 
-        var new_rels: std.ArrayListUnmanaged(Relationship) = .empty;
+        var new_rels: std.ArrayList(Relationship) = .empty;
         for (self.relationships.items) |rel| {
             if (std.mem.eql(u8, rel.source_id, id) or std.mem.eql(u8, rel.target_id, id)) {
                 rel.deinit(self.allocator);

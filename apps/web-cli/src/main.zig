@@ -2,7 +2,7 @@
 const std = @import("std");
 const core = @import("core");
 
-const WebCli = @This();
+const Main = @This();
 
 allocator: std.mem.Allocator,
 config: core.config.Config,
@@ -23,15 +23,15 @@ pub fn main() !void {
     defer config_parsed.deinit();
     const config = config_parsed.value;
 
-    var web_cli = try WebCli.init(allocator, config);
+    var web_cli = try Main.init(allocator, config);
     defer web_cli.deinit();
 
     try web_cli.run(args[1..]);
 }
 
-pub fn init(allocator: std.mem.Allocator, config: core.config.Config) !WebCli {
+pub fn init(allocator: std.mem.Allocator, config: core.config.Config) !Main {
     const pinchtab_path = std.process.getEnvVarOwned(allocator, "PINCHTAB_PATH") catch {
-        const self: WebCli = .{
+        const self: Main = .{
             .allocator = allocator,
             .config = config,
             .pinchtab_path = "pinchtab",
@@ -39,7 +39,7 @@ pub fn init(allocator: std.mem.Allocator, config: core.config.Config) !WebCli {
         return self;
     };
 
-    const self: WebCli = .{
+    const self: Main = .{
         .allocator = allocator,
         .config = config,
         .pinchtab_path = if (pinchtab_path.len == 0) "pinchtab" else pinchtab_path,
@@ -47,13 +47,14 @@ pub fn init(allocator: std.mem.Allocator, config: core.config.Config) !WebCli {
     return self;
 }
 
-pub fn deinit(self: *WebCli) void {
+pub fn deinit(self: *Main) void {
     if (self.pinchtab_path.len > 0 and !std.mem.eql(u8, self.pinchtab_path, "pinchtab")) {
         self.allocator.free(self.pinchtab_path);
     }
+    self.* = undefined;
 }
 
-pub fn run(self: *WebCli, args: []const []const u8) !void {
+pub fn run(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         try printUsage();
         return;
@@ -142,7 +143,7 @@ fn printUsage() !void {
     std.debug.print("{s}\n", .{help_text});
 }
 
-fn launchInstance(self: *WebCli, args: []const []const u8) !void {
+fn launchInstance(self: *Main, args: []const []const u8) !void {
     var cmd_args = try std.ArrayList([]const u8).initCapacity(self.allocator, 8);
     defer cmd_args.deinit(self.allocator);
 
@@ -173,12 +174,12 @@ fn launchInstance(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn listInstances(self: *WebCli) !void {
+fn listInstances(self: *Main) !void {
     const cmd_args = [_][]const u8{ self.pinchtab_path, "instances" };
     try self.executeCommand(&cmd_args);
 }
 
-fn navigate(self: *WebCli, args: []const []const u8) !void {
+fn navigate(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         std.debug.print("Usage: sati web nav <url> [--instance <id>]\n", .{});
         return;
@@ -218,7 +219,7 @@ fn navigate(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn snapshot(self: *WebCli, args: []const []const u8) !void {
+fn snapshot(self: *Main, args: []const []const u8) !void {
     var cmd_args = try std.ArrayList([]const u8).initCapacity(self.allocator, 8);
     defer cmd_args.deinit(self.allocator);
 
@@ -249,7 +250,7 @@ fn snapshot(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn click(self: *WebCli, args: []const []const u8) !void {
+fn click(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         std.debug.print("Usage: sati web click <element_ref> [--instance <id>]\n", .{});
         return;
@@ -282,7 +283,7 @@ fn click(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn typeText(self: *WebCli, args: []const []const u8) !void {
+fn typeText(self: *Main, args: []const []const u8) !void {
     if (args.len < 2) {
         std.debug.print("Usage: sati web type <element_ref> <text> [--instance <id>]\n", .{});
         return;
@@ -317,7 +318,7 @@ fn typeText(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn fill(self: *WebCli, args: []const []const u8) !void {
+fn fill(self: *Main, args: []const []const u8) !void {
     if (args.len < 2) {
         std.debug.print("Usage: sati web fill <element_ref> <value> [--instance <id>]\n", .{});
         return;
@@ -352,7 +353,7 @@ fn fill(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn extractText(self: *WebCli, args: []const []const u8) !void {
+fn extractText(self: *Main, args: []const []const u8) !void {
     var cmd_args = try std.ArrayList([]const u8).initCapacity(self.allocator, 8);
     defer cmd_args.deinit(self.allocator);
 
@@ -379,7 +380,7 @@ fn extractText(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn screenshot(self: *WebCli, args: []const []const u8) !void {
+fn screenshot(self: *Main, args: []const []const u8) !void {
     var cmd_args = try std.ArrayList([]const u8).initCapacity(self.allocator, 8);
     defer cmd_args.deinit(self.allocator);
 
@@ -416,7 +417,7 @@ fn screenshot(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn evaluate(self: *WebCli, args: []const []const u8) !void {
+fn evaluate(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         std.debug.print("Usage: sati web eval <javascript> [--instance <id>]\n", .{});
         return;
@@ -449,7 +450,7 @@ fn evaluate(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(cmd_args.items);
 }
 
-fn stopInstance(self: *WebCli, args: []const []const u8) !void {
+fn stopInstance(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         std.debug.print("Usage: sati web stop <instance_id>\n", .{});
         return;
@@ -460,7 +461,7 @@ fn stopInstance(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommand(&cmd_args);
 }
 
-fn runWorkflow(self: *WebCli, args: []const []const u8) !void {
+fn runWorkflow(self: *Main, args: []const []const u8) !void {
     if (args.len == 0) {
         std.debug.print("Usage: sati web workflow <workflow_file> [--instance <id>]\n", .{});
         return;
@@ -495,7 +496,7 @@ fn runWorkflow(self: *WebCli, args: []const []const u8) !void {
     try self.executeCommandWithStdin(cmd_args.items, workflow_content);
 }
 
-fn executeCommand(self: *WebCli, args: []const []const u8) !void {
+fn executeCommand(self: *Main, args: []const []const u8) !void {
     var child = std.process.Child.init(args, self.allocator);
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
@@ -524,7 +525,7 @@ fn executeCommand(self: *WebCli, args: []const []const u8) !void {
     }
 }
 
-fn executeCommandWithStdin(self: *WebCli, args: []const []const u8, stdin_content: []const u8) !void {
+fn executeCommandWithStdin(self: *Main, args: []const []const u8, stdin_content: []const u8) !void {
     var child = std.process.Child.init(args, self.allocator);
     child.stdin_behavior = .Pipe;
     child.stdout_behavior = .Inherit;

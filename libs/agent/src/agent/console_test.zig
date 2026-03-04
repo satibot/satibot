@@ -28,14 +28,14 @@ fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
     };
     defer file.close();
 
-    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+    var lines: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (lines.items) |l| allocator.free(l);
         lines.deinit(allocator);
     }
 
     var read_buf: [8192]u8 = undefined;
-    var carry: std.ArrayListUnmanaged(u8) = .empty;
+    var carry: std.ArrayList(u8) = .empty;
     defer carry.deinit(allocator);
 
     while (true) {
@@ -78,7 +78,7 @@ fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
     if (lines.items.len > MAX_HISTORY_LINES) {
         const excess = lines.items.len - MAX_HISTORY_LINES;
         for (lines.items[0..excess]) |l| allocator.free(l);
-        std.mem.copyForwards([]const u8, lines.items[0..MAX_HISTORY_LINES], lines.items[excess..]);
+        @memcpy(lines.items[0..MAX_HISTORY_LINES], lines.items[excess..]);
         lines.shrinkRetainingCapacity(MAX_HISTORY_LINES);
     }
 
