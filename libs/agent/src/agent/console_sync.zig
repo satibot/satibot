@@ -21,6 +21,7 @@
 const std = @import("std");
 pub const Config = @import("core").config.Config;
 const Agent = @import("../agent.zig").Agent;
+const build_opts = @import("build_opts");
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
 var shutdown_message_printed = std.atomic.Value(bool).init(false);
@@ -280,10 +281,14 @@ pub const ConsoleSyncBot = struct {
 
     pub fn run(self: *ConsoleSyncBot) !void {
         const model = self.config.agents.defaults.model;
-        std.debug.print("🎮 SatiBot Console\n", .{});
-        std.debug.print("Model: {s}\n", .{model});
-        std.debug.print("Type your message (Ctrl+D or 'exit' to quit):\n\n", .{});
-        std.debug.print("Type your message (Ctrl+D or 'exit' to quit):\n\n", .{});
+        std.debug.print(
+            \\🎮 SatiBot Console
+            \\Model: {s}
+            \\Build: {s}
+            \\Type your message (Ctrl+D or 'exit' to quit):
+            \\
+            \\
+        , .{ model, build_opts.build_time_str });
 
         // Load history
         var repl_history: std.ArrayList([]const u8) = .empty;
