@@ -43,14 +43,14 @@ fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
     };
     defer file.close();
 
-    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+    var lines: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (lines.items) |l| allocator.free(l);
         lines.deinit(allocator);
     }
 
     var read_buf: [8192]u8 = undefined;
-    var carry: std.ArrayListUnmanaged(u8) = .empty;
+    var carry: std.ArrayList(u8) = .empty;
     defer carry.deinit(allocator);
 
     while (true) {
@@ -93,7 +93,7 @@ fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
     if (lines.items.len > MAX_HISTORY_LINES) {
         const excess = lines.items.len - MAX_HISTORY_LINES;
         for (lines.items[0..excess]) |l| allocator.free(l);
-        std.mem.copyForwards([]const u8, lines.items[0..MAX_HISTORY_LINES], lines.items[excess..]);
+        @memmove(lines.items[0..MAX_HISTORY_LINES], lines.items[excess..]);
         lines.shrinkRetainingCapacity(MAX_HISTORY_LINES);
     }
 
@@ -261,7 +261,11 @@ pub const ConsoleSyncBot = struct {
             }
             return err;
         };
-        if (n == 0) return;
+        if (n == 0) {
+            // EOF received (Ctrl+D), trigger shutdown
+            shutdown_requested.store(true, .seq_cst);
+            return;
+        }
 
         const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
         if (trimmed.len == 0) return;
@@ -282,7 +286,7 @@ pub const ConsoleSyncBot = struct {
         std.debug.print("Type your message (Ctrl+D or 'exit' to quit):\n\n", .{});
 
         // Load history
-        var repl_history: std.ArrayListUnmanaged([]const u8) = .empty;
+        var repl_history: std.ArrayList([]const u8) = .empty;
         defer {
             const hp = getHistoryPath(self.allocator) catch null;
             if (hp) |path| {

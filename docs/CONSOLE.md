@@ -36,7 +36,7 @@ The console bot (`src/agent/console.zig`) provides a command-line interface for 
 | **Input Method** | Console/stdin reading |
 | **Session Management** | Mock session IDs (`mock_tg_99999_{counter}`) |
 | **Commands** | `/new`, `/help`, `exit`, `quit` |
-| **Shutdown** | SIGINT (Ctrl+C) or `exit` command |
+| **Shutdown** | Ctrl+D (EOF) or `exit` command |
 
 ## How It Works
 
@@ -198,7 +198,7 @@ User > exit
 - **Input errors**: Logged, continue to next iteration
 - **Agent errors**: Printed to console, non-fatal
 - **Interrupted errors**: Check shutdown flag, exit if set
-- **Signal handling**: Graceful cleanup on Ctrl+C
+- **Signal handling**: Graceful cleanup on Ctrl+D (EOF) or Ctrl+C
 
 ## Session Management
 

@@ -357,6 +357,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(graph_memory_cli);
 
+    // Web CLI App
+    const web_cli = b.addExecutable(.{
+        .name = "s-web-cli",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/web-cli/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "agent", .module = agent },
+                .{ .name = "core", .module = core },
+            },
+        }),
+    });
+    b.installArtifact(web_cli);
+
     // Sati CLI executable
     const sati_exe = b.addExecutable(.{
         .name = "sati",
@@ -463,6 +478,13 @@ pub fn build(b: *std.Build) void {
     const run_graph_memory = b.step("run-graph-memory", "Run graph memory CLI app");
     run_graph_memory.dependOn(&run_graph_memory_cmd.step);
 
+    const run_web_cli_cmd = b.addRunArtifact(web_cli);
+    if (b.args) |args| {
+        run_web_cli_cmd.addArgs(args);
+    }
+    const run_web_cli = b.step("run-web-cli", "Run web CLI app");
+    run_web_cli.dependOn(&run_web_cli_cmd.step);
+
     // Build steps for individual binaries
     const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
     build_console_sync.dependOn(&console_sync.step);
@@ -484,6 +506,9 @@ pub fn build(b: *std.Build) void {
 
     const build_graph_memory_binary = b.step("s-graph-memory", "Build s-graph-memory binary");
     build_graph_memory_binary.dependOn(&graph_memory_cli.step);
+
+    const build_web_cli_binary = b.step("s-web-cli", "Build s-web-cli binary");
+    build_web_cli_binary.dependOn(&web_cli.step);
 
     const build_sati = b.step("sati", "Build sati CLI binary");
     build_sati.dependOn(&sati_exe.step);

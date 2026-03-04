@@ -367,3 +367,11 @@ test "console_sync.loadHistory with long lines" {
     try testing.expectEqualStrings(std.mem.trim(u8, " \n\r\t", long_line.items), loaded[0]);
     try testing.expectEqualStrings("short line", loaded[1]);
 }
+
+test "console_sync.isQuitCommand distinguishes from EOF" {
+    // EOF is signaled by read() returning 0, not by any command
+    // These should NOT be treated as quit commands
+    try testing.expect(!isQuitCommand(""));
+    try testing.expect(!isQuitCommand("\x04")); // Ctrl+D (EOF character)
+    try testing.expect(!isQuitCommand("\x00")); // Null character
+}

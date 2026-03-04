@@ -43,10 +43,10 @@ pub fn main() !void {
         try printStatus(config);
     } else if (std.mem.eql(u8, command, "test-llm")) {
         try testLlm(config);
+    } else if (std.mem.eql(u8, command, "web")) {
+        try runWeb(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "upgrade")) {
         try upgrade();
-    } else if (std.mem.eql(u8, command, "web")) {
-        std.debug.print("Web API not yet implemented in this build\n", .{});
     } else {
         std.debug.print("Unknown command: {s}\n", .{command});
         try printUsage();
@@ -73,6 +73,7 @@ fn printUsage() !void {
         \\  vector-db     Manage vector database for RAG functionality
         \\  status        Display system status and configuration
         \\  upgrade       Self-upgrade (git pull & rebuild)
+        \\  web           Browser automation using PinchTab CLI
         \\  test-llm      Test LLM provider connectivity
         \\  in            Quick start with auto-configuration
         \\
@@ -255,4 +256,35 @@ fn testLlm(config: core.config.Config) !void {
 
 fn upgrade() !void {
     std.debug.print("Self-upgrade not yet implemented\n", .{});
+}
+
+fn runWeb(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    // Run the web-cli executable with the given arguments
+    var cmd_args = try std.ArrayList([]const u8).initCapacity(allocator, args.len + 2);
+    defer cmd_args.deinit(allocator);
+
+    // Use the full path to the s-web-cli executable
+    try cmd_args.append(allocator, "/Users/a0/w/chatbot/satibot/.zig-cache/o/d2a65cd5d2d90b8cd4bc515b4c1bcdd1/s-web-cli");
+    for (args) |arg| {
+        try cmd_args.append(allocator, arg);
+    }
+
+    var child = std.process.Child.init(cmd_args.items, allocator);
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+
+    const term = child.spawnAndWait() catch |err| {
+        std.debug.print("Failed to run web CLI: {}\n", .{err});
+        return;
+    };
+
+    switch (term) {
+        .Exited => |code| {
+            if (code != 0) {
+                std.debug.print("Web CLI exited with code: {}\n", .{code});
+            }
+        },
+        else => {},
+    }
 }

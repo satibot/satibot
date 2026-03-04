@@ -338,3 +338,11 @@ test "console.freeHistory" {
     // If we get here without crashing, the test passes
     try testing.expect(true);
 }
+
+test "console.isQuitCommand distinguishes from EOF" {
+    // EOF is signaled by read() returning 0, not by any command
+    // These should NOT be treated as quit commands
+    try testing.expect(!isQuitCommand(""));
+    try testing.expect(!isQuitCommand("\x04")); // Ctrl+D (EOF character)
+    try testing.expect(!isQuitCommand("\x00")); // Null character
+}
