@@ -1,6 +1,17 @@
+
 # Skill: SatiBot App Logic Flow Diagrams
 
 This skill provides Mermaid diagrams illustrating the application logic and data flow in SatiBot.
+
+## Usage
+
+Use this skill to understand:
+
+- High-level architecture and component relationships
+- Request flows through different applications
+- Agent execution patterns
+- Data flow between services
+- Tool execution sequences
 
 ## High-Level Architecture
 
@@ -153,10 +164,8 @@ flowchart TB
     LoadHistory --> SystemPrompt[Ensure System Prompt]
     SystemPrompt --> AddUser[Add User Message]
     AddUser --> Loop{Loop (max 10)}
-    
     Loop -->|Iteration| LLM[Call LLM Provider]
     LLM --> Response{Response Type}
-    
     Response -->|Text| Stream[Stream to User<br/>via chunk callback]
     Response -->|Tool Calls| Execute[Execute Tools]
     Execute --> Results[Get Results]
@@ -164,12 +173,10 @@ flowchart TB
     CheckLoop -->|Yes| Warning[Inject Loop Warning<br/>to prevent infinite loops]
     CheckLoop -->|No| LLM
     Warning --> LLM
-    
     Stream --> Save[Save to Context]
     Save --> CheckMore{More iterations?}
     CheckMore -->|Yes| Loop
     CheckMore -->|No| Return[Return Response]
-    
     Return --> GetMsgs[ctx.getMessages]
     GetMsgs --> LastMsg[Last Assistant Message]
 ```
@@ -182,12 +189,10 @@ flowchart LR
     Args --> Config[Load Config]
     Config --> Run[console_sync.run]
     Run --> Loop{Chat Loop}
-    
     Loop --> Input[Read Input]
     Input --> Empty{Empty?}
     Empty -->|Yes| Exit
     Empty -->|No| Agent[Create Agent]
-    
     Agent --> RunBot[bot.run(input)]
     RunBot --> Output[Print Response]
     Output --> Loop
@@ -202,10 +207,8 @@ flowchart TB
     Embed --> Local{Embedding Model}
     Local -->|local| LocalEmbed[Local Embedder]
     Local -->|remote| API[OpenRouter API]
-    
     LocalEmbed --> VectorDB[Vector DB Search]
     API --> VectorDB
-    
     VectorDB --> Results[Top K Results]
     Results --> Context[Build Context]
     Context --> Prompt[Add to Prompt]
@@ -224,12 +227,10 @@ flowchart TB
         LoadSession --> Limit[Limit by maxChatHistory]
         Limit --> Add[Add to Context]
     end
-    
     subgraph Save["Save Session"]
         Response[Get Response] --> AddMsg[Add to Context]
         AddMsg --> SaveSession[session.save]
     end
-    
     Add --> Response
     SaveSession --> Cleanup
 ```
@@ -243,21 +244,18 @@ flowchart LR
     Registry --> Find{Find Tool}
     Find -->|Found| Execute[Execute Tool]
     Find -->|Not Found| Error[Error]
-    
     Execute --> web_fetch[web_fetch]
     Execute --> read_file[read_file]
     Execute --> write_file[write_file]
     Execute --> edit_file[edit_file]
     Execute --> vector_upsert[vector_upsert]
     Execute --> vector_search[vector_search]
-    
     web_fetch --> Result1[Fetched Content]
     read_file --> Result2[File Content]
     write_file --> Result3[Write Success]
     edit_file --> Result4[Edit Success]
     vector_upsert --> Result5[Upsert Success]
     vector_search --> Result6[Search Results]
-    
     Result1 --> Return[Return to LLM]
     Result2 --> Return
     Result3 --> Return
@@ -271,18 +269,15 @@ flowchart LR
 ```mermaid
 flowchart TB
     Request[HTTP Request] --> Route{Route Path}
-    
     Route -->|GET /| Status[Return OK Status]
     Route -->|GET /openapi.json| OpenAPI[Return OpenAPI Spec]
     Route -->|POST /api/chat| Chat[Handle Chat]
     Route -->|OPTIONS| CORS[CORS Preflight]
     Route -->|Other| NotFound[404 Not Found]
-    
     Chat --> Parse[Parse JSON]
     Parse --> Validate{Validate Messages}
     Validate -->|Invalid| Error[Return Error]
     Validate -->|Valid| Agent[Create Agent]
-    
     Agent --> Run[Run Agent]
     Run --> Response[Format Response]
     Response --> JSON[Return JSON]
@@ -312,7 +307,6 @@ flowchart LR
     Env[Environment Variables] --> Load[config.load]
     Load --> Parse[Parse & Validate]
     Parse --> Config{Config Struct}
-    
     Config --> APIKeys[API Keys<br/>- OPENROUTER_API_KEY<br/>- TELEGRAM_BOT_TOKEN]
     Config --> Agents[Agent Settings<br/>- model<br/>- embeddingModel<br/>- maxChatHistory<br/>- disableRag]
     Config --> Tools[Tool Config<br/>- web.search.apiKey<br/>- server.allowOrigin]
