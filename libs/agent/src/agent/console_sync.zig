@@ -25,6 +25,102 @@ const Agent = @import("../agent.zig").Agent;
 var shutdown_requested = std.atomic.Value(bool).init(false);
 var shutdown_message_printed = std.atomic.Value(bool).init(false);
 
+const MAX_HISTORY_LINES: usize = 500;
+
+fn isQuitCommand(line: []const u8) bool {
+    const trimmed = std.mem.trim(u8, line, " \t\r\n");
+    return std.mem.eql(u8, trimmed, "exit") or
+        std.mem.eql(u8, trimmed, "quit") or
+        std.mem.eql(u8, trimmed, ":q") or
+        std.mem.eql(u8, trimmed, "/quit") or
+        std.mem.eql(u8, trimmed, "/exit");
+}
+
+fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
+        error.FileNotFound => return try allocator.alloc([]const u8, 0),
+        else => return err,
+    };
+    defer file.close();
+
+    var lines: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer {
+        for (lines.items) |l| allocator.free(l);
+        lines.deinit(allocator);
+    }
+
+    var read_buf: [8192]u8 = undefined;
+    var carry: std.ArrayListUnmanaged(u8) = .empty;
+    defer carry.deinit(allocator);
+
+    while (true) {
+        const n = file.read(&read_buf) catch break;
+        if (n == 0) break;
+        const data = read_buf[0..n];
+
+        var start: usize = 0;
+        for (data, 0..) |byte, i| {
+            if (byte == '\n') {
+                const segment = data[start..i];
+                if (carry.items.len > 0) {
+                    try carry.appendSlice(allocator, segment);
+                    const trimmed = std.mem.trim(u8, carry.items, " \t\r");
+                    if (trimmed.len > 0) {
+                        try lines.append(allocator, try allocator.dupe(u8, trimmed));
+                    }
+                    carry.clearRetainingCapacity();
+                } else {
+                    const trimmed = std.mem.trim(u8, segment, " \t\r");
+                    if (trimmed.len > 0) {
+                        try lines.append(allocator, try allocator.dupe(u8, trimmed));
+                    }
+                }
+                start = i + 1;
+            }
+        }
+        if (start < data.len) {
+            try carry.appendSlice(allocator, data[start..]);
+        }
+    }
+
+    if (carry.items.len > 0) {
+        const trimmed = std.mem.trim(u8, carry.items, " \t\r");
+        if (trimmed.len > 0) {
+            try lines.append(allocator, try allocator.dupe(u8, trimmed));
+        }
+    }
+
+    if (lines.items.len > MAX_HISTORY_LINES) {
+        const excess = lines.items.len - MAX_HISTORY_LINES;
+        for (lines.items[0..excess]) |l| allocator.free(l);
+        std.mem.copyForwards([]const u8, lines.items[0..MAX_HISTORY_LINES], lines.items[excess..]);
+        lines.shrinkRetainingCapacity(MAX_HISTORY_LINES);
+    }
+
+    return lines.toOwnedSlice(allocator);
+}
+
+fn freeHistory(allocator: std.mem.Allocator, history: [][]const u8) void {
+    for (history) |entry| allocator.free(entry);
+    allocator.free(history);
+}
+
+fn saveHistory(history: []const []const u8, path: []const u8) !void {
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    const start = if (history.len > MAX_HISTORY_LINES) history.len - MAX_HISTORY_LINES else 0;
+    for (history[start..]) |entry| {
+        file.writeAll(entry) catch return;
+        file.writeAll("\n") catch return;
+    }
+}
+
+fn getHistoryPath(allocator: std.mem.Allocator) ![]const u8 {
+    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    return std.fs.path.join(allocator, &.{ home, ".satibot_history" });
+}
+
 // Spinner animation for loading state
 const SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 const SPINNER_DELAY_MS = 100; // 100ms between frames
@@ -170,7 +266,7 @@ pub const ConsoleSyncBot = struct {
         const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
         if (trimmed.len == 0) return;
 
-        if (std.mem.eql(u8, trimmed, "exit") or std.mem.eql(u8, trimmed, "quit")) {
+        if (isQuitCommand(trimmed)) {
             shutdown_requested.store(true, .seq_cst);
             return;
         }
@@ -179,7 +275,40 @@ pub const ConsoleSyncBot = struct {
     }
 
     pub fn run(self: *ConsoleSyncBot) !void {
-        std.debug.print("🎮 Console Sync Bot started. Type 'exit' or 'quit' to quit.\n", .{});
+        const model = self.config.agents.defaults.model;
+        std.debug.print("🎮 SatiBot Console\n", .{});
+        std.debug.print("Model: {s}\n", .{model});
+        std.debug.print("Type your message (Ctrl+D or 'exit' to quit):\n\n", .{});
+        std.debug.print("Type your message (Ctrl+D or 'exit' to quit):\n\n", .{});
+
+        // Load history
+        var repl_history: std.ArrayListUnmanaged([]const u8) = .empty;
+        defer {
+            const hp = getHistoryPath(self.allocator) catch null;
+            if (hp) |path| {
+                saveHistory(repl_history.items, path) catch {};
+                self.allocator.free(path);
+            }
+            for (repl_history.items) |entry| self.allocator.free(entry);
+            repl_history.deinit(self.allocator);
+        }
+
+        const hp = getHistoryPath(self.allocator) catch null;
+        defer if (hp) |path| self.allocator.free(path);
+        if (hp) |path| {
+            const loaded = loadHistory(self.allocator, path) catch null;
+            if (loaded) |entries| {
+                defer self.allocator.free(entries);
+                for (entries) |entry| {
+                    repl_history.append(self.allocator, entry) catch {
+                        self.allocator.free(entry);
+                    };
+                }
+            }
+            if (repl_history.items.len > 0) {
+                std.debug.print("[History: {d} entries loaded]\n", .{repl_history.items.len});
+            }
+        }
 
         const sa: std.posix.Sigaction = .{
             .handler = .{ .handler = signalHandler },

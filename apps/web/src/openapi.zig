@@ -200,6 +200,69 @@ pub fn handleOpenApi(req: zap.Request) !void {
                     },
                 },
             },
+            .{
+                .path = "/api/config",
+                .method = "get",
+                .operation = .{
+                    .summary = "Get configuration",
+                    .description = "Get current bot configuration (API keys are removed from response)",
+                    .requestBody = null,
+                    .responses = .{
+                        .@"200" = .{
+                            .description = "Configuration object",
+                            .content = .{
+                                .@"application/json" = .{
+                                    .schema = &.{
+                                        .type = "object",
+                                        .properties = .{
+                                            .config = .{ .type = "object" },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        .@"400" = .{ .description = "" },
+                        .@"500" = .{ .description = "" },
+                    },
+                },
+            },
+            .{
+                .path = "/api/config",
+                .method = "put",
+                .operation = .{
+                    .summary = "Update configuration",
+                    .description = "Update bot configuration. Requires full config object including API keys.",
+                    .requestBody = .{
+                        .required = true,
+                        .content = .{
+                            .@"application/json" = .{
+                                .schema = &.{
+                                    .type = "object",
+                                },
+                            },
+                        },
+                    },
+                    .responses = .{
+                        .@"200" = .{
+                            .description = "Success",
+                            .content = .{
+                                .@"application/json" = .{
+                                    .schema = &.{
+                                        .type = "object",
+                                        .properties = .{
+                                            .success = .{ .type = "boolean" },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        .@"400" = .{
+                            .description = "Bad request - invalid JSON",
+                        },
+                        .@"500" = .{ .description = "" },
+                    },
+                },
+            },
         },
     };
 

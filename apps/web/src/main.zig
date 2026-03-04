@@ -88,6 +88,15 @@ fn handleRequestInternal(req: web.zap.Request) anyerror!void {
         if (std.mem.eql(u8, path, "/api/system/ram")) {
             return handleSystemRam(req);
         }
+        if (std.mem.eql(u8, path, "/api/config")) {
+            if (req.method) |method| {
+                if (std.mem.eql(u8, method, "GET")) {
+                    return handleConfigGet(req);
+                } else if (std.mem.eql(u8, method, "PUT")) {
+                    return handleConfigUpdate(req);
+                }
+            }
+        }
         if (std.mem.startsWith(u8, path, "/api/memory/")) {
             const id = path[12..];
             if (req.method) |method| {
@@ -482,5 +491,154 @@ fn handleSystemRam(req: web.zap.Request) anyerror!void {
         std.log.err("Failed to send RAM response: {any}", .{e});
     };
 }
+
+fn handleConfigGet(req: web.zap.Request) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const parsed_config = core.config.load(allocator) catch |err| {
+        std.log.err("Failed to load config: {any}", .{err});
+        req.sendJson("{\"error\":\"Failed to load config\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+        return;
+    };
+    defer parsed_config.deinit();
+
+    const config = parsed_config.value;
+
+    const sanitized: SanitizedConfig = .{
+        .agents = .{
+            .defaults = config.agents.defaults,
+        },
+        .providers = .{
+            .openrouter = if (config.providers.openrouter) |_| .{} else null,
+            .anthropic = if (config.providers.anthropic) |_| .{} else null,
+            .openai = if (config.providers.openai) |_| .{} else null,
+            .groq = if (config.providers.groq) |_| .{} else null,
+            .minimax = if (config.providers.minimax) |_| .{} else null,
+        },
+        .tools = config.tools,
+    };
+
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try std.json.Stringify.value(sanitized, .{}, &aw.writer);
+    const response_json = try std.fmt.allocPrint(allocator, "{{\"config\":{s}}}", .{aw.written()});
+    req.sendJson(response_json) catch |e| {
+        std.log.err("Failed to send config response: {any}", .{e});
+    };
+}
+
+fn handleConfigUpdate(req: web.zap.Request) anyerror!void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    if (req.body) |body| {
+        const parsed = std.json.parseFromSlice(core.config.Config, allocator, body, .{ .ignore_unknown_fields = true }) catch |err| {
+            std.log.err("Failed to parse config update: {any}", .{err});
+            req.sendJson("{\"error\":\"Invalid JSON\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        const existing_config = core.config.load(allocator) catch |err| {
+            std.log.err("Failed to load existing config: {any}", .{err});
+            core.config.save(allocator, parsed.value) catch |e| {
+                std.log.err("Failed to save config: {any}", .{e});
+                req.sendJson("{\"error\":\"Failed to save config\"}") catch |fe| {
+                    std.log.err("Failed to send error response: {any}", .{fe});
+                };
+            };
+            return;
+        };
+        defer existing_config.deinit();
+
+        const merged = mergeConfig(existing_config.value, parsed.value);
+
+        core.config.save(allocator, merged) catch |err| {
+            std.log.err("Failed to save config: {any}", .{err});
+            req.sendJson("{\"error\":\"Failed to save config\"}") catch |e| {
+                std.log.err("Failed to send error response: {any}", .{e});
+            };
+            return;
+        };
+
+        req.sendJson("{\"success\":true}") catch |e| {
+            std.log.err("Failed to send response: {any}", .{e});
+        };
+    } else {
+        req.sendJson("{\"error\":\"Empty body\"}") catch |e| {
+            std.log.err("Failed to send error response: {any}", .{e});
+        };
+    }
+}
+
+fn mergeConfig(existing: core.config.Config, update: core.config.Config) core.config.Config {
+    return .{
+        .agents = .{
+            .defaults = if (update.agents.defaults.model.len > 0)
+                update.agents.defaults
+            else
+                existing.agents.defaults,
+        },
+        .providers = .{
+            .openrouter = mergeProvider(existing.providers.openrouter, update.providers.openrouter),
+            .anthropic = mergeProvider(existing.providers.anthropic, update.providers.anthropic),
+            .openai = mergeProvider(existing.providers.openai, update.providers.openai),
+            .groq = mergeProvider(existing.providers.groq, update.providers.groq),
+            .minimax = mergeProvider(existing.providers.minimax, update.providers.minimax),
+        },
+        .tools = .{
+            .web = .{
+                .search = .{
+                    .apiKey = if (update.tools.web.search.apiKey) |key|
+                        if (key.len > 0) key else existing.tools.web.search.apiKey
+                    else
+                        existing.tools.web.search.apiKey,
+                },
+                .server = update.tools.web.server,
+            },
+            .telegram = if (update.tools.telegram) |t| .{
+                .botToken = if (t.botToken.len > 0) t.botToken else existing.tools.telegram.?.botToken,
+                .chatId = t.chatId,
+            } else existing.tools.telegram,
+            .discord = if (update.tools.discord) |d| .{
+                .webhookUrl = if (d.webhookUrl.len > 0) d.webhookUrl else existing.tools.discord.?.webhookUrl,
+            } else existing.tools.discord,
+            .whatsapp = if (update.tools.whatsapp) |w| .{
+                .accessToken = if (w.accessToken.len > 0) w.accessToken else existing.tools.whatsapp.?.accessToken,
+                .phoneNumberId = if (w.phoneNumberId.len > 0) w.phoneNumberId else existing.tools.whatsapp.?.phoneNumberId,
+                .recipientPhoneNumber = w.recipientPhoneNumber,
+            } else existing.tools.whatsapp,
+        },
+    };
+}
+
+fn mergeProvider(existing: ?core.config.ProviderConfig, update: ?core.config.ProviderConfig) ?core.config.ProviderConfig {
+    if (update) |u| {
+        if (u.apiKey.len > 0) {
+            return u;
+        }
+    }
+    return existing;
+}
+
+const SanitizedConfig = struct {
+    agents: struct {
+        defaults: core.config.DefaultAgentConfig,
+    },
+    providers: struct {
+        openrouter: ?struct {} = null,
+        anthropic: ?struct {} = null,
+        openai: ?struct {} = null,
+        groq: ?struct {} = null,
+        minimax: ?struct {} = null,
+    },
+    tools: core.config.ToolsConfig,
+};
 
 const openapi = @import("openapi.zig");

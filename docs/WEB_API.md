@@ -26,6 +26,57 @@ Returns the API status.
 
 - **Response**: `{"status":"ok","message":"SatiBot API"}`
 
+### `GET /api/config`
+
+Get current bot configuration. API keys are **removed** from the response for security.
+
+- **Response**:
+
+  ```json
+  {
+    "config": {
+      "agents": {
+        "defaults": {
+          "model": "arcee-ai/trinity-large-preview:free",
+          "embeddingModel": "local",
+          "disableRag": false,
+          "loadChatHistory": false,
+          "maxChatHistory": 2
+        }
+      },
+      "providers": {
+        "openrouter": {},
+        "anthropic": null
+      },
+      "tools": {
+        "web": {
+          "search": {},
+          "server": null
+        },
+        "telegram": null,
+        "discord": null,
+        "whatsapp": null
+      }
+    }
+  }
+  ```
+
+### `PUT /api/config`
+
+Update bot configuration. API keys are preserved from existing config (client cannot update sensitive keys).
+
+- **Request Body**: Configuration object (API keys are ignored - use CLI or direct file edit to update them)
+
+- **Request Body**: Full configuration object (see [`~/.bots/config.json`](./CONFIGURATION.md))
+
+- **Response**:
+
+  ```json
+  {
+    "success": true
+  }
+  ```
+
 ### `POST /api/chat`
 
 The main endpoint for chat interactions.
