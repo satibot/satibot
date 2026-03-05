@@ -23,17 +23,17 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 
 | Feature | OpenClaw | NanoBot | PicoClaw | satibot |
 |---|---|---|---|---|
-| **Language** | TypeScript | Python | Go | Zig |
-| **RAM Usage** | >1GB | >100MB | < 10MB | < 4MB (disable RAG with `--no-rag` option) |
-| **Startup Time**<br>(0.8GHz core) | >500s | >30s | <1s | ?s |
-| **Cost** | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
+| Language | TypeScript | Python | Go | Zig |
+| RAM Usage | >1GB | >100MB | < 10MB | < 4MB (disable RAG with `--no-rag` option) |
+| Startup Time<br>(0.8GHz core) | >500s | >30s | <1s | ?s |
+| Cost | Mac Mini $599 | Most Linux SBC<br>~$50 | Any Linux Board<br>As low as $10 | Not checked |
 | src | [openclaw](https://github.com/openclaw/openclaw) | [nanobot](https://github.com/HKUDS/nanobot) | [picoclaw](https://github.com/sipeed/picoclaw) | [satibot](https://github.com/satibot/satibot) |
 
-- ⚡️ **Blazing Fast**: Written in Zig for zero-overhead performance
-- 🐵 **Never Forgets**: Built-in RAG, VectorDB, and GraphDB for long-term memory
-- 🔧 **Extensible**: Easy skill installation and tool system
-- 💬 **Multi-Platform**: Telegram, Console, Web API, and more
-- 📊 **Observability**: Built-in OpenTelemetry tracing support
+- ⚡️ Blazing Fast: Written in Zig for zero-overhead performance
+- 🐵 Never Forgets: Built-in RAG, VectorDB, and GraphDB for long-term memory
+- 🔧 Extensible: Easy skill installation and tool system
+- 💬 Multi-Platform: Telegram, Console, Web API, and more
+- 📊 Observability: Built-in OpenTelemetry tracing support
 
 View more in [Features](docs/FEATURES.md).
 
@@ -41,23 +41,23 @@ View more in [Features](docs/FEATURES.md).
 
 ## 📋 Requirements
 
-- **OS**: Linux, macOS, or Windows (with WSL)
+- OS: Linux, macOS, or Windows (with WSL)
 
-> **Note**: This project uses Zig 0.15.0's thread-based concurrency with XevEventLoop.
+> Note: This project uses Zig 0.15.0's thread-based concurrency with XevEventLoop.
 
 ---
 
 ## ✨ Key Features
 
-🪶 **Lightweight & Fast**: Minimal footprint with Zig's performance guarantees
-🔬 **Research-Ready**: Clean, readable codebase perfect for experimentation
-⚡️ **Gateway System**: Single command runs all services together
-🤖 **Smart Memory**: RAG + VectorDB + GraphDB for intelligent context management
-🔧 **Skill Ecosystem**: Browse and install skills from <https://agent-skills.md/>
-📁 **File Operations**: Built-in tools for reading and analyzing local files
-🎙️ **Voice Ready**: Automatic voice transcription with Groq
-⏰ **Proactive**: Heartbeat system wakes agent for pending tasks
-📅 **Scheduled**: Built-in cron for recurring tasks
+🪶 Lightweight & Fast: Minimal footprint with Zig's performance guarantees
+🔬 Research-Ready: Clean, readable codebase perfect for experimentation
+⚡️ Gateway System: Single command runs all services together
+🤖 Smart Memory: RAG + VectorDB + GraphDB for intelligent context management
+🔧 Skill Ecosystem: Browse and install skills from <https://agent-skills.md/>
+📁 File Operations: Built-in tools for reading and analyzing local files
+🎙️ Voice Ready: Automatic voice transcription with Groq
+⏰ Proactive: Heartbeat system wakes agent for pending tasks
+📅 Scheduled: Built-in cron for recurring tasks
 
 ---
 
@@ -242,7 +242,7 @@ sati agent -s chat123 --no-rag
 
 satibot offers two Telegram bot implementations:
 
-**🔄 Sync Version** (`s-telegram-sync`)
+🔄 Sync Version (`s-telegram-sync`)
 
 - Simple, reliable, single-threaded
 - Processes one message at a time
@@ -250,7 +250,7 @@ satibot offers two Telegram bot implementations:
 - Text messages only (no voice support)
 - Best for: development, small deployments, resource-constrained environments
 
-**⚡ Async Version** (`s-telegram`)
+⚡ Async Version (`s-telegram`)
 
 - High-performance, event-driven (xev-based)
 - Processes multiple messages concurrently
@@ -277,10 +277,10 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 
 ### 🍡 Memory System
 
-- **VectorDB**: Semantic search across conversations
-- **GraphDB**: Relationship mapping for complex knowledge
-- **RAG**: Retrieval-Augmented Generation for accurate responses
-- **Session Cache**: In-memory session history with automatic cleanup (30 minutes idle timeout)
+- VectorDB: Semantic search across conversations
+- GraphDB: Relationship mapping for complex knowledge
+- RAG: Retrieval-Augmented Generation for accurate responses
+- Session Cache: In-memory session history with automatic cleanup (30 minutes idle timeout)
 
 ### 📚 VectorDB
 
@@ -291,8 +291,8 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 - Fast Enough: Linear search suitable for thousands of entries
 - Auto-indexing: Already integrated with conversation indexing
 
-- **Storage**: `~/.bots/vector_db.json`
-- **Usage**:
+- Storage: `~/.bots/vector_db.json`
+- Usage:
 
 ```bash
 sati vector-db stats
@@ -318,11 +318,11 @@ zig build s-console -- -- agent -m "Run: ls -la"
 
 #### Built-in Tools
 
-**📁 read_file** - Read local files
+📁 read_file - Read local files
 
 The `read_file` tool allows the AI agent to read contents of local files on your system.
 
-**Usage Examples:**
+Usage Examples:
 
 ```bash
 # Ask the agent to read a file
@@ -336,11 +336,11 @@ sati console-sync
 > Read the main.zig file and explain what it does
 ```
 
-**Arguments:**
+Arguments:
 
 - `path` (required): Absolute or relative path to the file to read
 
-**Example JSON:**
+Example JSON:
 
 ```json
 {
@@ -348,7 +348,7 @@ sati console-sync
 }
 ```
 
-**Features:**
+Features:
 
 - ✅ Supports text files of any size (10MB limit)
 - ✅ Handles absolute and relative paths
@@ -356,16 +356,16 @@ sati console-sync
 - ✅ Built-in security restrictions for sensitive files
 - ✅ Memory-efficient with automatic cleanup
 
-**Security Restrictions:**
+Security Restrictions:
 
 For security reasons, the tool automatically blocks access to sensitive files:
 
-- **Environment files**: `.env`, `.env.local`, `.env.*` variations
-- **Private keys**: `id_rsa`, `id_ed25519`, `private_key.*`, `*.key`
-- **Credentials**: `credentials.*`, `secret.*`
-- **Sensitive directories**: `.ssh/`, `.aws/`, `.kube/`
+- Environment files: `.env`, `.env.local`, `.env.*` variations
+- Private keys: `id_rsa`, `id_ed25519`, `private_key.*`, `*.key`
+- Credentials: `credentials.*`, `secret.*`
+- Sensitive directories: `.ssh/`, `.aws/`, `.kube/`
 
-**Examples of blocked files:**
+Examples of blocked files:
 
 - `.env` ❌
 - `id_rsa` ❌
@@ -375,13 +375,13 @@ For security reasons, the tool automatically blocks access to sensitive files:
 - `public_key.pem` ✅
 - `data.json` ✅
 
-**🌐 web_fetch** - Fetch web content
+🌐 web_fetch - Fetch web content
 
 See [docs/tasks/web-fetch.md](docs/tasks/web-fetch.md) for detailed documentation.
 
 ### ⏰ Automation
 
-**Heartbeat**: Proactive task checking
+Heartbeat: Proactive task checking
 
 ```bash
 # Create a heartbeat task
@@ -402,17 +402,17 @@ TODO: Cron: Schedule recurring tasks via configuration in `~/.bots/config.json`
 
 |Guide|Description|
 |----|------------|
-|[**Features**](docs/FEATURES.md)|Deep dive into Gateway, Voice, Cron systems|
-|[**Configuration**](docs/CONFIGURATION.md)|Complete config guide for providers & tools|
-|[**Architecture**](docs/ARCHITECTURE.md)|Technical guide to Agent Loop & Functional Architecture|
-|[**Functional Design**](docs/FUNCTIONAL_DESIGN.md)|Pure functional approach and session cache|
-|[**Telegram Guide**](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
-|[**WhatsApp Guide**](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
-|[**RAG Guide**](docs/RAG.md)|Understanding the memory system|
-|[**OpenTelemetry**](docs/OPENTELEMETRY.md)|Distributed tracing setup with OTEL|
-|[**Web API Guide**](docs/WEB_API.md)|Backend setup for web interfaces & CORS|
-|[**⚠️ Security**](docs/SECURITY.md)|Security risks, best practices, and guidelines|
-|[**Release Guide**](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
+|[Features](docs/FEATURES.md)|Deep dive into Gateway, Voice, Cron systems|
+|[Configuration](docs/CONFIGURATION.md)|Complete config guide for providers & tools|
+|[Architecture](docs/ARCHITECTURE.md)|Technical guide to Agent Loop & Functional Architecture|
+|[Functional Design](docs/FUNCTIONAL_DESIGN.md)|Pure functional approach and session cache|
+|[Telegram Guide](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
+|[WhatsApp Guide](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
+|[RAG Guide](docs/RAG.md)|Understanding the memory system|
+|[OpenTelemetry](docs/OPENTELEMETRY.md)|Distributed tracing setup with OTEL|
+|[Web API Guide](docs/WEB_API.md)|Backend setup for web interfaces & CORS|
+|[⚠️ Security](docs/SECURITY.md)|Security risks, best practices, and guidelines|
+|[Release Guide](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
 
 ---
 
@@ -426,7 +426,7 @@ Please read our [docs/DEV.md](docs/DEV.md) for more information.
 
 ## 📖 The Meaning of Sati
 
-**Sati** (Pāli) means "mindful awareness" — the art of not forgetting the present moment - "remembering to stay aware of what is happening right now.".
+Sati (Pāli) means "mindful awareness" — the art of not forgetting the present moment - "remembering to stay aware of what is happening right now.".
 
 In Buddhist psychology, sati evolved from simple memory to profound awareness:
 
@@ -434,7 +434,7 @@ In Buddhist psychology, sati evolved from simple memory to profound awareness:
 - Remember thoughts are arising
 - Remember what is happening now
 
-**SatiBot embodies this principle:**
+SatiBot embodies this principle:
 
 - Never forgets context or conversations
 - Tracks state consistently across sessions
