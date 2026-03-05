@@ -1,70 +1,5 @@
 const std = @import("std");
 
-const VendoredFileHash = struct {
-    path: []const u8,
-    sha256_hex: []const u8,
-};
-
-const VENDORED_SQLITE_HASHES = [_]VendoredFileHash{
-    .{
-        .path = "libs/sqlite3/sqlite3.c",
-        .sha256_hex = "dc58f0b5b74e8416cc29b49163a00d6b8bf08a24dd4127652beaaae307bd1839",
-    },
-    .{
-        .path = "libs/sqlite3/sqlite3.h",
-        .sha256_hex = "05c48cbf0a0d7bda2b6d0145ac4f2d3a5e9e1cb98b5d4fa9d88ef620e1940046",
-    },
-    .{
-        .path = "libs/sqlite3/sqlite3ext.h",
-        .sha256_hex = "ea81fb7bd05882e0e0b92c4d60f677b205f7f1fbf085f218b12f0b5b3f0b9e48",
-    },
-};
-
-fn hashWithCanonicalLineEndings(bytes: []const u8) [std.crypto.hash.sha2.Sha256.digest_length]u8 {
-    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-    var chunk_start: usize = 0;
-    var i: usize = 0;
-    while (i < bytes.len) : (i += 1) {
-        if (bytes[i] == '\r' and i + 1 < bytes.len and bytes[i + 1] == '\n') {
-            if (i > chunk_start) hasher.update(bytes[chunk_start..i]);
-            hasher.update("\n");
-            i += 1;
-            chunk_start = i + 1;
-        }
-    }
-    if (chunk_start < bytes.len) hasher.update(bytes[chunk_start..]);
-
-    var digest: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
-    hasher.final(&digest);
-    return digest;
-}
-
-fn verifyVendoredSqliteHashes(b: *std.Build) !void {
-    const max_vendor_file_size = 16 * 1024 * 1024;
-    for (VENDORED_SQLITE_HASHES) |entry| {
-        const file_path = b.pathFromRoot(entry.path);
-        defer b.allocator.free(file_path);
-
-        const bytes = std.fs.cwd().readFileAlloc(b.allocator, file_path, max_vendor_file_size) catch |err| {
-            std.log.err("failed to read {s}: {s}", .{ file_path, @errorName(err) });
-            return err;
-        };
-        defer b.allocator.free(bytes);
-
-        const digest = hashWithCanonicalLineEndings(bytes);
-
-        const actual_hex_buf = std.fmt.bytesToHex(digest, .lower);
-        const actual_hex = actual_hex_buf[0..];
-
-        if (!std.mem.eql(u8, actual_hex, entry.sha256_hex)) {
-            std.log.err("vendored sqlite checksum mismatch for {s}", .{entry.path});
-            std.log.err("expected: {s}", .{entry.sha256_hex});
-            std.log.err("actual:   {s}", .{actual_hex});
-            return error.VendoredSqliteChecksumMismatch;
-        }
-    }
-}
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -86,22 +21,8 @@ pub fn build(b: *std.Build) void {
     const enable_sqlite = b.option(bool, "sqlite", "Enable SQLite support") orelse true;
     const enable_memory_sqlite = b.option(bool, "memory-sqlite", "Enable SQLite memory backend") orelse true;
 
-    // Verify vendored sqlite hashes
-    if (enable_sqlite) {
-        verifyVendoredSqliteHashes(b) catch |err| {
-            std.log.warn("Failed to verify SQLite hashes: {}", .{err});
-        };
-    }
-
-    const sqlite3 = if (enable_sqlite) blk: {
-        const sqlite3_dep = b.dependency("sqlite3", .{
-            .target = target,
-            .optimize = optimize,
-        });
-        const sqlite3_artifact = sqlite3_dep.artifact("sqlite3");
-        sqlite3_artifact.root_module.addCMacro("SQLITE_ENABLE_FTS5", "1");
-        break :blk sqlite3_artifact;
-    } else null;
+    // SQLite3 system library - no need to create a wrapper library
+    // The system library will be linked directly to executables that need it
 
     build_options.addOption(bool, "enable_sqlite", enable_sqlite);
     build_options.addOption(bool, "enable_memory_sqlite", enable_sqlite and enable_memory_sqlite);
@@ -418,15 +339,19 @@ pub fn build(b: *std.Build) void {
         run_web.dependOn(&run_web_cmd.step);
 
         // Link SQLite to web app if enabled
-        if (sqlite3) |lib| {
-            web_app.root_module.linkLibrary(lib);
+        if (enable_sqlite) {
+            web_app.linkLibC();
+            web_app.linkSystemLibrary("sqlite3");
         }
     } else {
         // Link SQLite to executables that need it (non-web)
-        if (sqlite3) |lib| {
-            console_sync.root_module.linkLibrary(lib);
-            console_xev.root_module.linkLibrary(lib);
-            telegram.root_module.linkLibrary(lib);
+        if (enable_sqlite) {
+            console_sync.linkLibC();
+            console_sync.linkSystemLibrary("sqlite3");
+            console_xev.linkLibC();
+            console_xev.linkSystemLibrary("sqlite3");
+            telegram.linkLibC();
+            telegram.linkSystemLibrary("sqlite3");
         }
     }
 

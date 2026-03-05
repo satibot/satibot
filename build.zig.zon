@@ -43,9 +43,6 @@
         .web = .{
             .path = "libs/web",
         },
-        .sqlite3 = .{
-            .path = "libs/sqlite3",
-        },
     },
     .paths = .{
         "build.zig",
