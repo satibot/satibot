@@ -6,11 +6,11 @@ This project is built with Zig 0.15.2.
 
 This version includes significant changes from previous versions:
 
-- **Async/Await Removed**: Zig 0.15.0 removed async/await support. The event loop has been migrated to use `std.Thread`, `std.Thread.Mutex`, and `std.Thread.Condition`.
-- **ArrayList API Changes**: `init()` → `initCapacity()`, `deinit()` and `append()` now require allocator parameter.
-- **Type Casting**: `@intCast` now requires explicit type with `@as(Type, @intCast(...))`.
-- **Signal Handling**: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
-- **Division**: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
+- Async/Await Removed: Zig 0.15.0 removed async/await support. The event loop has been migrated to use `std.Thread`, `std.Thread.Mutex`, and `std.Thread.Condition`.
+- ArrayList API Changes: `init()` → `initCapacity()`, `deinit()` and `append()` now require allocator parameter.
+- Type Casting: `@intCast` now requires explicit type with `@as(Type, @intCast(...))`.
+- Signal Handling: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
+- Division: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
 
 The event loop has been migrated to use XevEventLoop (see `libs/utils/src/xev_event_loop.zig`).
 
@@ -89,7 +89,7 @@ make lint
 
 This project uses a `Makefile` to simplify common development commands.
 
-**Note**: The `.env` file loading is currently disabled in the Makefile. Environment variables should be set via shell exports or configuration files.
+Note: The `.env` file loading is currently disabled in the Makefile. Environment variables should be set via shell exports or configuration files.
 
 To install system dependencies (Debian/Ubuntu):
 
@@ -226,17 +226,17 @@ zig build test
 
 ## Architecture
 
-SatiBot uses a **ReAct** (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.
+SatiBot uses a ReAct (Reason+Action) loop for agentic behavior, listening for messages from various sources (CLI, Telegram, Cron), processing them through an LLM, executing tools, and persisting state.
 
 For a deep dive into the code structure, Agent Loop, and Gateway system, see the [Architecture Guide](docs/ARCHITECTURE.md).
 
 ### Asynchronous Architecture
 
-SatiBot now supports a high-performance asynchronous event loop based on **libxev**. This architecture allows for:
+SatiBot now supports a high-performance asynchronous event loop based on libxev. This architecture allows for:
 
-- **Non-blocking I/O**: Multi-threaded HTTP requests that don't block Telegram polling.
-- **Task Parallelism**: Concurrent processing of LLM requests across multiple worker threads.
-- **Scalability**: Better handling of high-traffic sessions and concurrent users.
+- Non-blocking I/O: Multi-threaded HTTP requests that don't block Telegram polling.
+- Task Parallelism: Concurrent processing of LLM requests across multiple worker threads.
+- Scalability: Better handling of high-traffic sessions and concurrent users.
 
 For details on the event loop implementation, see [TELEGRAM_CHAT_APP.md](TELEGRAM_CHAT_APP.md).
 

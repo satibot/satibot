@@ -21,7 +21,7 @@ l-log add ./logs/chat.csv "<Task Name>" --tags="<tags>" --problem="<problem>" --
 
 Note: `--last-commit-short-sha` is optional and will be auto-populated by the CLI if not provided.
 
-**Before run:**
+Before run:
 
 - Install the l-log CLI if not already installed: `bun add -g llm-lean-log-cli`
 - If need, run CLI help command: `l-log -h` for more information
@@ -57,7 +57,7 @@ zigdoc std.posix.getuid
 
 ### Common Patterns
 
-**ArrayList (Zig 0.15+):**
+ArrayList (Zig 0.15+):
 
 ```zig
 var list: std.ArrayList(u32) = .empty;
@@ -65,7 +65,7 @@ defer list.deinit(allocator);
 try list.append(allocator, 42);
 ```
 
-**HashMap (unmanaged):**
+HashMap (unmanaged):
 
 ```zig
 var map: std.StringHashMapUnmanaged(u32) = .empty;
@@ -73,7 +73,7 @@ defer map.deinit(allocator);
 try map.put(allocator, "key", 42);
 ```
 
-**Writer:**
+Writer:
 
 ```zig
 var buf: [4096]u8 = undefined;
@@ -155,10 +155,10 @@ const foo: Type = .{ .field = value };  // Good
 
 ## Functional Programming
 
-- **Favor Pure Functions**: Input → Output, no side effects
-- **Avoid OOP**: Minimize long-lived stateful objects
-- **Separate IO from Logic**: Core logic should be pure and testable without mocks
-- **Stateless Handlers**: Design event handlers as stateless transformations
+- Favor Pure Functions: Input → Output, no side effects
+- Avoid OOP: Minimize long-lived stateful objects
+- Separate IO from Logic: Core logic should be pure and testable without mocks
+- Stateless Handlers: Design event handlers as stateless transformations
 
 ## Safety
 

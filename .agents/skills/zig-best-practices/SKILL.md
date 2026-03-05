@@ -9,16 +9,16 @@ description: Provides Zig patterns for type-first development with tagged unions
 
 Types define the contract before implementation. Follow this workflow:
 
-1. **Define data structures** - structs, unions, and error sets first
-2. **Define function signatures** - parameters, return types, and error unions
-3. **Implement to satisfy types** - let the compiler guide completeness
-4. **Validate at comptime** - catch invalid configurations during compilation
+1. Define data structures - structs, unions, and error sets first
+2. Define function signatures - parameters, return types, and error unions
+3. Implement to satisfy types - let the compiler guide completeness
+4. Validate at comptime - catch invalid configurations during compilation
 
 ### Make Illegal States Unrepresentable
 
 Use Zig's type system to prevent invalid states at compile time.
 
-**Tagged unions for mutually exclusive states:**
+Tagged unions for mutually exclusive states:
 
 ```zig
 // Good: only valid combinations possible
@@ -46,7 +46,7 @@ const RequestState = struct {
 };
 ```
 
-**Explicit error sets for failure modes:**
+Explicit error sets for failure modes:
 
 ```zig
 // Good: documents exactly what can fail
@@ -66,7 +66,7 @@ fn parse(input: []const u8) anyerror!Ast {
 }
 ```
 
-**Distinct types for domain concepts:**
+Distinct types for domain concepts:
 
 ```zig
 // Prevent mixing up IDs of different types
@@ -82,7 +82,7 @@ fn createUserId(raw: u64) UserId {
 }
 ```
 
-**Comptime validation for invariants:**
+Comptime validation for invariants:
 
 ```zig
 fn Buffer(comptime size: usize) type {
@@ -99,7 +99,7 @@ fn Buffer(comptime size: usize) type {
 }
 ```
 
-**Non-exhaustive enums for extensibility:**
+Non-exhaustive enums for extensibility:
 
 ```zig
 // External enum that may gain variants
@@ -402,7 +402,7 @@ fn createBuffer(comptime size: usize) [size]u8 {
     if (size == 0) {
         @compileError("buffer size must be greater than 0");
     }
-    return [_]u8{0} ** size;
+    return [_]u8{0}  size;
 }
 ```
 
@@ -562,10 +562,10 @@ if (maybeValue) |value| {
 
 Reference these guides for specialized patterns:
 
-- **Building custom containers** (queues, stacks, trees): See [GENERICS.md](GENERICS.md)
-- **Interfacing with C libraries** (raylib, SDL, curl, system APIs): See [C-INTEROP.md](C-INTEROP.md)
-- **Debugging memory leaks** (GPA, stack traces): See [DEBUGGING.md](DEBUGGING.md)
-- **Zig 0.15.2 Specific Patterns**: See below for critical changes in the 0.15.2 standard library.
+- Building custom containers (queues, stacks, trees): See [GENERICS.md](GENERICS.md)
+- Interfacing with C libraries (raylib, SDL, curl, system APIs): See [C-INTEROP.md](C-INTEROP.md)
+- Debugging memory leaks (GPA, stack traces): See [DEBUGGING.md](DEBUGGING.md)
+- Zig 0.15.2 Specific Patterns: See below for critical changes in the 0.15.2 standard library.
 
 ## Zig 0.15.2 Specific Patterns
 
@@ -573,7 +573,7 @@ Reference these guides for specialized patterns:
 
 In 0.15.2, `std.ArrayList(T)` returns an unmanaged list. It does not store the allocator. All methods that allocate or free memory now require an explicit `Allocator` argument.
 
-**Good (0.15.2):**
+Good (0.15.2):
 
 ```zig
 var list = std.ArrayList(u8).empty;
@@ -584,7 +584,7 @@ const slice = try list.toOwnedSlice(allocator);
 defer allocator.free(slice);
 ```
 
-**Bad (0.15.2 - will not compile):**
+Bad (0.15.2 - will not compile):
 
 ```zig
 var list = std.ArrayList(u8).init(allocator); // error: no member named 'init'
@@ -595,7 +595,7 @@ defer list.deinit(); // error: expected 1 argument, found 0
 
 The top-level `std.json.stringify` has been replaced by `std.json.Stringify.value`. It requires a pointer to a `std.io.Writer` interface. For dynamically growing buffers, use `std.io.Writer.Allocating`.
 
-**Good (0.15.2):**
+Good (0.15.2):
 
 ```zig
 var out = std.io.Writer.Allocating.init(allocator);
@@ -606,7 +606,7 @@ const body = try out.toOwnedSlice(); // Get resulting JSON
 defer allocator.free(body);
 ```
 
-**Bad (0.15.2):**
+Bad (0.15.2):
 
 ```zig
 try std.json.stringify(payload, .{}, writer); // error: no member named 'stringify'
@@ -616,7 +616,7 @@ try std.json.stringify(payload, .{}, writer); // error: no member named 'stringi
 
 The HTTP client API has been significantly updated. `open` is now `request`, and body handling is more explicit.
 
-**Good (0.15.2):**
+Good (0.15.2):
 
 ```zig
 var client = std.http.Client{ .allocator = allocator };

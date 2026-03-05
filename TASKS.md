@@ -2,7 +2,7 @@
 
 ## Phase 1: Foundation
 
-- [x] **Configuration Loader**
+- [x] Configuration Loader
   - [x] Implement `get_config_path` to resolve `~/.bots/config.json`
   - [x] Use `std.json` to parse the config file
   - [x] Update `src/config.zig` to replace mock data with actual loaded values
@@ -11,19 +11,19 @@
 - [x] Configuration loading (`~/.bots/config.json`)
 - [x] Zig 0.15.2 Standard Library Migration
 - [ ] Core Agent loop
-- [x] **HTTP Client & LLM Provider**
+- [x] HTTP Client & LLM Provider
   - [x] Create `src/http.zig` for basic HTTP requests (likely using `std.http.Client`)
   - [x] Implement `src/providers/base.zig` interface
   - [x] Test connection to LLM with a simple "Hello" (code written, ready for testing)
 
 ## Phase 2: Core Agent
 
-- [x] **Context Builder**
+- [x] Context Builder
   - [x] Create `src/agent/context.zig`
   - [x] Define Message and Role structs
   - [x] Implement `build_messages` to format history for the LLM API
 
-- [x] **Tool System**
+- [x] Tool System
   - [x] Define `Tool` interface/struct in `src/agent/tools.zig`
   - [x] Implement `FileTools` (Read, Write, List)
   - [x] Implement `WebSearchTool` (Brave API)
@@ -36,7 +36,7 @@
 
 ## Phase 4: The Loop
 
-- [x] **Agent Loop Implementation**
+- [x] Agent Loop Implementation
   - [x] Update `src/agent.zig` to use the real Provider
   - [ ] Implement the ReAct loop:
     1. Send history to LLM
@@ -48,23 +48,23 @@
 
 ## Phase 5: Polish
 
-- [x] **CLI UX**
+- [x] CLI UX
   - [x] Streaming response output
   - [x] Better error handling
-- [x] **Session Management**
+- [x] Session Management
   - [x] Save/Load conversation history to `~/.bots/sessions/`
-- [x] **Marketplace Integration**
+- [x] Marketplace Integration
   - [x] Implement `list_marketplace` tool
   - [x] Implement `search_marketplace` tool
   - [x] Implement `install_skill` tool
-- [x] **Chat Tools Integration**
+- [x] Chat Tools Integration
   - [x] Implement `telegram_send_message` tool
   - [x] Implement `discord_send_message` tool
   - [x] Implement `whatsapp_send_message` tool
 
 ## Phase 6: Testing
 
-- [x] **Unit Testing**
+- [x] Unit Testing
   - [x] Setup Zig test runner in `build.zig`
   - [x] Implemented tests for `config.zig`, `session.zig`, `context.zig`, `tools.zig`, `agent.zig`, and `anthropic.zig`.
   - [x] Fixed memory safety issues (segfaults) in tests by ensuring correct string allocation.
