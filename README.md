@@ -170,8 +170,8 @@ sati telegram-sync
 # for telegram (async version)
 sati telegram
 
-# for web api backend
-sati web
+# for web api backend (requires web module enabled)
+sati web -Dweb=true
 
 # Check system status
 sati status
@@ -193,6 +193,7 @@ sati test-llm
 ./zig-out/bin/s-console
 ./zig-out/bin/s-telegram
 ./zig-out/bin/sati
+./zig-out/bin/web              # Web API (build with -Dweb=true)
 ```
 
 ## Build Commands
@@ -206,20 +207,18 @@ zig build sati              # Sati CLI
 zig build s-console          # Async console app
 zig build s-console-sync     # Sync console app
 zig build s-telegram         # Telegram bot
-zig build web              # Web API backend
-
-# Run with build steps
-zig build sati              # Build sati CLI
-zig build s-console          # Build async console
-zig build s-console-sync     # Build sync console
-zig build s-telegram         # Build telegram bot
-zig build web              # Build web backend
+zig build web -Dweb=true     # Web API backend (requires -Dweb=true)
 
 # Build and run
 zig build run-console          # Build and run async console
 zig build run-console-sync     # Build and run sync console
 zig build run-telegram         # Build and run telegram bot
-zig build run-web -Dweb        # Build and run web backend
+zig build run-web -Dweb=true   # Build and run web backend
+
+# Web app specific commands
+zig build -Dweb=true           # Build with web module enabled
+./zig-out/bin/web              # Run built web binary
+zig build run-web -Dweb=true   # Build and run web app directly
 ```
 
 ## CLI Options
@@ -269,7 +268,7 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
   - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
 - Terminal console: `sati console-sync` or `sati console`
   - [docs/CONSOLE.md](docs/CONSOLE.md)
-- Web API: `sati web`
+- Web API: `sati web -Dweb=true` (requires web module enabled)
   - [docs/WEB_API.md](docs/WEB_API.md)
 
 ---
