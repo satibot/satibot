@@ -18,6 +18,8 @@ zig build saticode-run
 
 ```text
 saticode              # Start interactive REPL
+saticode -v           # Show version information
+saticode --version    # Show version information
 saticode --no-rag    # Start without RAG (vector memory)
 ```
 

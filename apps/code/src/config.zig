@@ -1,14 +1,15 @@
 //! SatiCode Configuration
 //!
-//! This module provides configuration support for SatiCode with JSONC/JSON format
+//! This module provides configuration support for SatiCode with JSON format
 //! similar to OpenCode's configuration system.
 //!
 //! ## Configuration File Locations
-//! - `.saticode.json` or `.saticode.jsonc` in current directory
-//! - `~/.config/saticode/config.json` or `~/.config/saticode/config.jsonc`
+//! - if `saticode.json` exists in current directory
+//! - if `~/.bots/saticode.json` exists
+//! - if `tmp/saticode/config.json` exists in current directory
 //!
 //! ## Example Configuration
-//! ```jsonc
+//! ```json
 //! {
 //!   "$schema": "https://satibot.github.io/saticode/config.json",
 //!   "model": "MiniMax-M2.5",
@@ -32,7 +33,6 @@
 
 const std = @import("std");
 const core = @import("core");
-const agent = @import("agent");
 
 /// SatiCode configuration structure
 pub const SatiCodeConfig = struct {
@@ -108,33 +108,30 @@ pub const WebSearchConfig = struct {
 /// Load SatiCode configuration from standard locations
 pub fn load(allocator: std.mem.Allocator) !LoadedConfig {
     // Try current directory first
-    if (loadFromPath(allocator, ".saticode.jsonc")) |config| {
+    if (loadFromPath(allocator, "saticode.json")) |config| {
+        std.debug.print("--- Loading config from saticode.json ---\n", .{});
         return config;
     } else |_| {
-        if (loadFromPath(allocator, ".saticode.json")) |config| {
+        // Try ~/.bots/saticode.json
+        const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+        const bots_json_path = try std.fs.path.join(allocator, &.{ home, ".bots", "saticode.json" });
+        defer allocator.free(bots_json_path);
+        if (loadFromPath(allocator, bots_json_path)) |config| {
+            std.debug.print("--- Loading config from {s} ---\n", .{bots_json_path});
             return config;
         } else |_| {
-            // Try user config directory
-            const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
-            const config_dir = try std.fs.path.join(allocator, &.{ home, ".config", "saticode" });
-            defer allocator.free(config_dir);
-
-            const jsonc_path = try std.fs.path.join(allocator, &.{ config_dir, "config.jsonc" });
-            defer allocator.free(jsonc_path);
-            if (loadFromPath(allocator, jsonc_path)) |config| {
+            // Try tmp/saticode/config.json in current directory
+            const tmp_json_path = "tmp/saticode/config.json";
+            if (loadFromPath(allocator, tmp_json_path)) |config| {
+                std.debug.print("--- Loading config from {s} ---\n", .{tmp_json_path});
                 return config;
             } else |_| {
-                const json_path = try std.fs.path.join(allocator, &.{ config_dir, "config.json" });
-                defer allocator.free(json_path);
-                if (loadFromPath(allocator, json_path)) |config| {
-                    return config;
-                } else |_| {
-                    // Return default configuration
-                    return LoadedConfig{
-                        .saticode = SatiCodeConfig{},
-                        .path = null,
-                    };
-                }
+                // Return default configuration
+                std.debug.print("--- Using default configuration ---\n", .{});
+                return .{
+                    .saticode = SatiCodeConfig{},
+                    .path = null,
+                };
             }
         }
     }
@@ -158,24 +155,15 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !LoadedConfi
     };
     defer allocator.free(content);
 
-    // Remove JSONC comments if it's a .jsonc file
-    const is_jsonc = std.mem.endsWith(u8, path, ".jsonc");
-    const processed_content = if (is_jsonc)
-        try removeJsoncComments(allocator, content)
-    else
-        content;
-
-    if (is_jsonc) {
-        defer allocator.free(processed_content);
-    }
+    std.debug.print("Config content: {s}\n", .{content});
 
     // Parse JSON with custom handling for $schema field
-    const parsed = parseSatiCodeConfig(allocator, processed_content) catch |err| {
+    const parsed = parseSatiCodeConfig(allocator, content) catch |err| {
         std.debug.print("Failed to parse config file {s}: {any}\n", .{ path, err });
         return error.InvalidConfig;
     };
 
-    return LoadedConfig{
+    return .{
         .saticode = parsed.value,
         .path = try allocator.dupe(u8, path),
     };
@@ -189,7 +177,7 @@ fn parseSatiCodeConfig(allocator: std.mem.Allocator, content: []const u8) !std.j
 
     const root = parsed_value.value.object;
 
-    var config = SatiCodeConfig{};
+    var config: SatiCodeConfig = .{};
 
     // Handle $schema field
     if (root.get("$schema")) |schema_val| {
@@ -241,7 +229,7 @@ fn parseSatiCodeConfig(allocator: std.mem.Allocator, content: []const u8) !std.j
 
 /// Parse server configuration from JSON value
 fn parseServerConfig(allocator: std.mem.Allocator, value: std.json.Value) !ServerConfig {
-    var config = ServerConfig{};
+    var config: ServerConfig = .{};
     if (value.object.get("port")) |port_val| {
         if (port_val == .integer) {
             config.port = @intCast(port_val.integer);
@@ -257,7 +245,7 @@ fn parseServerConfig(allocator: std.mem.Allocator, value: std.json.Value) !Serve
 
 /// Parse RAG configuration from JSON value
 fn parseRagConfig(allocator: std.mem.Allocator, value: std.json.Value) !RagConfig {
-    var config = RagConfig{};
+    var config: RagConfig = .{};
     if (value.object.get("enabled")) |enabled_val| {
         if (enabled_val == .bool) {
             config.enabled = enabled_val.bool;
@@ -278,7 +266,7 @@ fn parseRagConfig(allocator: std.mem.Allocator, value: std.json.Value) !RagConfi
 
 /// Parse provider configurations from JSON value
 fn parseProviderConfigs(allocator: std.mem.Allocator, value: std.json.Value) !ProviderConfigs {
-    var configs = ProviderConfigs{};
+    var configs: ProviderConfigs = .{};
 
     if (value.object.get("minimax")) |minimax_val| {
         configs.minimax = try parseProviderConfig(allocator, minimax_val);
@@ -301,7 +289,7 @@ fn parseProviderConfigs(allocator: std.mem.Allocator, value: std.json.Value) !Pr
 
 /// Parse individual provider configuration from JSON value
 fn parseProviderConfig(allocator: std.mem.Allocator, value: std.json.Value) !ProviderConfig {
-    var config = ProviderConfig{
+    var config: ProviderConfig = .{
         .apiKey = undefined,
     };
 
@@ -321,7 +309,7 @@ fn parseProviderConfig(allocator: std.mem.Allocator, value: std.json.Value) !Pro
 
 /// Parse tools configuration from JSON value
 fn parseToolsConfig(allocator: std.mem.Allocator, value: std.json.Value) !ToolsConfig {
-    var configs = ToolsConfig{};
+    var configs: ToolsConfig = .{};
 
     if (value.object.get("web")) |web_val| {
         configs.web = try parseWebToolsConfig(allocator, web_val);
@@ -332,7 +320,7 @@ fn parseToolsConfig(allocator: std.mem.Allocator, value: std.json.Value) !ToolsC
 
 /// Parse web tools configuration from JSON value
 fn parseWebToolsConfig(allocator: std.mem.Allocator, value: std.json.Value) !WebToolsConfig {
-    var config = WebToolsConfig{};
+    var config: WebToolsConfig = .{};
 
     if (value.object.get("search")) |search_val| {
         config.search = try parseWebSearchConfig(allocator, search_val);
@@ -343,7 +331,7 @@ fn parseWebToolsConfig(allocator: std.mem.Allocator, value: std.json.Value) !Web
 
 /// Parse web search configuration from JSON value
 fn parseWebSearchConfig(allocator: std.mem.Allocator, value: std.json.Value) !WebSearchConfig {
-    var config = WebSearchConfig{
+    var config: WebSearchConfig = .{
         .apiKey = undefined,
     };
 
@@ -412,7 +400,7 @@ pub fn toAgentConfig(allocator: std.mem.Allocator, saticode_config: SatiCodeConf
     // Get RAG settings
     const rag_config = saticode_config.rag orelse RagConfig{};
 
-    return core.config.Config{
+    return .{
         .agents = .{
             .defaults = .{
                 .model = saticode_config.model,
@@ -432,86 +420,6 @@ pub const LoadedConfig = struct {
     saticode: SatiCodeConfig,
     path: ?[]const u8, // null if using default config
 };
-
-/// Remove JSONC comments (// and /* */) from JSON content
-fn removeJsoncComments(allocator: std.mem.Allocator, content: []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
-
-    var i: usize = 0;
-    var in_string = false;
-    var in_single_line_comment = false;
-    var in_multi_line_comment = false;
-    var escape_next = false;
-
-    while (i < content.len) {
-        const char = content[i];
-
-        if (escape_next) {
-            try result.append(allocator, char);
-            escape_next = false;
-            i += 1;
-            continue;
-        }
-
-        if (char == '\\' and in_string) {
-            try result.append(allocator, char);
-            escape_next = true;
-            i += 1;
-            continue;
-        }
-
-        if (char == '"' and !in_single_line_comment and !in_multi_line_comment) {
-            in_string = !in_string;
-            try result.append(allocator, char);
-            i += 1;
-            continue;
-        }
-
-        if (in_string) {
-            try result.append(allocator, char);
-            i += 1;
-            continue;
-        }
-
-        // Check for single line comment
-        if (i + 1 < content.len and content[i] == '/' and content[i + 1] == '/' and !in_multi_line_comment) {
-            in_single_line_comment = true;
-            i += 2;
-            continue;
-        }
-
-        // Check for multi-line comment
-        if (i + 1 < content.len and content[i] == '/' and content[i + 1] == '*' and !in_single_line_comment) {
-            in_multi_line_comment = true;
-            i += 2;
-            continue;
-        }
-
-        // End of single line comment
-        if (char == '\n' and in_single_line_comment) {
-            in_single_line_comment = false;
-            try result.append(allocator, char);
-            i += 1;
-            continue;
-        }
-
-        // End of multi-line comment
-        if (i + 1 < content.len and content[i] == '*' and content[i + 1] == '/' and in_multi_line_comment) {
-            in_multi_line_comment = false;
-            i += 2;
-            continue;
-        }
-
-        if (!in_single_line_comment and !in_multi_line_comment) {
-            try result.append(allocator, char);
-        }
-
-        i += 1;
-    }
-
-    return result.toOwnedSlice(allocator);
-}
 
 /// Expand environment variables in format ${VAR_NAME}
 fn expandEnvVars(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
@@ -549,41 +457,13 @@ fn expandEnvVars(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
     return result.toOwnedSlice(allocator);
 }
 
-test "removeJsoncComments" {
-    const allocator = std.testing.allocator;
-
-    const input =
-        \\{
-        \\  // This is a comment
-        \\  "key": "value", /* inline comment */
-        \\  "nested": {
-        \\    /* multi-line
-        \\       comment */
-        \\    "inner": "data" // another comment
-        \\  }
-        \\}
-    ;
-
-    const expected =
-        \\{
-        \\  "key": "value",
-        \\  "nested": {
-        \\    "inner": "data"
-        \\  }
-        \\}
-    ;
-
-    const result = try removeJsoncComments(allocator, input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings(expected, result);
-}
-
 test "expandEnvVars" {
     const allocator = std.testing.allocator;
 
-    // Set test environment variable
-    try std.posix.setenv("TEST_VAR", "test_value");
+    // Set test environment variable using the correct API
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+    try env_map.put("TEST_VAR", "test_value");
 
     const input = "prefix_${TEST_VAR}_suffix";
     const expected = "prefix_test_value_suffix";
@@ -593,6 +473,115 @@ test "expandEnvVars" {
 
     try std.testing.expectEqualStrings(expected, result);
 
-    // Clean up
-    std.posix.unsetenv("TEST_VAR");
+    // Clean up is handled by env_map.deinit()
+}
+
+test "loadConfig.default" {
+    const allocator = std.testing.allocator;
+
+    const config = try load(allocator);
+    defer if (config.path) |path| allocator.free(path);
+
+    // Should return default config when no files exist
+    try std.testing.expect(config.path == null);
+    try std.testing.expectEqualStrings("openrouter/meta-llama/llama-3.1-8b-instruct:free", config.saticode.model);
+    try std.testing.expect(config.saticode.autoupdate == false);
+}
+
+test "parseSatiCodeConfig.minimal" {
+    const allocator = std.testing.allocator;
+
+    const json_content = "{}";
+
+    const parsed = try parseSatiCodeConfig(allocator, json_content);
+    defer parsed.deinit();
+
+    const config = parsed.value;
+
+    // Should use default values
+    try std.testing.expect(config.schema == null);
+    try std.testing.expectEqualStrings("openrouter/meta-llama/llama-3.1-8b-instruct:free", config.model);
+    try std.testing.expect(config.autoupdate == false);
+    try std.testing.expect(config.rag == null);
+    try std.testing.expect(config.providers == null);
+    try std.testing.expect(config.systemPrompt == null);
+    try std.testing.expect(config.tools == null);
+}
+
+test "parseSatiCodeConfig.basic" {
+    const allocator = std.testing.allocator;
+
+    const json_content =
+        \\{
+        \\  "model": "test-model",
+        \\  "autoupdate": true,
+        \\  "rag": {
+        \\    "enabled": true,
+        \\    "maxHistory": 25
+        \\  },
+        \\  "providers": {
+        \\    "minimax": {
+        \\      "apiKey": "test-key"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    const parsed = try parseSatiCodeConfig(allocator, json_content);
+    defer parsed.deinit();
+
+    const config = parsed.value;
+
+    try std.testing.expectEqualStrings("test-model", config.model);
+    try std.testing.expect(config.autoupdate == true);
+
+    if (config.rag) |rag| {
+        try std.testing.expect(rag.enabled == true);
+        try std.testing.expect(rag.maxHistory == 25);
+    }
+
+    if (config.providers) |providers| {
+        if (providers.minimax) |minimax| {
+            try std.testing.expectEqualStrings("test-key", minimax.apiKey);
+        }
+    }
+}
+
+test "parseSatiCodeConfig.basic" {
+    const allocator = std.testing.allocator;
+
+    const json_content =
+        \\{
+        \\  "model": "test-model",
+        \\  "autoupdate": true,
+        \\  "rag": {
+        \\    "enabled": true,
+        \\    "maxHistory": 25
+        \\  },
+        \\  "providers": {
+        \\    "minimax": {
+        \\      "apiKey": "test-key"
+        \\    }
+        \\  }
+        \\}
+    ;
+
+    const parsed = try parseSatiCodeConfig(allocator, json_content);
+    defer parsed.deinit();
+
+    const config = parsed.value;
+
+    try std.testing.expectEqualStrings("test-model", config.model);
+    try std.testing.expect(config.autoupdate == true);
+
+    if (config.rag) |rag| {
+        try std.testing.expect(rag.enabled == true);
+        try std.testing.expect(rag.maxHistory == 25);
+    }
+
+    if (config.providers) |providers| {
+        if (providers.minimax) |minimax| {
+            try std.testing.expectEqualStrings("test-key", minimax.apiKey);
+        }
+    }
 }

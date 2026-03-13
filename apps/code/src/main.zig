@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const agent = @import("agent");
 const config = @import("config.zig");
 
@@ -66,8 +67,8 @@ fn loadAgentConfig(allocator: std.mem.Allocator) ![]const u8 {
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    var gpa = std.heap.PageAlloc.init(.{});
+    defer gpa.deinit();
     const allocator = gpa.allocator();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -80,6 +81,15 @@ pub fn main() !void {
 
     const args = try std.process.argsAlloc(arena_allocator);
     defer std.process.argsFree(arena_allocator, args);
+
+    // Check for version flag
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "-v") or std.mem.eql(u8, arg, "--version")) {
+            const build_info = "Zig " ++ builtin.zig_version_string;
+            std.debug.print("SatiCode CLI {s}\n", .{build_info});
+            return;
+        }
+    }
 
     // Override RAG setting from command line
     var rag_enabled = if (saticode_config.saticode.rag) |rag| rag.enabled else true;
@@ -143,15 +153,20 @@ pub fn main() !void {
     }
 
     const model = saticode_config.saticode.model;
+
+    // Build version info
+    const build_info = "Zig " ++ builtin.zig_version_string;
+
     std.debug.print(
         \\🐵 SatiCode CLI (Claude-Code style)
         \\Model: {s}
         \\RAG: {s}
         \\Config: {s}
+        \\Build: {s}
         \\Type your request (Ctrl+D or 'exit' to quit):
         \\
         \\
-    , .{ model, if (rag_enabled) "Enabled" else "Disabled", saticode_config.path orelse "default" });
+    , .{ model, if (rag_enabled) "Enabled" else "Disabled", saticode_config.path orelse "default", build_info });
 
     const stdin = std.fs.File.stdin();
     var read_buf: [4096]u8 = undefined;

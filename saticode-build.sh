@@ -43,33 +43,37 @@ if ! command -v zig &> /dev/null; then
     exit 1
 fi
 
-# Check if sqlite3 is available
-if ! pkg-config --exists sqlite3 2>/dev/null; then
-    print_error "SQLite3 development libraries not found."
-    echo "Install with: brew install sqlite3 (macOS) or apt-get install libsqlite3-dev (Ubuntu)"
-    exit 1
-fi
-
 # Create output directory
 mkdir -p zig-out/bin
 
 # Build function
 build_saticode() {
     local mode=${1:-"ReleaseFast"}
-    
+
     print_status "Building SatiCode in $mode mode..."
+
+    # Record start time
+    local start_time=$(date +%s)
     
     # Use the main build system which handles modules correctly
     if [ "$mode" = "Debug" ]; then
+        echo "Building in Debug mode..."
         zig build saticode -Doptimize=Debug
     else
+        echo "Building in ReleaseFast mode..."
         zig build saticode -Doptimize=ReleaseFast
     fi
+    echo "Build complete: zig-out/bin/saticode"
+    local build_result=$?
+
+    # Calculate and display build time
+    local end_time=$(date +%s)
+    local build_time=$((end_time - start_time))
     
-    if [ $? -eq 0 ]; then
-        print_success "Build complete: zig-out/bin/saticode"
+    if [ $build_result -eq 0 ]; then
+        print_success "Build complete: zig-out/bin/saticode (built in ${build_time}s)"
     else
-        print_error "Build failed"
+        print_error "Build failed (after ${build_time}s)"
         exit 1
     fi
 }

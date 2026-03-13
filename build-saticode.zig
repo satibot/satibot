@@ -13,6 +13,9 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
+    // Create modules first
+    createModules(b, optimize, target);
+
     // SatiCode executable
     const saticode_exe = b.addExecutable(.{
         .name = "saticode",
@@ -24,18 +27,33 @@ pub fn build(b: *std.Build) void {
     });
 
     // Add dependencies
-    saticode_exe.root_module.addImport("agent", b.module("agent"));
-    saticode_exe.root_module.addImport("core", b.module("core"));
-    saticode_exe.root_module.addImport("db", b.module("db"));
-    saticode_exe.root_module.addImport("providers", b.module("providers"));
-    saticode_exe.root_module.addImport("utils", b.module("utils"));
-    saticode_exe.root_module.addImport("http", b.module("http"));
-    saticode_exe.root_module.addImport("tls", b.module("tls"));
-    saticode_exe.root_module.addImport("xev", b.module("xev"));
+    if (b.modules.get("agent")) |agent_mod| {
+        saticode_exe.root_module.addImport("agent", agent_mod);
+    }
+    if (b.modules.get("core")) |core_mod| {
+        saticode_exe.root_module.addImport("core", core_mod);
+    }
+    if (b.modules.get("db")) |db_mod| {
+        saticode_exe.root_module.addImport("db", db_mod);
+    }
+    if (b.modules.get("providers")) |providers_mod| {
+        saticode_exe.root_module.addImport("providers", providers_mod);
+    }
+    if (b.modules.get("utils")) |utils_mod| {
+        saticode_exe.root_module.addImport("utils", utils_mod);
+    }
+    if (b.modules.get("http")) |http_mod| {
+        saticode_exe.root_module.addImport("http", http_mod);
+    }
+    if (b.modules.get("tls")) |tls_mod| {
+        saticode_exe.root_module.addImport("tls", tls_mod);
+    }
+    if (b.modules.get("xev")) |xev_mod| {
+        saticode_exe.root_module.addImport("xev", xev_mod);
+    }
 
     // Link system libraries
     saticode_exe.linkLibC();
-    saticode_exe.linkSystemLibrary("sqlite3");
 
     // Install executable
     b.installArtifact(saticode_exe);
@@ -51,9 +69,11 @@ pub fn build(b: *std.Build) void {
 
     // Test step
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("apps/code/src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/code/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
@@ -66,10 +86,10 @@ pub fn build(b: *std.Build) void {
     clean_step.dependOn(&clean_cmd.step);
 
     // Install step (system-wide installation)
-    const install_step = b.step("install", "Install SatiCode to system");
+    const install_step_system = b.step("install-system", "Install SatiCode to system");
     const install_cmd = b.addSystemCommand(&.{ "sudo", "cp", "zig-out/bin/saticode", "/usr/local/bin/" });
-    install_cmd.step.dependOn(b.getInstallStep());
-    install_step.dependOn(&install_cmd.step);
+    install_step_system.dependOn(b.getInstallStep());
+    install_step_system.dependOn(&install_cmd.step);
 
     // Development aliases
     const dev_step = b.step("dev", "Build and run in development mode");
@@ -79,10 +99,7 @@ pub fn build(b: *std.Build) void {
 }
 
 // Helper function to create modules (shared with main build.zig)
-fn createModules(b: *std.Build) void {
-    const optimize = b.standardOptimizeOption(.{});
-    const target = b.standardTargetOptions(.{});
-
+fn createModules(b: *std.Build, optimize: std.builtin.OptimizeMode, target: std.Build.ResolvedTarget) void {
     // Core module
     const core = b.createModule(.{
         .root_source_file = b.path("libs/core/src/root.zig"),
