@@ -9,6 +9,10 @@ trigger: always_on
 Write comments in the code to explain why the code need to do that.
 Check if need to update docs, README.md, etc.
 
+## Write markdown files
+
+When writing markdown files, do not use emojis or bold text syntax.
+
 ## Log your work
 
 Whenever you finish a task or change codes, always log your work using the l-log bash command (llm-lean-log-cli package) with the following format:

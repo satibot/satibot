@@ -69,10 +69,6 @@ sudo cp zig-out/bin/saticode /usr/local/bin/
 ### System Requirements
 
 - Zig 0.15.0 or later
-- SQLite3 development libraries
-  - macOS: `brew install sqlite3`
-  - Ubuntu: `sudo apt-get install libsqlite3-dev`
-  - Fedora: `sudo dnf install sqlite-devel`
 
 ## Configuration
 
@@ -135,20 +131,11 @@ Example configuration:
    sudo apt-get install zig
    ```
 
-2. **SQLite3 not found**
-
-   ```bash
-   # macOS
-   brew install sqlite3
-   # Ubuntu
-   sudo apt-get install libsqlite3-dev
-   ```
-
-3. **Config file parsing error**
+2. **Config file parsing error**
 
    If you see "Failed to parse config file .saticode.jsonc", the build will still work with default settings. Check your JSONC syntax or temporarily rename the config file to use defaults.
 
-4. **Permission denied on install**
+3. **Permission denied on install**
 
    ```bash
    # Use sudo or install to user directory
@@ -166,7 +153,7 @@ For debugging build issues:
 zig build-exe apps/code/src/main.zig --verbose
 
 # Check dependencies
-pkg-config --libs sqlite3
+# Note: No external dependencies required beyond Zig
 ```
 
 ## Performance
