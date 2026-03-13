@@ -297,9 +297,9 @@ pub fn build(b: *std.Build) void {
 
     // Agent CLI App (Claude-Code style)
     const agent_cli = b.addExecutable(.{
-        .name = "s-agent",
+        .name = "saticode",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/agent/src/main.zig"),
+            .root_source_file = b.path("apps/code/src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
@@ -315,7 +315,7 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_agent_cli_cmd.addArgs(args);
     }
-    const run_agent_cli = b.step("agent", "Run agent CLI app");
+    const run_agent_cli = b.step("saticode", "Run SatiCode CLI app");
     run_agent_cli.dependOn(&run_agent_cli_cmd.step);
 
     // Sati CLI executable

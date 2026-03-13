@@ -32,7 +32,7 @@ pub fn main() !void {
 
     // Custom system prompt for coding assistant
     const system_prompt =
-        \\You are SatiAgent, a highly capable AI software engineer CLI tool.
+        \\You are SatiCode, a highly capable AI software engineer CLI tool.
         \\Your goal is to help the user with coding tasks, debugging, and project management.
         \\You have access to the local filesystem and can execute shell commands.
         \\
@@ -60,7 +60,7 @@ pub fn main() !void {
 
     const model = config.agents.defaults.model;
     std.debug.print(
-        \\🚀 SatiAgent CLI (Claude-Code style)
+        \\🐵 SatiCode CLI (Claude-Code style)
         \\Model: {s}
         \\RAG: {s}
         \\Type your request (Ctrl+D or 'exit' to quit):
