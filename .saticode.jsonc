@@ -1,5 +1,5 @@
 {
-  "$schema": "https://satibot.github.io/saticode/config.json",
+  "$schema": "https://satibot.github.io/satibot/config.json",
   "model": "MiniMax-M2.5",
   "autoupdate": true,
   "server": {
