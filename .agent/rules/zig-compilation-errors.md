@@ -20,7 +20,7 @@ const value = @intCast(some_expression);
 const value = @as(u64, @intCast(some_expression));
 ```
 
-**Why**: Zig 0.15.0 requires explicit type information for `@intCast` to ensure type safety.
+**Why**: Zig 0.15.2 requires explicit type information for `@intCast` to ensure type safety.
 
 ### Type Casting for Time Values
 
@@ -347,7 +347,7 @@ pub const MyStruct = struct {
 pub fn runMyService(allocator: Allocator, config: Config) !void { ... } // Module function
 ```
 
-## 9. Zig 0.15.0 API Changes
+## 9. Zig 0.15.2 API Changes
 
 ### ArrayList Initialization
 
@@ -416,7 +416,7 @@ const result = @divFloor(a, b);  // Round down
 const result = @divExact(a, b);  // Must divide evenly
 ```
 
-## 11. Migration Guide: Zig 0.14.x to 0.15.0
+## 11. Migration Guide: Zig 0.14.x to 0.15.2
 
 ### Required Changes
 

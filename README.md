@@ -43,7 +43,7 @@ View more in [Features](docs/FEATURES.md).
 
 - OS: Linux, macOS, or Windows (with WSL)
 
-> Note: This project uses Zig 0.15.0's thread-based concurrency with XevEventLoop.
+> Note: This project uses Zig 0.15.2's thread-based concurrency with XevEventLoop.
 
 ---
 

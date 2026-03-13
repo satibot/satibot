@@ -2,7 +2,7 @@
 
 ## Async/Await
 
-- **DO NOT** use `async/await` syntax - removed in Zig 0.15.0
+- **DO NOT** use `async/await` syntax - removed in Zig 0.15.2
 - Use `std.Thread` for concurrent operations instead
 - Use thread-safe data structures (`std.Thread.Mutex`, `std.Thread.Condition`)
 
