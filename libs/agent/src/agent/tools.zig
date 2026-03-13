@@ -61,24 +61,24 @@ pub const ToolRegistry = struct {
     }
 };
 
-// /// List files in the current working directory.
-// /// Returns a newline-separated list of filenames.
-// pub fn list_files(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     _ = arguments;
-//     var dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
-//     defer dir.close();
+/// List files in the current working directory.
+/// Returns a newline-separated list of filenames.
+pub fn listFiles(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    _ = arguments;
+    var dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
+    defer dir.close();
 
-//     var iter = dir.iterate();
-//     var result = std.ArrayListUnmanaged(u8){};
-//     errdefer result.deinit(ctx.allocator);
+    var iter = dir.iterate();
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(ctx.allocator);
 
-//     while (try iter.next()) |entry| {
-//         try result.appendSlice(ctx.allocator, entry.name);
-//         try result.append(ctx.allocator, '\n');
-//     }
+    while (try iter.next()) |entry| {
+        try result.appendSlice(ctx.allocator, entry.name);
+        try result.append(ctx.allocator, '\n');
+    }
 
-//     return result.toOwnedSlice(ctx.allocator);
-// }
+    return result.toOwnedSlice(ctx.allocator);
+}
 
 /// Read contents of a file specified by path in JSON arguments.
 /// Max file size: 10MB (10485760 = 10 * 1024 * 1024)
@@ -979,35 +979,34 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //     }
 // }
 
-// pub fn run_command(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     const parsed = try std.json.parseFromSlice(struct { command: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { command: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     // Security check: Prevent dangerous commands (basic)
-//     // In a real agent, this should be more robust or sandboxed.
-//     const cmd = parsed.value.command;
-//     if (std.mem.indexOf(u8, cmd, "rm -rf /") != null) {
-//         return try ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
-//     }
+    // Security check: Prevent dangerous commands (basic)
+    const cmd = parsed.value.command;
+    if (std.mem.indexOf(u8, cmd, "rm -rf /") != null) {
+        return try ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
+    }
 
-//     const result = try std.process.Child.run(.{
-//         .allocator = ctx.allocator,
-//         .argv = &[_][]const u8{ "sh", "-c", cmd },
-//         .max_output_bytes = 102400, // 100 * 1024
-//     });
-//     defer {
-//         ctx.allocator.free(result.stdout);
-//         ctx.allocator.free(result.stderr);
-//     }
+    const result = try std.process.Child.run(.{
+        .allocator = ctx.allocator,
+        .argv = &[_][]const u8{ "sh", "-c", cmd },
+        .max_output_bytes = 1048576, // 1MB
+    });
+    defer {
+        ctx.allocator.free(result.stdout);
+        ctx.allocator.free(result.stderr);
+    }
 
-//     if (result.stdout.len > 0) {
-//         return try ctx.allocator.dupe(u8, result.stdout);
-//     } else if (result.stderr.len > 0) {
-//         return try std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
-//     } else {
-//         return try ctx.allocator.dupe(u8, "(No output)");
-//     }
-// }
+    if (result.stdout.len > 0) {
+        return try ctx.allocator.dupe(u8, result.stdout);
+    } else if (result.stderr.len > 0) {
+        return try std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
+    } else {
+        return try ctx.allocator.dupe(u8, "(No output)");
+    }
+}
 
 test "htmlToText: basic HTML conversion" {
     const allocator = std.testing.allocator;

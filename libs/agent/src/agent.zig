@@ -110,67 +110,6 @@ pub const Agent = struct {
             std.debug.print("Chat history loading is disabled in configuration\n", .{});
         }
 
-        // Register default tools - only vector tools are active
-        //     .execute = tools.list_files,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "read_file",
-        //     .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}}",
-        //     .execute = tools.read_file,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "write_file",
-        //     .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}}",
-        //     .execute = tools.write_file,
-        // }) catch {};
-        // if (self.config.tools.web.search.apiKey) |key| {
-        //     if (key.len > 0) {
-        //         @constCast(&self.registry).register(.{
-        //             .name = "web_search",
-        //             .description = "Search the web for information. Arguments: {\"query\": \"zig lang\"}",
-        //             .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-        //             .execute = tools.web_search,
-        //         }) catch {};
-        //     }
-        // }
-        // @constCast(&self.registry).register(.{
-        //     .name = "list_marketplace",
-        //     .description = "List all available skills in the agent-skills.md marketplace",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
-        //     .execute = tools.list_marketplace_skills,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "search_marketplace",
-        //     .description = "Search for skills in the agent-skills.md marketplace. Arguments: {\"query\": \"notion\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}",
-        //     .execute = tools.search_marketplace_skills,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "install_skill",
-        //     .description = "Install a skill from the marketplace or a GitHub URL. Arguments: {\"skill_path\": \"futantan/agent-skills.md/skills/notion\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"skill_path\": {\"type\": \"string\"}}}",
-        //     .execute = tools.install_skill,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "telegram_send_message",
-        //     .description = "Send a message to a Telegram chat. Arguments: {\"chat_id\": \"12345\", \"text\": \"hello\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"chat_id\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-        //     .execute = tools.telegram_send_message,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "discord_send_message",
-        //     .description = "Send a message to a Discord channel via webhook. Arguments: {\"content\": \"hello\", \"username\": \"bot\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"content\": {\"type\": \"string\"}, \"username\": {\"type\": \"string\"}}, \"required\": [\"content\"]}",
-        //     .execute = tools.discord_send_message,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "whatsapp_send_message",
-        //     .description = "Send a WhatsApp message using Meta Cloud API. Arguments: {\"to\": \"1234567890\", \"text\": \"hello\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"to\": {\"type\": \"string\"}, \"text\": {\"type\": \"string\"}}, \"required\": [\"text\"]}",
-        //     .execute = tools.whatsapp_send_message,
-        // }) catch {};
         // Only register vector tools when RAG is enabled
         if (self.rag_enabled) {
             @constCast(&self.registry).register(.{
@@ -190,6 +129,16 @@ pub const Agent = struct {
                 std.log.err("Failed to register vector_search tool: {any}", .{err});
             };
         }
+
+        // Register file listing tool
+        @constCast(&self.registry).register(.{
+            .name = "list_files",
+            .description = "List all files and directories in the current working directory.",
+            .parameters = "{\"type\": \"object\", \"properties\": {}}",
+            .execute = tools.listFiles,
+        }) catch |err| {
+            std.log.err("Failed to register list_files tool: {any}", .{err});
+        };
 
         // Register file reading tool
         @constCast(&self.registry).register(.{
@@ -231,61 +180,15 @@ pub const Agent = struct {
             std.log.err("Failed to register edit_file tool: {any}", .{err});
         };
 
-        // Graph, RAG, cron, subagent, and run_command tools are commented out
-        // @constCast(&self.registry).register(.{
-        //     .name = "graph_upsert_node",
-        //     .description = "Add a node to the graph database. Arguments: {\"id\": \"node_id\", \"label\": \"Person\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
-        //     .execute = tools.graph_upsert_node,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "graph_upsert_edge",
-        //     .description = "Add an edge (relation) between two nodes in the graph. Arguments: {\"from\": \"node1\", \"to\": \"node2\", \"relation\": \"knows\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
-        //     .execute = tools.graph_upsert_edge,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "graph_query",
-        //     .description = "Query relations for a specific node in the graph. Arguments: {\"start_node\": \"node_id\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
-        //     .execute = tools.graph_query,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "rag_search",
-        //     .description = "Perform a RAG (Retrieval-Augmented Generation) search. Arguments: {\"query\": \"what is...\"}",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}, \"required\": [\"query\"]}",
-        //     .execute = tools.rag_search,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "cron_add",
-        //     .description = "Schedule a recurring or one-time task. Specify 'every_seconds' or 'at_timestamp_ms'.",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"message\": {\"type\": \"string\"}, \"every_seconds\": {\"type\": \"integer\"}}, \"required\": [\"name\", \"message\"]}",
-        //     .execute = tools.cron_add,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "cron_list",
-        //     .description = "List all scheduled cron jobs",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {}}",
-        //     .execute = tools.cron_list,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "cron_remove",
-        //     .description = "Remove a scheduled cron job by ID",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
-        //     .execute = tools.cron_remove,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "subagent_spawn",
-        //     .description = "Spawn a background subagent to handle a specific task.",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
-        //     .execute = tools.subagent_spawn,
-        // }) catch {};
-        // @constCast(&self.registry).register(.{
-        //     .name = "run_command",
-        //     .description = "Execute a shell command. Use with caution.",
-        //     .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
-        //     .execute = tools.run_command,
-        // }) catch {};
+        // Register shell command execution tool
+        @constCast(&self.registry).register(.{
+            .name = "run_command",
+            .description = "Execute a shell command in the current environment. Use for running tests, build commands, or other CLI tools. Arguments: {\"command\": \"ls -l\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\", \"description\": \"The shell command to execute\"}}, \"required\": [\"command\"]}",
+            .execute = tools.runCommand,
+        }) catch |err| {
+            std.log.err("Failed to register run_command tool: {any}", .{err});
+        };
 
         return self;
     }

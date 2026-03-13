@@ -295,6 +295,29 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(web_cli);
 
+    // Agent CLI App (Claude-Code style)
+    const agent_cli = b.addExecutable(.{
+        .name = "s-agent",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/agent/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "agent", .module = agent },
+                .{ .name = "core", .module = core },
+                .{ .name = "db", .module = db },
+            },
+        }),
+    });
+    b.installArtifact(agent_cli);
+
+    const run_agent_cli_cmd = b.addRunArtifact(agent_cli);
+    if (b.args) |args| {
+        run_agent_cli_cmd.addArgs(args);
+    }
+    const run_agent_cli = b.step("agent", "Run agent CLI app");
+    run_agent_cli.dependOn(&run_agent_cli_cmd.step);
+
     // Sati CLI executable
     const sati_exe = b.addExecutable(.{
         .name = "sati",
@@ -352,6 +375,8 @@ pub fn build(b: *std.Build) void {
             console_xev.linkSystemLibrary("sqlite3");
             telegram.linkLibC();
             telegram.linkSystemLibrary("sqlite3");
+            agent_cli.linkLibC();
+            agent_cli.linkSystemLibrary("sqlite3");
         }
     }
 

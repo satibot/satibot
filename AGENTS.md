@@ -41,7 +41,8 @@ zig build console      # Async console app
 zig build console-sync # Sync console app
 zig build telegram     # Telegram bot (async)
 zig build telegram-sync # Telegram bot (sync)
-zig build run-console  # Build and run
+zig build agent         # Build and run interactive agent CLI
+zig build run-console   # Build and run
 ```
 
 ## Zig Development
