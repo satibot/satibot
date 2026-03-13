@@ -80,7 +80,49 @@ fn getTools(allocator: std.mem.Allocator, config: Config) !*tools.ToolRegistry {
         registry.* = tools.ToolRegistry.init(allocator);
 
         // Register all default tools
-        // Only register vector tools - all other tools are commented out
+        // File operations
+        try registry.register(.{
+            .name = "list_files",
+            .description = "List files in the current directory",
+            .parameters = "{\"type\": \"object\", \"properties\": {}}",
+            .execute = tools.listFiles,
+        });
+        try registry.register(.{
+            .name = "read_file",
+            .description = "Read the contents of a file. Arguments: {\"path\": \"file.txt\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}}, \"required\": [\"path\"]}",
+            .execute = tools.readFile,
+        });
+        try registry.register(.{
+            .name = "write_file",
+            .description = "Write content to a file. Arguments: {\"path\": \"file.txt\", \"content\": \"hello\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"content\": {\"type\": \"string\"}}, \"required\": [\"path\", \"content\"]}",
+            .execute = tools.writeFile,
+        });
+        try registry.register(.{
+            .name = "edit_file",
+            .description = "Edit a file by replacing text. Arguments: {\"path\": \"file.txt\", \"oldString\": \"old\", \"newString\": \"new\", \"replaceAll\": false}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\"}, \"oldString\": {\"type\": \"string\"}, \"newString\": {\"type\": \"string\"}, \"replaceAll\": {\"type\": \"boolean\"}}, \"required\": [\"path\", \"oldString\", \"newString\"]}",
+            .execute = tools.editFile,
+        });
+        try registry.register(.{
+            .name = "web_fetch",
+            .description = "Fetch content from a URL. Arguments: {\"url\": \"https://example.com\", \"format\": \"markdown\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"url\": {\"type\": \"string\"}, \"format\": {\"type\": \"string\"}}, \"required\": [\"url\"]}",
+            .execute = tools.webFetch,
+        });
+        try registry.register(.{
+            .name = "run_command",
+            .description = "Execute a shell command. Use with caution.",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"command\": {\"type\": \"string\"}}, \"required\": [\"command\"]}",
+            .execute = tools.runCommand,
+        });
+        try registry.register(.{
+            .name = "find_fn",
+            .description = "Search for function definitions in code files. Arguments: {\"name\": \"functionName\", \"path\": \"./src\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\"}, \"path\": {\"type\": \"string\"}}, \"required\": [\"name\"]}",
+            .execute = tools.findFn,
+        });
         // try registry.register(.{
         //     .name = "list_files",
         //     .description = "List files in the current directory",

@@ -1008,6 +1008,186 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     }
 }
 
+pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct {
+        name: []const u8,
+        path: ?[]const u8 = null,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const fn_name = parsed.value.name;
+    const search_path = parsed.value.path orelse ".";
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(ctx.allocator);
+
+    try result.appendSlice(ctx.allocator, "Searching for function: ");
+    try result.appendSlice(ctx.allocator, fn_name);
+    try result.appendSlice(ctx.allocator, " in ");
+    try result.appendSlice(ctx.allocator, search_path);
+    try result.append(ctx.allocator, '\n');
+
+    const extensions = [_][]const u8{ ".zig", ".ts", ".js", ".tsx", ".jsx", ".py", ".go", ".rs", ".c", ".h", ".java" };
+
+    var found_count: usize = 0;
+
+    for (extensions) |ext| {
+        const cmd = try std.fmt.allocPrint(ctx.allocator, "grep -rn 'fn {s}' --include='*{s}' {s} 2>/dev/null | head -20", .{ fn_name, ext, search_path });
+        defer ctx.allocator.free(cmd);
+
+        const grep_result = std.process.Child.run(.{
+            .allocator = ctx.allocator,
+            .argv = &[_][]const u8{ "sh", "-c", cmd },
+            .max_output_bytes = 65536,
+        }) catch continue;
+        defer {
+            ctx.allocator.free(grep_result.stdout);
+            ctx.allocator.free(grep_result.stderr);
+        }
+
+        if (grep_result.stdout.len > 0) {
+            found_count += 1;
+            try result.appendSlice(ctx.allocator, "\n--- ");
+            try result.appendSlice(ctx.allocator, ext);
+            try result.appendSlice(ctx.allocator, " ---\n");
+            try result.appendSlice(ctx.allocator, grep_result.stdout);
+        }
+    }
+
+    if (found_count == 0) {
+        try result.appendSlice(ctx.allocator, "\nNo function definitions found.");
+    }
+
+    return result.toOwnedSlice(ctx.allocator);
+}
+
+pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct {
+        name: []const u8,
+        path: ?[]const u8 = null,
+    }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    const fn_name = parsed.value.name;
+    const search_path = parsed.value.path orelse ".";
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(ctx.allocator);
+
+    try result.appendSlice(ctx.allocator, "SWC: Searching for function '");
+    try result.appendSlice(ctx.allocator, fn_name);
+    try result.appendSlice(ctx.allocator, "' in ");
+    try result.appendSlice(ctx.allocator, search_path);
+    try result.append(ctx.allocator, '\n');
+
+    const ts_exts = [_][]const u8{ ".ts", ".tsx", ".js", ".jsx" };
+
+    var found_count: usize = 0;
+
+    for (ts_exts) |ext| {
+        const cmd = try std.fmt.allocPrint(ctx.allocator, "find {s} -name '*{s}' -type f 2>/dev/null | head -50", .{ search_path, ext });
+        defer ctx.allocator.free(cmd);
+
+        const find_result = std.process.Child.run(.{
+            .allocator = ctx.allocator,
+            .argv = &[_][]const u8{ "sh", "-c", cmd },
+            .max_output_bytes = 65536,
+        }) catch continue;
+        defer {
+            ctx.allocator.free(find_result.stdout);
+            ctx.allocator.free(find_result.stderr);
+        }
+
+        if (find_result.stdout.len == 0) continue;
+
+        var line_iter = std.mem.tokenizeScalar(u8, find_result.stdout, '\n');
+        while (line_iter.next()) |file_path| {
+            if (file_path.len == 0) continue;
+
+            const is_ts = std.mem.endsWith(u8, file_path, ".ts") or std.mem.endsWith(u8, file_path, ".tsx");
+            const parser = if (is_ts) "typescript" else "ecmascript";
+
+            var swc_cmd = std.process.Child.init(&.{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true" }, ctx.allocator);
+            swc_cmd.stdin_behavior = .Inherit;
+            swc_cmd.stdout_behavior = .Pipe;
+            swc_cmd.stderr_behavior = .Pipe;
+
+            swc_cmd.spawn() catch continue;
+
+            var buf: [1024 * 1024]u8 = undefined;
+            const ast_stdout = swc_cmd.stdout.?.reader().readAll(&buf) catch continue;
+            const ast_slice = try ctx.allocator.dupe(u8, ast_stdout);
+            defer ctx.allocator.free(ast_slice);
+
+            _ = swc_cmd.wait() catch continue;
+
+            if (std.mem.indexOf(u8, ast_slice, fn_name) != null) {
+                found_count += 1;
+                try result.appendSlice(ctx.allocator, "\n--- Found in: ");
+                try result.appendSlice(ctx.allocator, file_path);
+                try result.appendSlice(ctx.allocator, " ---\n");
+
+                const context_lines = try getFnContext(ctx.allocator, file_path, fn_name, is_ts);
+                defer ctx.allocator.free(context_lines);
+                try result.appendSlice(ctx.allocator, context_lines);
+            }
+        }
+    }
+
+    if (found_count == 0) {
+        try result.appendSlice(ctx.allocator, "\nNo function definitions found using SWC.");
+    }
+
+    return result.toOwnedSlice(ctx.allocator);
+}
+
+fn getFnContext(allocator: std.mem.Allocator, file_path: []const u8, fn_name: []const u8, is_ts: bool) ![]const u8 {
+    const parser = if (is_ts) "typescript" else "ecmascript";
+
+    var cmd = std.process.Child.init(&.{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true", "-C", "parser.target=es2020" }, allocator);
+    cmd.stdin_behavior = .Inherit;
+    cmd.stdout_behavior = .Pipe;
+    cmd.stderr_behavior = .Pipe;
+
+    cmd.spawn() catch return allocator.dupe(u8, "(Could not parse file)");
+
+    var buf: [1024 * 1024]u8 = undefined;
+    const ast_bytes = cmd.stdout.?.reader().readAll(&buf) catch return allocator.dupe(u8, "(Could not read AST)");
+    const ast = try allocator.dupe(u8, ast_bytes);
+    defer allocator.free(ast);
+
+    _ = cmd.wait() catch {};
+
+    if (std.mem.indexOf(u8, ast, fn_name) == null) {
+        return allocator.dupe(u8, "(Function name not in AST)");
+    }
+
+    const file = std.fs.cwd().openFile(file_path, .{}) catch return allocator.dupe(u8, "(Could not read file)");
+    defer file.close();
+
+    var content_buf: [1048576]u8 = undefined;
+    const content_bytes = file.reader().readAll(&content_buf) catch return allocator.dupe(u8, "(Could not read file content)");
+    const content = try allocator.dupe(u8, content_bytes);
+    defer allocator.free(content);
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var line_iter = std.mem.tokenizeScalar(u8, content, '\n');
+    var line_num: usize = 0;
+    while (line_iter.next()) |line| : (line_num += 1) {
+        if (std.mem.indexOf(u8, line, fn_name) != null) {
+            try result.writer(allocator).print("  {d}: {s}\n", .{ line_num + 1, line });
+        }
+    }
+
+    if (result.items.len == 0) {
+        return allocator.dupe(u8, "(Found in AST but not in source)");
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
 test "htmlToText: basic HTML conversion" {
     const allocator = std.testing.allocator;
     const html = "<html><body><h1>Hello</h1><p>World</p></body></html>";
@@ -1808,4 +1988,68 @@ test "Tools: respect disableRag flag" {
     const search_res = try vectorSearch(ctx, "{\"query\": \"hello\"}");
     defer allocator.free(search_res);
     try std.testing.expect(std.mem.indexOf(u8, search_res, "RAG is globally disabled") != null);
+}
+
+test "Tools: findFn with valid arguments" {
+    const allocator = std.testing.allocator;
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+            },
+        },
+    };
+
+    const result = try findFn(ctx, "{\"name\": \"main\", \"path\": \".\"}");
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, result, "Searching for function: main") != null);
+}
+
+test "Tools: findFn with default path" {
+    const allocator = std.testing.allocator;
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+            },
+        },
+    };
+
+    const result = try findFn(ctx, "{\"name\": \"test\"}");
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, result, "Searching for function: test") != null);
+}
+
+test "Tools: getFnContext with valid TypeScript file" {
+    const allocator = std.testing.allocator;
+
+    const test_code =
+        \\export function hello() {
+        \\  console.log("hello");
+        \\}
+        \\
+        \\function world() {
+        \\  return "world";
+        \\}
+    ;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "test.ts", .data = test_code });
+
+    const result = try getFnContext(allocator, "test.ts", "hello", true);
+    defer allocator.free(result);
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "hello") != null);
 }

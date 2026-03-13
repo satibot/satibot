@@ -190,6 +190,26 @@ pub const Agent = struct {
             std.log.err("Failed to register run_command tool: {any}", .{err});
         };
 
+        // Register function finder tool
+        @constCast(&self.registry).register(.{
+            .name = "find_fn",
+            .description = "Search for function definitions in code files. Arguments: {\"name\": \"functionName\", \"path\": \"./src\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"The function name to search for\"}, \"path\": {\"type\": \"string\", \"description\": \"The directory path to search in (default: .)\"}}, \"required\": [\"name\"]}",
+            .execute = tools.findFn,
+        }) catch |err| {
+            std.log.err("Failed to register find_fn tool: {any}", .{err});
+        };
+
+        // Register SWC-based TS function finder tool
+        @constCast(&self.registry).register(.{
+            .name = "find_fn_swc",
+            .description = "Search for TypeScript/JavaScript function definitions using SWC AST parser. More accurate for TS/JS files. Arguments: {\"name\": \"functionName\", \"path\": \"./src\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"name\": {\"type\": \"string\", \"description\": \"The function name to search for\"}, \"path\": {\"type\": \"string\", \"description\": \"The directory path to search in (default: .)\"}}, \"required\": [\"name\"]}",
+            .execute = tools.findFnSwc,
+        }) catch |err| {
+            std.log.err("Failed to register find_fn_swc tool: {any}", .{err});
+        };
+
         return self;
     }
 
