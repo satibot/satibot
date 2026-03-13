@@ -1,0 +1,29 @@
+{
+  "$schema": "https://satibot.github.io/saticode/config.json",
+  "model": "MiniMax-M2.5",
+  "autoupdate": true,
+  "server": {
+    "port": 4096,
+    "host": "localhost"
+  },
+  "rag": {
+    "enabled": true,
+    "maxHistory": 50,
+    "embeddingsModel": "local"
+  },
+  "providers": {
+    "minimax": {
+      "apiKey": "${MINIMAX_API_KEY}",
+      "apiBase": "https://api.minimax.io/anthropic"
+    }
+  },
+  "systemPrompt": "You are SatiCode, an expert software engineer. Help users with coding tasks efficiently and professionally.",
+  "tools": {
+    "web": {
+      "search": {
+        "apiKey": "${SEARCH_API_KEY}",
+        "engine": "google"
+      }
+    }
+  }
+}

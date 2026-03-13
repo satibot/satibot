@@ -6,6 +6,7 @@ const tools = @import("agent/tools.zig");
 const providers = @import("providers");
 const openrouter = providers.openrouter;
 const anthropic = providers.anthropic;
+const minimax = providers.minimax;
 const base = providers.base;
 const OpenRouterError = openrouter.OpenRouterError;
 const db = @import("db");
@@ -324,7 +325,9 @@ pub const Agent = struct {
         self.agent_start_time = std.time.milliTimestamp();
 
         // Record agent start event
-        const provider_name: []const u8 = if (self.config.providers.openrouter != null) "openrouter" else "unknown";
+        const provider_name: []const u8 = blk: {
+            if (self.config.providers.openrouter != null) break :blk "openrouter" else if (self.config.providers.anthropic != null) break :blk "anthropic" else if (self.config.providers.minimax != null) break :blk "minimax" else break :blk "unknown";
+        };
         const start_event: ObserverEvent = .{ .agent_start = .{
             .provider = provider_name,
             .model = model,
@@ -474,6 +477,8 @@ pub const Agent = struct {
                 fn call(model_name: []const u8) base.ProviderInterface {
                     if (std.mem.indexOf(u8, model_name, "claude") != null) {
                         return anthropic.createInterface();
+                    } else if (std.mem.indexOf(u8, model_name, "minimax") != null or std.mem.indexOf(u8, model_name, "MiniMax") != null) {
+                        return minimax.createInterface();
                     } else {
                         return openrouter.createInterface();
                     }
@@ -482,10 +487,19 @@ pub const Agent = struct {
 
             const provider_interface = getProviderInterface(model);
 
+            // Detect provider name from model
+            const detectProviderName = struct {
+                fn call(model_name: []const u8) []const u8 {
+                    if (std.mem.indexOf(u8, model_name, "claude") != null) return "anthropic";
+                    if (std.mem.indexOf(u8, model_name, "minimax") != null or std.mem.indexOf(u8, model_name, "MiniMax") != null) return "minimax";
+                    return "openrouter";
+                }
+            }.call;
+
             // Record LLM request event
             const timer_start = std.time.milliTimestamp();
             const req_event: ObserverEvent = .{ .llm_request = .{
-                .provider = "openrouter",
+                .provider = detectProviderName(model),
                 .model = model,
                 .messages_count = filtered_messages.items.len,
             } };
@@ -504,7 +518,7 @@ pub const Agent = struct {
                 // Record failed LLM response event
                 const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
                 const fail_event: ObserverEvent = .{ .llm_response = .{
-                    .provider = "openrouter",
+                    .provider = detectProviderName(model),
                     .model = model,
                     .duration_ms = duration_ms,
                     .success = false,
@@ -529,7 +543,7 @@ pub const Agent = struct {
             // Record successful LLM response event
             const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
             const resp_event: ObserverEvent = .{ .llm_response = .{
-                .provider = "openrouter",
+                .provider = detectProviderName(model),
                 .model = model,
                 .duration_ms = duration_ms,
                 .success = true,

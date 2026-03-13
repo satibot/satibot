@@ -1,5 +1,6 @@
 const std = @import("std");
 const agent = @import("agent");
+const config = @import("config.zig");
 
 fn loadAgentConfig(allocator: std.mem.Allocator) ![]const u8 {
     var content: std.ArrayList(u8) = .empty;
@@ -73,52 +74,57 @@ pub fn main() !void {
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
-    // Load configuration
-    var parsed_config = try agent.config.load(arena_allocator);
-    defer parsed_config.deinit();
-    const config = parsed_config.value;
+    // Load SatiCode configuration
+    const saticode_config = try config.load(arena_allocator);
+    const agent_config = try config.toAgentConfig(arena_allocator, saticode_config.saticode);
 
     const args = try std.process.argsAlloc(arena_allocator);
     defer std.process.argsFree(arena_allocator, args);
 
-    var rag_enabled = true;
+    // Override RAG setting from command line
+    var rag_enabled = if (saticode_config.saticode.rag) |rag| rag.enabled else true;
     for (args) |arg| {
         if (std.mem.eql(u8, arg, "--no-rag")) {
             rag_enabled = false;
         }
     }
 
-    const session_id = "agent_cli_session";
-    var bot = try agent.Agent.init(arena_allocator, config, session_id, rag_enabled);
+    const session_id = "saticode_session";
+    var bot = try agent.Agent.init(arena_allocator, agent_config, session_id, rag_enabled);
     defer bot.deinit();
 
     // Load agent rules and skills from .agent/ and .agents/ directories
-    const agent_config = loadAgentConfig(arena_allocator) catch "";
-    defer arena_allocator.free(agent_config);
+    const agent_rules = loadAgentConfig(arena_allocator) catch "";
+    defer arena_allocator.free(agent_rules);
 
     // Custom system prompt for coding assistant
     var system_prompt_builder: std.ArrayList(u8) = .empty;
     defer system_prompt_builder.deinit(arena_allocator);
 
-    try system_prompt_builder.appendSlice(arena_allocator,
-        \\You are SatiCode, a highly capable AI software engineer CLI tool.
-        \\Your goal is to help the user with coding tasks, debugging, and project management.
-        \\You have access to the local filesystem and can execute shell commands.
-        \\
-        \\When you are asked to solve a problem:
-        \\1. Explore the codebase using 'list_files' and 'read_file'.
-        \\2. Plan your approach.
-        \\3. Implement changes using 'write_file' or 'edit_file'.
-        \\4. Verify your changes by running tests or build commands using 'run_command'.
-        \\
-        \\Be concise and efficient. Always explain your reasoning before taking actions.
-        \\If you need to search the web, use 'web_fetch' (though it works for specific URLs).
-    );
+    // Use custom system prompt from config if provided, otherwise use default
+    if (saticode_config.saticode.systemPrompt) |custom_prompt| {
+        try system_prompt_builder.appendSlice(arena_allocator, custom_prompt);
+    } else {
+        try system_prompt_builder.appendSlice(arena_allocator,
+            \\You are SatiCode, a highly capable AI software engineer CLI tool.
+            \\Your goal is to help the user with coding tasks, debugging, and project management.
+            \\You have access to the local filesystem and can execute shell commands.
+            \\
+            \\When you are asked to solve a problem:
+            \\1. Explore the codebase using 'list_files' and 'read_file'.
+            \\2. Plan your approach.
+            \\3. Implement changes using 'write_file' or 'edit_file'.
+            \\4. Verify your changes by running tests or build commands using 'run_command'.
+            \\
+            \\Be concise and efficient. Always explain your reasoning before taking actions.
+            \\If you need to search the web, use 'web_fetch' (though it works for specific URLs).
+        );
+    }
 
-    if (agent_config.len > 0) {
+    if (agent_rules.len > 0) {
         try system_prompt_builder.appendSlice(arena_allocator, "\n\n");
         try system_prompt_builder.appendSlice(arena_allocator, "=== AGENT RULES & SKILLS ===\n");
-        try system_prompt_builder.appendSlice(arena_allocator, agent_config);
+        try system_prompt_builder.appendSlice(arena_allocator, agent_rules);
     }
 
     const system_prompt = try system_prompt_builder.toOwnedSlice(arena_allocator);
@@ -136,15 +142,16 @@ pub fn main() !void {
         try bot.ctx.addMessage(.{ .role = "system", .content = system_prompt });
     }
 
-    const model = config.agents.defaults.model;
+    const model = saticode_config.saticode.model;
     std.debug.print(
         \\🐵 SatiCode CLI (Claude-Code style)
         \\Model: {s}
         \\RAG: {s}
+        \\Config: {s}
         \\Type your request (Ctrl+D or 'exit' to quit):
         \\
         \\
-    , .{ model, if (rag_enabled) "Enabled" else "Disabled" });
+    , .{ model, if (rag_enabled) "Enabled" else "Disabled", saticode_config.path orelse "default" });
 
     const stdin = std.fs.File.stdin();
     var read_buf: [4096]u8 = undefined;
