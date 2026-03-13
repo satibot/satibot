@@ -986,7 +986,7 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     // Security check: Prevent dangerous commands (basic)
     const cmd = parsed.value.command;
     if (std.mem.indexOf(u8, cmd, "rm -rf /") != null) {
-        return try ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
+        return ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
     }
 
     const result = try std.process.Child.run(.{
@@ -1000,11 +1000,11 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     }
 
     if (result.stdout.len > 0) {
-        return try ctx.allocator.dupe(u8, result.stdout);
+        return ctx.allocator.dupe(u8, result.stdout);
     } else if (result.stderr.len > 0) {
-        return try std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
+        return std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
     } else {
-        return try ctx.allocator.dupe(u8, "(No output)");
+        return ctx.allocator.dupe(u8, "(No output)");
     }
 }
 
@@ -1114,20 +1114,23 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
             swc_cmd.spawn() catch continue;
 
-            var buf: [1024 * 1024]u8 = undefined;
-            const ast_stdout = swc_cmd.stdout.?.reader().readAll(&buf) catch continue;
-            const ast_slice = try ctx.allocator.dupe(u8, ast_stdout);
-            defer ctx.allocator.free(ast_slice);
+            const swc_result = std.process.Child.run(.{
+                .allocator = ctx.allocator,
+                .argv = &[_][]const u8{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true" },
+                .max_output_bytes = 1024 * 1024,
+            }) catch continue;
+            defer {
+                ctx.allocator.free(swc_result.stdout);
+                ctx.allocator.free(swc_result.stderr);
+            }
 
-            _ = swc_cmd.wait() catch continue;
-
-            if (std.mem.indexOf(u8, ast_slice, fn_name) != null) {
+            if (swc_result.stdout.len > 0 and std.mem.indexOf(u8, swc_result.stdout, fn_name) != null) {
                 found_count += 1;
                 try result.appendSlice(ctx.allocator, "\n--- Found in: ");
                 try result.appendSlice(ctx.allocator, file_path);
                 try result.appendSlice(ctx.allocator, " ---\n");
 
-                const context_lines = try getFnContext(ctx.allocator, file_path, fn_name, is_ts);
+                const context_lines = try getFnContext(ctx.allocator, file_path, fn_name);
                 defer ctx.allocator.free(context_lines);
                 try result.appendSlice(ctx.allocator, context_lines);
             }
@@ -1141,33 +1144,11 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return result.toOwnedSlice(ctx.allocator);
 }
 
-fn getFnContext(allocator: std.mem.Allocator, file_path: []const u8, fn_name: []const u8, is_ts: bool) ![]const u8 {
-    const parser = if (is_ts) "typescript" else "ecmascript";
-
-    var cmd = std.process.Child.init(&.{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true", "-C", "parser.target=es2020" }, allocator);
-    cmd.stdin_behavior = .Inherit;
-    cmd.stdout_behavior = .Pipe;
-    cmd.stderr_behavior = .Pipe;
-
-    cmd.spawn() catch return allocator.dupe(u8, "(Could not parse file)");
-
-    var buf: [1024 * 1024]u8 = undefined;
-    const ast_bytes = cmd.stdout.?.reader().readAll(&buf) catch return allocator.dupe(u8, "(Could not read AST)");
-    const ast = try allocator.dupe(u8, ast_bytes);
-    defer allocator.free(ast);
-
-    _ = cmd.wait() catch {};
-
-    if (std.mem.indexOf(u8, ast, fn_name) == null) {
-        return allocator.dupe(u8, "(Function name not in AST)");
-    }
-
+fn getFnContext(allocator: std.mem.Allocator, file_path: []const u8, fn_name: []const u8) ![]const u8 {
     const file = std.fs.cwd().openFile(file_path, .{}) catch return allocator.dupe(u8, "(Could not read file)");
     defer file.close();
 
-    var content_buf: [1048576]u8 = undefined;
-    const content_bytes = file.reader().readAll(&content_buf) catch return allocator.dupe(u8, "(Could not read file content)");
-    const content = try allocator.dupe(u8, content_bytes);
+    const content = file.readToEndAlloc(allocator, 1048576) catch return allocator.dupe(u8, "(Could not read file content)");
     defer allocator.free(content);
 
     var result: std.ArrayList(u8) = .empty;
@@ -1182,7 +1163,7 @@ fn getFnContext(allocator: std.mem.Allocator, file_path: []const u8, fn_name: []
     }
 
     if (result.items.len == 0) {
-        return allocator.dupe(u8, "(Found in AST but not in source)");
+        return allocator.dupe(u8, "(Function not found in source)");
     }
 
     return result.toOwnedSlice(allocator);
@@ -2048,7 +2029,10 @@ test "Tools: getFnContext with valid TypeScript file" {
 
     try tmp.dir.writeFile(.{ .sub_path = "test.ts", .data = test_code });
 
-    const result = try getFnContext(allocator, "test.ts", "hello", true);
+    const abs_path = try tmp.dir.realpathAlloc(allocator, "test.ts");
+    defer allocator.free(abs_path);
+
+    const result = try getFnContext(allocator, abs_path, "hello");
     defer allocator.free(result);
 
     try std.testing.expect(std.mem.indexOf(u8, result, "hello") != null);
