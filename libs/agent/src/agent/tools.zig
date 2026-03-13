@@ -1009,35 +1009,43 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 }
 
 fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {
+    const default_exclusions = [_][]const u8{
+        "node_modules",
+        "build",
+        "dist",
+        ".git",
+        ".zig-cache",
+        "target",
+        "__pycache__",
+        "venv",
+        "env",
+        ".venv",
+        ".env",
+        "wheels",
+        ".coverage",
+        "tmp",
+        "*.pem",
+        "*.crt",
+        "*.key",
+        "*.cer",
+        "*.pyc",
+        "*.pyd",
+        "*.pyo",
+        ".env",
+        ".env.*",
+    };
+
     var exclusions: std.ArrayList([]const u8) = .empty;
+    defer exclusions.deinit(allocator);
+
+    // Track dynamically allocated strings separately
+    var dynamic_strings: std.ArrayList([]const u8) = .empty;
     defer {
-        for (exclusions.items) |e| allocator.free(e);
-        exclusions.deinit(allocator);
+        for (dynamic_strings.items) |s| allocator.free(s);
+        dynamic_strings.deinit(allocator);
     }
 
-    try exclusions.append(allocator, "node_modules");
-    try exclusions.append(allocator, "build");
-    try exclusions.append(allocator, "dist");
-    try exclusions.append(allocator, ".git");
-    try exclusions.append(allocator, ".zig-cache");
-    try exclusions.append(allocator, "target");
-    try exclusions.append(allocator, "__pycache__");
-    try exclusions.append(allocator, "venv");
-    try exclusions.append(allocator, "env");
-    try exclusions.append(allocator, ".venv");
-    try exclusions.append(allocator, ".env");
-    try exclusions.append(allocator, "wheels");
-    try exclusions.append(allocator, ".coverage");
-    try exclusions.append(allocator, "tmp");
-    try exclusions.append(allocator, "*.pem");
-    try exclusions.append(allocator, "*.crt");
-    try exclusions.append(allocator, "*.key");
-    try exclusions.append(allocator, "*.cer");
-    try exclusions.append(allocator, "*.pyc");
-    try exclusions.append(allocator, "*.pyd");
-    try exclusions.append(allocator, "*.pyo");
-    try exclusions.append(allocator, ".env");
-    try exclusions.append(allocator, ".env.*");
+    try exclusions.appendSlice(allocator, &default_exclusions);
 
     const gitignore_path = ".gitignore";
     const gitignore_file = std.fs.cwd().openFile(gitignore_path, .{}) catch {
@@ -1058,12 +1066,16 @@ fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {
 
         if (std.mem.endsWith(u8, trimmed, "/")) {
             const dir_name = trimmed[0 .. trimmed.len - 1];
-            try exclusions.append(allocator, try allocator.dupe(u8, dir_name));
+            const dupe = try allocator.dupe(u8, dir_name);
+            try exclusions.append(allocator, dupe);
+            try dynamic_strings.append(allocator, dupe);
         } else if (std.mem.indexOf(u8, trimmed, "*") == null) {
             if (trimmed.len > 0 and (trimmed[0] == '/' or trimmed[0] == '\\')) {
                 continue;
             }
-            try exclusions.append(allocator, try allocator.dupe(u8, trimmed));
+            const dupe = try allocator.dupe(u8, trimmed);
+            try exclusions.append(allocator, dupe);
+            try dynamic_strings.append(allocator, dupe);
         }
     }
 
@@ -2138,25 +2150,78 @@ test "Tools: buildExcludePatterns returns default exclusions" {
     defer allocator.free(result);
 
     try std.testing.expect(result.len > 0);
+
+    // Test core exclusions
     try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=node_modules") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=build") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=dist") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.git") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.zig-cache") != null);
+
+    // Test Python-related exclusions
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=__pycache__") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=venv") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=env") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.venv") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.pyc") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.pyd") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.pyo") != null);
+
+    // Test certificate exclusions
     try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.pem") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.crt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.key") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.cer") != null);
+
+    // Test environment and coverage exclusions
     try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.env") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.env.*") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.coverage") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=tmp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=wheels") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=target") != null);
+}
+
+test "Tools: buildExcludePatterns array integrity" {
+    const allocator = std.testing.allocator;
+
+    // Test that all default exclusions are present and count matches
+    const result = try buildExcludePatterns(allocator);
+    defer allocator.free(result);
+
+    // Count the number of --exclude patterns to verify all 23 are present
+    var exclude_count: usize = 0;
+    var i: usize = 0;
+    while (i < result.len) {
+        if (std.mem.startsWith(u8, result[i..], "--exclude=")) {
+            exclude_count += 1;
+            // Move to next pattern
+            const end = std.mem.indexOf(u8, result[i..], " ") orelse result.len;
+            i += end;
+        } else {
+            i += 1;
+        }
+    }
+
+    // Should have at least 23 default exclusions
+    try std.testing.expect(exclude_count >= 23);
 }
 
 test "Tools: buildExcludePatterns reads .gitignore" {
     const allocator = std.testing.allocator;
 
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    try tmp.dir.writeFile(.{ .sub_path = ".gitignore", .data = "secrets/\n*.log\nvendor\n" });
-
     const result = try buildExcludePatterns(allocator);
     defer allocator.free(result);
 
     try std.testing.expect(result.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, result, "secrets") != null);
+
+    // Check for patterns that should be in the current .gitignore
+    // Note: This test depends on the actual .gitignore content in the project root
+    // Wildcard patterns (*.log, *.tmp, etc.) are skipped by the current logic
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=zig-cache") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=bin") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=tmp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.DS_Store") != null);
 }
 
 test "Tools: findFn with excluded patterns" {
@@ -2175,7 +2240,7 @@ test "Tools: findFn with excluded patterns" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    _ = tmp.dir.makeDir("node_modules");
+    try tmp.dir.makeDir("node_modules");
     try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.js", .data = "function main() {}" });
     try tmp.dir.writeFile(.{ .sub_path = "main.zig", .data = "pub fn main() void {}" });
 
@@ -2202,7 +2267,7 @@ test "Tools: findFnSwc excludes node_modules" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    _ = tmp.dir.makeDir("node_modules");
+    try tmp.dir.makeDir("node_modules");
     try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.ts", .data = "export function hello() {}" });
     try tmp.dir.writeFile(.{ .sub_path = "main.ts", .data = "export function hello() {}" });
 
