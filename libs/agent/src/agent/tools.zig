@@ -1008,6 +1008,90 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     }
 }
 
+fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {
+    var exclusions: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (exclusions.items) |e| allocator.free(e);
+        exclusions.deinit(allocator);
+    }
+
+    try exclusions.append(allocator, "node_modules");
+    try exclusions.append(allocator, "build");
+    try exclusions.append(allocator, "dist");
+    try exclusions.append(allocator, ".git");
+    try exclusions.append(allocator, ".zig-cache");
+    try exclusions.append(allocator, "target");
+    try exclusions.append(allocator, "__pycache__");
+    try exclusions.append(allocator, "venv");
+    try exclusions.append(allocator, "env");
+    try exclusions.append(allocator, ".venv");
+    try exclusions.append(allocator, ".env");
+    try exclusions.append(allocator, "wheels");
+    try exclusions.append(allocator, ".coverage");
+    try exclusions.append(allocator, "tmp");
+    try exclusions.append(allocator, "*.pem");
+    try exclusions.append(allocator, "*.crt");
+    try exclusions.append(allocator, "*.key");
+    try exclusions.append(allocator, "*.cer");
+    try exclusions.append(allocator, "*.pyc");
+    try exclusions.append(allocator, "*.pyd");
+    try exclusions.append(allocator, "*.pyo");
+    try exclusions.append(allocator, ".env");
+    try exclusions.append(allocator, ".env.*");
+
+    const gitignore_path = ".gitignore";
+    const gitignore_file = std.fs.cwd().openFile(gitignore_path, .{}) catch {
+        return buildExcludeArg(allocator, exclusions.items);
+    };
+    defer gitignore_file.close();
+
+    const gitignore_content = gitignore_file.readToEndAlloc(allocator, 1024 * 64) catch {
+        return buildExcludeArg(allocator, exclusions.items);
+    };
+    defer allocator.free(gitignore_content);
+
+    var line_iter = std.mem.tokenizeScalar(u8, gitignore_content, '\n');
+    while (line_iter.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0) continue;
+        if (trimmed[0] == '#') continue;
+
+        if (std.mem.endsWith(u8, trimmed, "/")) {
+            const dir_name = trimmed[0 .. trimmed.len - 1];
+            try exclusions.append(allocator, try allocator.dupe(u8, dir_name));
+        } else if (std.mem.indexOf(u8, trimmed, "*") == null) {
+            if (trimmed.len > 0 and (trimmed[0] == '/' or trimmed[0] == '\\')) {
+                continue;
+            }
+            try exclusions.append(allocator, try allocator.dupe(u8, trimmed));
+        }
+    }
+
+    return buildExcludeArg(allocator, exclusions.items);
+}
+
+fn buildExcludeArg(allocator: std.mem.Allocator, exclusions: []const []const u8) ![]const u8 {
+    if (exclusions.len == 0) {
+        return allocator.dupe(u8, "");
+    }
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    for (exclusions) |ex| {
+        if (result.items.len > 0) {
+            try result.append(allocator, ' ');
+        }
+        try result.appendSlice(allocator, "--exclude=");
+        try result.appendSlice(allocator, ex);
+        if (ex.len > 0 and ex[0] != '*') {
+            try result.appendSlice(allocator, "/*");
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
 pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(struct {
         name: []const u8,
@@ -1027,12 +1111,18 @@ pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     try result.appendSlice(ctx.allocator, search_path);
     try result.append(ctx.allocator, '\n');
 
+    const exclude_arg = buildExcludePatterns(ctx.allocator) catch "";
+    defer ctx.allocator.free(exclude_arg);
+
     const extensions = [_][]const u8{ ".zig", ".ts", ".js", ".tsx", ".jsx", ".py", ".go", ".rs", ".c", ".h", ".java" };
 
     var found_count: usize = 0;
 
     for (extensions) |ext| {
-        const cmd = try std.fmt.allocPrint(ctx.allocator, "grep -rn 'fn {s}' --include='*{s}' {s} 2>/dev/null | head -20", .{ fn_name, ext, search_path });
+        const cmd = if (exclude_arg.len > 0)
+            try std.fmt.allocPrint(ctx.allocator, "grep -rn {s} 'fn {s}' --include='*{s}' {s} 2>/dev/null | head -20", .{ exclude_arg, fn_name, ext, search_path })
+        else
+            try std.fmt.allocPrint(ctx.allocator, "grep -rn 'fn {s}' --include='*{s}' {s} 2>/dev/null | head -20", .{ fn_name, ext, search_path });
         defer ctx.allocator.free(cmd);
 
         const grep_result = std.process.Child.run(.{
@@ -1080,60 +1170,63 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     try result.appendSlice(ctx.allocator, search_path);
     try result.append(ctx.allocator, '\n');
 
-    const ts_exts = [_][]const u8{ ".ts", ".tsx", ".js", ".jsx" };
+    const exclude_arg = buildExcludePatterns(ctx.allocator) catch "";
+    defer ctx.allocator.free(exclude_arg);
+
+    const grep_cmd = if (exclude_arg.len > 0)
+        try std.fmt.allocPrint(ctx.allocator, "grep -rl {s} '{s}' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' {s} 2>/dev/null | head -20", .{ exclude_arg, fn_name, search_path })
+    else
+        try std.fmt.allocPrint(ctx.allocator, "grep -rl '{s}' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' {s} 2>/dev/null | head -20", .{ fn_name, search_path });
+    defer ctx.allocator.free(grep_cmd);
+
+    const grep_result = std.process.Child.run(.{
+        .allocator = ctx.allocator,
+        .argv = &[_][]const u8{ "sh", "-c", grep_cmd },
+        .max_output_bytes = 65536,
+    }) catch {
+        try result.appendSlice(ctx.allocator, "\nNo TypeScript/JavaScript files found.");
+        return result.toOwnedSlice(ctx.allocator);
+    };
+    defer {
+        ctx.allocator.free(grep_result.stdout);
+        ctx.allocator.free(grep_result.stderr);
+    }
+
+    if (grep_result.stdout.len == 0) {
+        try result.appendSlice(ctx.allocator, "\nNo files found containing the function.");
+        return result.toOwnedSlice(ctx.allocator);
+    }
 
     var found_count: usize = 0;
+    var line_iter = std.mem.tokenizeScalar(u8, grep_result.stdout, '\n');
+    while (line_iter.next()) |file_path| {
+        if (file_path.len == 0) continue;
 
-    for (ts_exts) |ext| {
-        const cmd = try std.fmt.allocPrint(ctx.allocator, "find {s} -name '*{s}' -type f 2>/dev/null | head -50", .{ search_path, ext });
-        defer ctx.allocator.free(cmd);
+        const is_ts = std.mem.endsWith(u8, file_path, ".ts") or std.mem.endsWith(u8, file_path, ".tsx");
+        const parser = if (is_ts) "typescript" else "ecmascript";
 
-        const find_result = std.process.Child.run(.{
+        const swc_cmd_str = try std.fmt.allocPrint(ctx.allocator, "npx -y swc {s} -o /dev/stdout --parser {s} --module commonjs -C jsc.parser.all=true 2>/dev/null", .{ file_path, parser });
+        defer ctx.allocator.free(swc_cmd_str);
+
+        const swc_result = std.process.Child.run(.{
             .allocator = ctx.allocator,
-            .argv = &[_][]const u8{ "sh", "-c", cmd },
-            .max_output_bytes = 65536,
+            .argv = &[_][]const u8{ "sh", "-c", swc_cmd_str },
+            .max_output_bytes = 1024 * 1024,
         }) catch continue;
         defer {
-            ctx.allocator.free(find_result.stdout);
-            ctx.allocator.free(find_result.stderr);
+            ctx.allocator.free(swc_result.stdout);
+            ctx.allocator.free(swc_result.stderr);
         }
 
-        if (find_result.stdout.len == 0) continue;
+        if (swc_result.stdout.len > 0 and std.mem.indexOf(u8, swc_result.stdout, fn_name) != null) {
+            found_count += 1;
+            try result.appendSlice(ctx.allocator, "\n--- Found in: ");
+            try result.appendSlice(ctx.allocator, file_path);
+            try result.appendSlice(ctx.allocator, " ---\n");
 
-        var line_iter = std.mem.tokenizeScalar(u8, find_result.stdout, '\n');
-        while (line_iter.next()) |file_path| {
-            if (file_path.len == 0) continue;
-
-            const is_ts = std.mem.endsWith(u8, file_path, ".ts") or std.mem.endsWith(u8, file_path, ".tsx");
-            const parser = if (is_ts) "typescript" else "ecmascript";
-
-            var swc_cmd = std.process.Child.init(&.{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true" }, ctx.allocator);
-            swc_cmd.stdin_behavior = .Inherit;
-            swc_cmd.stdout_behavior = .Pipe;
-            swc_cmd.stderr_behavior = .Pipe;
-
-            swc_cmd.spawn() catch continue;
-
-            const swc_result = std.process.Child.run(.{
-                .allocator = ctx.allocator,
-                .argv = &[_][]const u8{ "npx", "-y", "swc", file_path, "-o", "/dev/stdout", "--parser", parser, "--module", "commonjs", "-C", "jsc.parser.all=true" },
-                .max_output_bytes = 1024 * 1024,
-            }) catch continue;
-            defer {
-                ctx.allocator.free(swc_result.stdout);
-                ctx.allocator.free(swc_result.stderr);
-            }
-
-            if (swc_result.stdout.len > 0 and std.mem.indexOf(u8, swc_result.stdout, fn_name) != null) {
-                found_count += 1;
-                try result.appendSlice(ctx.allocator, "\n--- Found in: ");
-                try result.appendSlice(ctx.allocator, file_path);
-                try result.appendSlice(ctx.allocator, " ---\n");
-
-                const context_lines = try getFnContext(ctx.allocator, file_path, fn_name);
-                defer ctx.allocator.free(context_lines);
-                try result.appendSlice(ctx.allocator, context_lines);
-            }
+            const context_lines = try getFnContext(ctx.allocator, file_path, fn_name);
+            defer ctx.allocator.free(context_lines);
+            try result.appendSlice(ctx.allocator, context_lines);
         }
     }
 
@@ -2036,4 +2129,85 @@ test "Tools: getFnContext with valid TypeScript file" {
     defer allocator.free(result);
 
     try std.testing.expect(std.mem.indexOf(u8, result, "hello") != null);
+}
+
+test "Tools: buildExcludePatterns returns default exclusions" {
+    const allocator = std.testing.allocator;
+
+    const result = try buildExcludePatterns(allocator);
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=node_modules") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=build") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=*.pem") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "--exclude=.env") != null);
+}
+
+test "Tools: buildExcludePatterns reads .gitignore" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = ".gitignore", .data = "secrets/\n*.log\nvendor\n" });
+
+    const result = try buildExcludePatterns(allocator);
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, result, "secrets") != null);
+}
+
+test "Tools: findFn with excluded patterns" {
+    const allocator = std.testing.allocator;
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+            },
+        },
+    };
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    _ = tmp.dir.makeDir("node_modules");
+    try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.js", .data = "function main() {}" });
+    try tmp.dir.writeFile(.{ .sub_path = "main.zig", .data = "pub fn main() void {}" });
+
+    const result = try findFn(ctx, "{\"name\": \"main\", \"path\": \".\"}");
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, result, "main.zig") != null);
+}
+
+test "Tools: findFnSwc excludes node_modules" {
+    const allocator = std.testing.allocator;
+    const ctx: ToolContext = .{
+        .allocator = allocator,
+        .config = Config{
+            .agents = .{ .defaults = .{ .model = "test" } },
+            .providers = .{},
+            .tools = .{
+                .web = .{ .search = .{} },
+            },
+        },
+    };
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    _ = tmp.dir.makeDir("node_modules");
+    try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.ts", .data = "export function hello() {}" });
+    try tmp.dir.writeFile(.{ .sub_path = "main.ts", .data = "export function hello() {}" });
+
+    const result = try findFnSwc(ctx, "{\"name\": \"hello\", \"path\": \".\"}");
+    defer allocator.free(result);
+
+    try std.testing.expect(result.len > 0);
 }
