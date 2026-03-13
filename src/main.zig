@@ -2,6 +2,7 @@
 const std = @import("std");
 const agent = @import("agent");
 const core = @import("core");
+const react_mod = agent.react_trace;
 
 const SKILL_DIRS = [_][]const u8{ ".agents/skills", ".opencode/skills" };
 const RULE_DIRS = [_][]const u8{ ".agents/rules", ".opencode/rules" };
@@ -393,11 +394,17 @@ fn printUsage() !void {
         \\sati rules                    # List available rules
         \\sati read <name>              # Read skill/rule content
         \\
-        \\# Interactive agent mode
+        \\# Interactive agent mode (uses ReAct by default)
         \\sati agent
         \\
         \\# Single message with session
         \\sati agent -m "Hello, how are you?" -s chat123
+        \\
+        \\# ReAct mode (default) - explicit reasoning
+        \\sati agent --react -m "Explain the codebase structure"
+        \\
+        \\# Non-ReAct mode
+        \\sati agent --no-react -m "Quick question"
         \\
         \\# Console-based interactive bot
         \\sati console
@@ -454,6 +461,7 @@ fn printCommandHelp(command: []const u8) !void {
             \\
             \\Run AI agent in interactive or single message mode.
             \\The agent can use loaded skills and rules for enhanced context.
+            \\Uses ReAct (Reasoning + Acting) loop by default for explicit reasoning.
             \\
             \\USAGE:
             \\  sati agent [options]
@@ -462,6 +470,8 @@ fn printCommandHelp(command: []const u8) !void {
             \\  -m, --message <text>     Single message mode
             \\  -s, --session <id>       Session ID for conversation
             \\  --no-rag                 Disable RAG (Retrieval-Augmented Generation)
+            \\  --react                  Use ReAct reasoning loop (default)
+            \\  --no-react               Disable ReAct mode
             \\  --skill <name>           Load a skill before running
             \\  --rule <name>            Load a rule before running
             \\
@@ -470,6 +480,7 @@ fn printCommandHelp(command: []const u8) !void {
             \\  sati agent -m "Hello"                # Single message
             \\  sati agent -s chat123 -m "Hello"     # With session
             \\  sati agent --no-rag                  # Disable RAG
+            \\  sati agent --react -m "Explain files"  # ReAct mode
             \\  sati agent --skill codebase          # With codebase skill
             \\
         , .{});
@@ -564,12 +575,63 @@ fn printCommandHelp(command: []const u8) !void {
 }
 
 fn runAgent(allocator: std.mem.Allocator, config: core.config.Config, args: []const []const u8, skills: *const std.StringHashMapUnmanaged(Skill), rules: *const std.StringHashMapUnmanaged(Rule)) !void {
-    _ = allocator;
-    _ = config;
-    _ = args;
-    _ = skills;
-    _ = rules;
-    std.debug.print("Agent command with skills/rules not yet implemented\n", .{});
+    var message: ?[]const u8 = null;
+    var session_id: ?[]const u8 = null;
+    var use_rag: bool = true;
+    var use_react: bool = true; // Default to ReAct
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "-m") or std.mem.eql(u8, arg, "--message")) {
+            if (i + 1 < args.len) {
+                message = args[i + 1];
+                i += 1;
+            }
+        } else if (std.mem.eql(u8, arg, "-s") or std.mem.eql(u8, arg, "--session")) {
+            if (i + 1 < args.len) {
+                session_id = args[i + 1];
+                i += 1;
+            }
+        } else if (std.mem.eql(u8, arg, "--no-rag")) {
+            use_rag = false;
+        } else if (std.mem.eql(u8, arg, "--react")) {
+            use_react = true;
+        } else if (std.mem.eql(u8, arg, "--no-react")) {
+            use_react = false;
+        }
+    }
+
+    const sess_id = session_id orelse "cli";
+
+    if (use_react) {
+        if (message) |msg| {
+            std.debug.print("\n🔄 Running in ReAct mode (default)...\n\n", .{});
+            try react_mod.runReactAgent(allocator, &config, msg, sess_id, use_rag);
+        } else {
+            std.debug.print("ReAct mode requires -m/--message argument\n", .{});
+            std.debug.print("Usage: sati agent -m \"Your message here\"\n", .{});
+        }
+        return;
+    }
+
+    if (message) |msg| {
+        std.debug.print("Running agent (non-ReAct mode)\n", .{});
+        std.debug.print("Message: {s}\n", .{msg});
+        std.debug.print("Session: {s}, RAG: {}\n", .{ sess_id, use_rag });
+
+        const skills_count = skills.count();
+        const rules_count = rules.count();
+        if (skills_count > 0 or rules_count > 0) {
+            std.debug.print("Loaded skills: {d}, rules: {d}\n", .{ skills_count, rules_count });
+        }
+
+        std.debug.print("\nAgent command not yet implemented - use console-sync instead\n", .{});
+    } else {
+        std.debug.print("Interactive agent mode (non-ReAct)\n", .{});
+        std.debug.print("Session: {s}, RAG: {}\n", .{ sess_id, use_rag });
+        std.debug.print("\nUse console-sync for interactive mode: sati console-sync\n", .{});
+    }
 }
 
 fn runVectorDb(allocator: std.mem.Allocator, config: core.config.Config, args: []const []const u8) !void {
