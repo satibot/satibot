@@ -1,0 +1,73 @@
+# SatiCode Makefile
+# 
+# Quick build commands for SatiCode CLI
+#
+# Usage:
+#   make            # Build saticode
+#   make run        # Build and run saticode
+#   make test       # Run tests
+#   make clean      # Clean build artifacts
+#   make install    # Install to system
+#   make dev        # Development build and run
+
+.PHONY: all run test clean install dev help
+
+# Default target
+all: saticode
+
+# Build saticode executable
+saticode:
+	@echo "🔨 Building SatiCode..."
+	zig build saticode
+	@echo "✅ Build complete: zig-out/bin/saticode"
+
+# Build and run saticode
+run: saticode
+	@echo "🚀 Running SatiCode..."
+	./zig-out/bin/saticode
+
+# Run tests
+test:
+	@echo "🧪 Running tests..."
+	zig test apps/code/src/main.zig
+
+# Clean build artifacts
+clean:
+	@echo "🧹 Cleaning build artifacts..."
+	rm -rf zig-out zig-cache
+	@echo "✅ Clean complete"
+
+# Install to system (requires sudo)
+install: saticode
+	@echo "📦 Installing SatiCode to /usr/local/bin..."
+	sudo cp zig-out/bin/saticode /usr/local/bin/
+	@echo "✅ Installation complete"
+
+# Development mode (build and run with debug info)
+dev:
+	@echo "🛠️  Development mode: building and running..."
+	zig build saticode -Doptimize=Debug
+	./zig-out/bin/saticode
+
+# Quick build using standalone build script
+build-standalone:
+	@echo "🔨 Using standalone build script..."
+	zig build --build-file build-saticode.zig
+
+# Show help
+help:
+	@echo "SatiCode Build Commands:"
+	@echo ""
+	@echo "  make              Build saticode executable"
+	@echo "  make run          Build and run saticode"
+	@echo "  make test         Run tests"
+	@echo "  make clean        Clean build artifacts"
+	@echo "  make install      Install to /usr/local/bin (requires sudo)"
+	@echo "  make dev          Development build and run"
+	@echo "  make build-standalone  Use standalone build script"
+	@echo "  make help         Show this help"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make              # Build once"
+	@echo "  make run          # Build and run"
+	@echo "  make dev          # Development mode"

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SatiCode Schema</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .schema-link {
+            background: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 20px 0;
+        }
+        .schema-link a {
+            color: #0969da;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .schema-link a:hover {
+            text-decoration: underline;
+        }
+        pre {
+            background: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+            overflow-x: auto;
+        }
+        code {
+            background: #f6f8fa;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>SatiCode Configuration Schema</h1>
+    
+    <p>This site hosts the JSON Schema for SatiCode configuration files.</p>
+    
+    <div class="schema-link">
+        <h3>Configuration Schema</h3>
+        <p>The main configuration schema is available at:</p>
+        <p><a href="config.json">https://satibot.github.io/saticode/config.json</a></p>
+    </div>
+
+    <h2>Usage</h2>
+    <p>To use this schema in your SatiCode configuration file, add the following reference:</p>
+    
+    <pre><code>{
+  "$schema": "https://satibot.github.io/saticode/config.json",
+  "model": "MiniMax-M2.5",
+  "autoupdate": true,
+  // ... other configuration options
+}</code></pre>
+
+    <h2>Schema Validation</h2>
+    <p>This schema provides validation for:</p>
+    <ul>
+        <li>AI model selection</li>
+        <li>Server configuration</li>
+        <li>RAG (Retrieval-Augmented Generation) settings</li>
+        <li>Provider configurations (MiniMax, OpenAI, etc.)</li>
+        <li>Tool configurations</li>
+    </ul>
+
+    <h2>Repository</h2>
+    <p>The SatiCode project is available at: <a href="https://github.com/satibot/satibot">https://github.com/satibot/satibot</a></p>
+</body>
+</html>

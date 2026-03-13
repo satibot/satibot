@@ -1,0 +1,14 @@
+# GitHub Pages configuration for SatiCode Schema
+theme: jekyll-theme-minimal
+title: SatiCode Schema
+description: JSON Schema for SatiCode AI Assistant Configuration
+baseurl: /saticode
+url: https://satibot.github.io
+
+# Ensure the config.json is served with proper content type
+include:
+  - config.json
+
+# Set up proper MIME types
+mime_types:
+  .json: application/json

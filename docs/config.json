@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://satibot.github.io/saticode/config.json",
+  "title": "SatiCode Configuration Schema",
+  "description": "Configuration schema for SatiCode AI assistant",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference"
+    },
+    "model": {
+      "type": "string",
+      "description": "AI model to use for conversations",
+      "enum": ["MiniMax-M2.5", "GPT-4", "Claude-3", "Gemini-Pro"],
+      "default": "MiniMax-M2.5"
+    },
+    "autoupdate": {
+      "type": "boolean",
+      "description": "Enable automatic updates",
+      "default": true
+    },
+    "server": {
+      "type": "object",
+      "description": "Server configuration",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 4096,
+          "description": "Server port"
+        },
+        "host": {
+          "type": "string",
+          "format": "hostname",
+          "default": "localhost",
+          "description": "Server host"
+        }
+      },
+      "required": ["port", "host"]
+    },
+    "rag": {
+      "type": "object",
+      "description": "Retrieval-Augmented Generation configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable RAG functionality"
+        },
+        "maxHistory": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 50,
+          "description": "Maximum history items to retain"
+        },
+        "embeddingsModel": {
+          "type": "string",
+          "enum": ["local", "openai", "huggingface"],
+          "default": "local",
+          "description": "Embeddings model to use"
+        }
+      },
+      "required": ["enabled", "maxHistory", "embeddingsModel"]
+    },
+    "providers": {
+      "type": "object",
+      "description": "AI provider configurations",
+      "properties": {
+        "minimax": {
+          "type": "object",
+          "description": "MiniMax provider configuration",
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "description": "MiniMax API key (can use environment variables)"
+            },
+            "apiBase": {
+              "type": "string",
+              "format": "uri",
+              "default": "https://api.minimax.io/anthropic",
+              "description": "MiniMax API base URL"
+            }
+          },
+          "required": ["apiKey"]
+        },
+        "openai": {
+          "type": "object",
+          "description": "OpenAI provider configuration",
+          "properties": {
+            "apiKey": {
+              "type": "string",
+              "description": "OpenAI API key"
+            },
+            "apiBase": {
+              "type": "string",
+              "format": "uri",
+              "default": "https://api.openai.com/v1",
+              "description": "OpenAI API base URL"
+            },
+            "model": {
+              "type": "string",
+              "default": "gpt-4",
+              "description": "OpenAI model to use"
+            }
+          },
+          "required": ["apiKey"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "systemPrompt": {
+      "type": "string",
+      "description": "System prompt for the AI assistant",
+      "default": "You are SatiCode, an expert software engineer. Help users with coding tasks efficiently and professionally."
+    },
+    "tools": {
+      "type": "object",
+      "description": "Tool configurations",
+      "properties": {
+        "web": {
+          "type": "object",
+          "description": "Web search tools",
+          "properties": {
+            "search": {
+              "type": "object",
+              "description": "Web search configuration",
+              "properties": {
+                "apiKey": {
+                  "type": "string",
+                  "description": "Search API key"
+                },
+                "engine": {
+                  "type": "string",
+                  "enum": ["google", "bing", "duckduckgo"],
+                  "default": "google",
+                  "description": "Search engine to use"
+                }
+              },
+              "required": ["apiKey"]
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": ["model", "autoupdate"],
+  "additionalProperties": false
+}
