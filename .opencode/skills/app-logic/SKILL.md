@@ -300,3 +300,94 @@ flowchart LR
     Config --> Agents[Agent Settings<br/>- model<br/>- embeddingModel<br/>- maxChatHistory<br/>- disableRag]
     Config --> Tools[Tool Config<br/>- web.search.apiKey<br/>- server.allowOrigin]
 ```
+
+## Skill & Rule System Flow
+
+```mermaid
+flowchart TB
+    subgraph CLI["Sati CLI"]
+        Main[main.zig]
+        SkillsCmd[sati skills]
+        SkillCmd[sati skill]
+        RulesCmd[sati rules]
+        ReadCmd[sati read]
+    end
+    
+    subgraph Storage["Storage Dirs"]
+        AS[.agents/skills/]
+        OS[.opencode/skills/]
+        AR[.agents/rules/]
+        OR[.opencode/rules/]
+    end
+    
+    subgraph Memory["In-Memory"]
+        SM[loaded_skills<br/>HashMap]
+        RM[loaded_rules<br/>HashMap]
+    end
+    
+    SkillsCmd --> AS
+    SkillsCmd --> OS
+    SkillsCmd --> SM
+    
+    SkillCmd --> AS
+    SkillCmd --> OS
+    SkillCmd --> SM
+    
+    RulesCmd --> AR
+    RulesCmd --> OR
+    
+    ReadCmd --> SM
+    ReadCmd --> RM
+```
+
+## Skill/Rule Loading Sequence
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant FileSystem
+    participant Memory
+
+    User->>CLI: sati skill load codebase
+    CLI->>FileSystem: Scan skills dirs
+    FileSystem-->>CLI: Find SKILL.md
+    CLI->>FileSystem: Read file
+    FileSystem-->>CLI: Content
+    CLI->>Memory: Store in HashMap
+    Memory-->>CLI: Confirm
+    CLI->>User: ✅ Loaded
+
+    User->>CLI: sati agent --skill codebase
+    CLI->>Memory: Get loaded skills
+    Memory-->>CLI: Skill content
+    CLI->>CLI: Inject into system prompt
+    CLI->>CLI: Run agent
+```
+
+## Skill/Rule Command Reference
+
+```mermaid
+flowchart LR
+    subgraph Commands["CLI Commands"]
+        ListSkills[sati skills]
+        LoadSkill[sati skill load]
+        ShowSkill[sati skill]
+        ListRules[sati rules]
+        ShowRule[sati rule]
+        Read[sati read]
+    end
+    
+    subgraph Output["Output"]
+        List[List all]
+        Load[Load to memory]
+        Show[Show details]
+    end
+    
+    ListSkills --> List
+    LoadSkill --> Load
+    ShowSkill --> Show
+    ListRules --> List
+    ShowRule --> Show
+    Read --> Show
+```
