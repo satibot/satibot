@@ -130,6 +130,26 @@ Use the provided test script to try all features:
 ./test_music.sh <your-api-key>
 ```
 
+## Add script to PATH
+
+To make the CLI globally available, add the following to your shell profile (e.g., `~/.zshrc` or `~/.bashrc`):
+
+```bash
+# Option 1: Add project directory to PATH (easiest)
+export PATH="/Users/username/w/satibot:$PATH"
+
+# Option 2: If using zig build install (outputs to zig-out/bin)
+export PATH="$PATH:$HOME/w/satibot/zig-out/bin"
+
+# Option 3: Copy binary to system directory
+sudo cp /Users/username/w/satibot/s-music /usr/local/bin/
+```
+
+Then reload your shell:
+```bash
+source ~/.zshrc # or source ~/.bashrc
+```
+
 ## Examples
 
 1. Generate upbeat pop music:

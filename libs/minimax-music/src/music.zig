@@ -28,6 +28,10 @@ pub const MusicGenerationRequest = struct {
     lyrics: []const u8 = "",
     audio_setting: AudioSetting = .{},
     output_format: []const u8 = "url",
+    /// Auto-generate lyrics from prompt (default: false)
+    lyrics_optimizer: bool = false,
+    /// Generate instrumental music (default: false, music-2.5+ only)
+    is_instrumental: bool = false,
 };
 
 pub const LyricsGenerationRequest = struct {
@@ -150,11 +154,9 @@ pub const MusicClient = struct {
         try self.writeJsonString(writer, request.prompt);
         try writer.writeAll(",");
 
-        if (request.lyrics.len > 0) {
-            try writer.print("\"lyrics\": ", .{});
-            try self.writeJsonString(writer, request.lyrics);
-            try writer.writeAll(",");
-        }
+        try writer.print("\"lyrics\": ", .{});
+        try self.writeJsonString(writer, request.lyrics);
+        try writer.writeAll(",");
 
         try writer.writeAll("\"audio_setting\": {");
         try writer.print("\"sample_rate\": {d},", .{request.audio_setting.sample_rate});
@@ -163,6 +165,12 @@ pub const MusicClient = struct {
         try writer.writeAll("},");
 
         try writer.print("\"output_format\": \"{s}\"", .{request.output_format});
+        if (request.lyrics_optimizer) {
+            try writer.writeAll(",\"lyrics_optimizer\": true");
+        }
+        if (request.is_instrumental) {
+            try writer.writeAll(",\"is_instrumental\": true");
+        }
         try writer.writeAll("}");
 
         return json_buf.toOwnedSlice(self.allocator);
@@ -323,6 +331,8 @@ test "MusicClient: buildMusicRequestBody" {
         .model = "music-2.5",
         .prompt = "Soulful Blues, Rainy Night",
         .lyrics = "[Verse 1]\nTest lyrics",
+        .lyrics_optimizer = true,
+        .is_instrumental = false,
     };
 
     const body = try client.buildMusicRequestBody(request);
@@ -331,6 +341,30 @@ test "MusicClient: buildMusicRequestBody" {
     try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"prompt\":") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics\":") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics_optimizer\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"is_instrumental\"") == null);
+}
+
+test "MusicClient: buildMusicRequestBody with instrumental" {
+    const allocator = std.testing.allocator;
+    var client = try MusicClient.init(allocator, "test-api-key");
+    defer client.deinit();
+
+    const request: MusicGenerationRequest = .{
+        .model = "music-2.5",
+        .prompt = "Electronic Dance Music",
+        .lyrics = "",
+        .lyrics_optimizer = false,
+        .is_instrumental = true,
+    };
+
+    const body = try client.buildMusicRequestBody(request);
+    defer allocator.free(body);
+
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"prompt\":") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"is_instrumental\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics_optimizer\"") == null);
 }
 
 test "MusicClient: buildLyricsRequestBody" {
