@@ -22,3 +22,5 @@ temp/
 
 logs/
 coverage-out/
+
+.env

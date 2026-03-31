@@ -3,5 +3,7 @@
     "first-line-h1": false,
     "no-inline-html": false,
     "MD024": false,
-    "MD060": false
+    "MD060": false,
+    "blanks-around-lists": false,
+    "blanks-around-fences": false
 }
