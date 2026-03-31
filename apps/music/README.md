@@ -6,6 +6,8 @@ A command-line tool for generating music and lyrics using the MiniMax API.
 
 - Generate lyrics from text prompts
 - Generate music with customizable style, mood, and vocals
+- Auto-generate lyrics from prompt using `lyrics_optimizer`
+- Generate instrumental tracks using `is_instrumental` (music-2.5+ only)
 - Automatic MP3 download from generated URLs
 - Attempts to play MP3 with system default player
 - Configuration file support for API key management
@@ -36,6 +38,16 @@ Generate music:
 Generate music with custom lyrics:
 ```bash
 ./zig-out/bin/s-music music "Pop Rock, Upbeat" --lyrics "[Verse 1]\nCustom lyrics here" <your-api-key>
+```
+
+Generate music with auto-generated lyrics:
+```bash
+./zig-out/bin/s-music music "Pop Rock, Upbeat" --lyrics-optimizer <your-api-key>
+```
+
+Generate instrumental music:
+```bash
+./zig-out/bin/s-music music "Electronic, Ambient" --instrumental <your-api-key>
 ```
 
 ### 2. Using Configuration File
@@ -167,6 +179,64 @@ source ~/.zshrc # or source ~/.bashrc
    s-music lyrics "A song about coding late at night"
    s-music music "Electronic, Ambient, Focus" --lyrics "<paste generated lyrics>"
    ```
+
+4. Generate music with auto-optimized lyrics:
+   ```bash
+   s-music music "Rock, Energetic, Stadium" --lyrics-optimizer
+   ```
+
+5. Generate instrumental music for meditation:
+   ```bash
+   s-music music "Ambient, Slow, Nature Sounds" --instrumental
+   ```
+
+6. Combine options for custom results:
+   ```bash
+   s-music music "Jazz, Smooth, Night City" --lyrics-optimizer --duration 120
+   ```
+
+## Advanced Music Generation Parameters
+
+### lyrics_optimizer
+
+When enabled, the MiniMax API will automatically generate lyrics based on your prompt. This is useful when you have a concept or theme but don't want to write specific lyrics.
+
+- **Default**: `false`
+- **Usage**: `--lyrics-optimizer`
+- **Model requirement**: Works with all music models
+
+Example:
+```bash
+s-music music "Rock song about overcoming challenges" --lyrics-optimizer
+```
+
+### is_instrumental
+
+Generate music without vocals, creating purely instrumental tracks. This option is only available with music-2.5 and later models.
+
+- **Default**: `false`
+- **Usage**: `--instrumental`
+- **Model requirement**: music-2.5+ only
+
+Example:
+```bash
+s-music music "Classical piano, emotional, minor key" --instrumental
+```
+
+### Combining Parameters
+
+You can use these parameters together with other options:
+
+```bash
+# Generate instrumental electronic music
+s-music music "Synthwave, Retro, 80s" --instrumental
+
+# Generate rock music with auto-optimized lyrics
+s-music music "Alternative Rock, Grunge, 90s style" --lyrics-optimizer
+
+# Note: lyrics_optimizer and is_instrumental are mutually exclusive
+# Using both together will result in instrumental music (no lyrics)
+```
 
 ## Requirements
 

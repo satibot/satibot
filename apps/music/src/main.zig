@@ -216,7 +216,6 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
     std.debug.print("\n", .{});
 
     const request: music.MusicGenerationRequest = .{
-        .model = "music-2.5",
         .prompt = prompt,
         .lyrics = lyrics orelse "",
     };

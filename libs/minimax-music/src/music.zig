@@ -23,11 +23,11 @@ pub const AudioSetting = struct {
 };
 
 pub const MusicGenerationRequest = struct {
-    model: []const u8 = "music-2.5",
+    model: []const u8 = "music-2.5+",
     prompt: []const u8,
     lyrics: []const u8 = "",
     audio_setting: AudioSetting = .{},
-    output_format: []const u8 = "url",
+    output_format: []const u8 = "hex",
     /// Auto-generate lyrics from prompt (default: false)
     lyrics_optimizer: bool = false,
     /// Generate instrumental music (default: false, music-2.5+ only)
@@ -44,12 +44,18 @@ pub const MusicGenerationResponse = struct {
     code: i32,
     msg: []const u8,
     data: ?MusicData = null,
+    trace_id: ?[]const u8 = null,
+    extra_info: ?ExtraInfo = null,
+    analysis_info: ?std.json.Value = null,
 
     pub fn deinit(self: *MusicGenerationResponse) void {
         if (self.data) |data| {
             if (data.audio) |audio| {
                 self.allocator.free(audio);
             }
+        }
+        if (self.trace_id) |trace_id| {
+            self.allocator.free(trace_id);
         }
         self.* = undefined;
     }
@@ -58,6 +64,15 @@ pub const MusicGenerationResponse = struct {
 pub const MusicData = struct {
     audio: ?[]const u8 = null,
     audio_type: ?[]const u8 = null,
+    status: ?i32 = null,
+};
+
+pub const ExtraInfo = struct {
+    music_duration: ?i64 = null,
+    music_sample_rate: ?i32 = null,
+    music_channel: ?i32 = null,
+    bitrate: ?i32 = null,
+    music_size: ?i64 = null,
 };
 
 pub const LyricsGenerationResponse = struct {
@@ -65,12 +80,20 @@ pub const LyricsGenerationResponse = struct {
     code: i32,
     msg: []const u8,
     data: ?LyricsData = null,
+    song_title: ?[]const u8 = null,
+    style_tags: ?[]const u8 = null,
 
     pub fn deinit(self: *LyricsGenerationResponse) void {
         if (self.data) |data| {
             if (data.lyrics) |lyrics| {
                 self.allocator.free(lyrics);
             }
+        }
+        if (self.song_title) |title| {
+            self.allocator.free(title);
+        }
+        if (self.style_tags) |tags| {
+            self.allocator.free(tags);
         }
         self.* = undefined;
     }
@@ -100,6 +123,9 @@ pub const MusicClient = struct {
     }
 
     pub fn generateMusic(self: *MusicClient, request: MusicGenerationRequest) !MusicGenerationResponse {
+        // Validate request parameters
+        try self.validateMusicRequest(request);
+
         const url = try std.fmt.allocPrint(self.allocator, "{s}/v1/music_generation", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -205,6 +231,61 @@ pub const MusicClient = struct {
         try writer.writeAll("\"");
     }
 
+    fn validateMusicRequest(_: *MusicClient, request: MusicGenerationRequest) !void {
+        // Validate prompt length (max 2000 characters)
+        if (request.prompt.len > 2000) {
+            return error.PromptTooLong;
+        }
+
+        // For non-instrumental music, lyrics are required (1-3500 characters)
+        if (!request.is_instrumental) {
+            if (request.lyrics.len == 0 and !request.lyrics_optimizer) {
+                return error.LyricsRequired;
+            }
+            if (request.lyrics.len > 3500) {
+                return error.LyricsTooLong;
+            }
+        }
+
+        // Validate audio settings
+        if (request.audio_setting.sample_rate != 16000 and
+            request.audio_setting.sample_rate != 24000 and
+            request.audio_setting.sample_rate != 32000 and
+            request.audio_setting.sample_rate != 44100)
+        {
+            return error.InvalidSampleRate;
+        }
+
+        if (request.audio_setting.bitrate != 32000 and
+            request.audio_setting.bitrate != 64000 and
+            request.audio_setting.bitrate != 128000 and
+            request.audio_setting.bitrate != 256000)
+        {
+            return error.InvalidBitrate;
+        }
+
+        if (!std.mem.eql(u8, request.audio_setting.format, "mp3") and
+            !std.mem.eql(u8, request.audio_setting.format, "wav") and
+            !std.mem.eql(u8, request.audio_setting.format, "pcm"))
+        {
+            return error.InvalidAudioFormat;
+        }
+
+        // Validate model
+        if (!std.mem.eql(u8, request.model, "music-2.5") and
+            !std.mem.eql(u8, request.model, "music-2.5+"))
+        {
+            return error.InvalidModel;
+        }
+
+        // Validate output format
+        if (!std.mem.eql(u8, request.output_format, "url") and
+            !std.mem.eql(u8, request.output_format, "hex"))
+        {
+            return error.InvalidOutputFormat;
+        }
+    }
+
     fn parseMusicResponse(self: *MusicClient, body: []const u8) !MusicGenerationResponse {
         const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, body, .{});
         defer parsed.deinit();
@@ -236,6 +317,41 @@ pub const MusicClient = struct {
             .msg = if (parsed.value.object.get("msg")) |msg_val| try self.allocator.dupe(u8, msg_val.string) else "",
         };
 
+        // Parse trace_id
+        if (parsed.value.object.get("trace_id")) |trace_id_val| {
+            if (trace_id_val == .string) {
+                response.trace_id = try self.allocator.dupe(u8, trace_id_val.string);
+            }
+        }
+
+        // Parse extra_info
+        if (parsed.value.object.get("extra_info")) |extra_info_val| {
+            if (extra_info_val == .object) {
+                var info: ExtraInfo = .{};
+                if (extra_info_val.object.get("music_duration")) |val| {
+                    info.music_duration = @as(i64, @intCast(val.integer));
+                }
+                if (extra_info_val.object.get("music_sample_rate")) |val| {
+                    info.music_sample_rate = @as(i32, @intCast(val.integer));
+                }
+                if (extra_info_val.object.get("music_channel")) |val| {
+                    info.music_channel = @as(i32, @intCast(val.integer));
+                }
+                if (extra_info_val.object.get("bitrate")) |val| {
+                    info.bitrate = @as(i32, @intCast(val.integer));
+                }
+                if (extra_info_val.object.get("music_size")) |val| {
+                    info.music_size = @as(i64, @intCast(val.integer));
+                }
+                response.extra_info = info;
+            }
+        }
+
+        // Parse analysis_info (keep as JSON value for flexibility)
+        if (parsed.value.object.get("analysis_info")) |analysis_info_val| {
+            response.analysis_info = analysis_info_val;
+        }
+
         if (parsed.value.object.get("data")) |data_val| {
             if (data_val == .object) {
                 var music_data: MusicData = .{};
@@ -248,6 +364,9 @@ pub const MusicClient = struct {
                     if (audio_type_val == .string) {
                         music_data.audio_type = try self.allocator.dupe(u8, audio_type_val.string);
                     }
+                }
+                if (data_val.object.get("status")) |status_val| {
+                    music_data.status = @as(i32, @intCast(status_val.integer));
                 }
                 response.data = music_data;
             }
@@ -308,6 +427,20 @@ pub const MusicClient = struct {
             }
         }
 
+        // Parse song_title
+        if (parsed.value.object.get("song_title")) |title_val| {
+            if (title_val == .string) {
+                response.song_title = try self.allocator.dupe(u8, title_val.string);
+            }
+        }
+
+        // Parse style_tags
+        if (parsed.value.object.get("style_tags")) |tags_val| {
+            if (tags_val == .string) {
+                response.style_tags = try self.allocator.dupe(u8, tags_val.string);
+            }
+        }
+
         return response;
     }
 };
@@ -328,7 +461,7 @@ test "MusicClient: buildMusicRequestBody" {
     defer client.deinit();
 
     const request: MusicGenerationRequest = .{
-        .model = "music-2.5",
+        .model = "music-2.5+",
         .prompt = "Soulful Blues, Rainy Night",
         .lyrics = "[Verse 1]\nTest lyrics",
         .lyrics_optimizer = true,
@@ -338,7 +471,7 @@ test "MusicClient: buildMusicRequestBody" {
     const body = try client.buildMusicRequestBody(request);
     defer allocator.free(body);
 
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5+\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"prompt\":") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics\":") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics_optimizer\": true") != null);
@@ -361,7 +494,7 @@ test "MusicClient: buildMusicRequestBody with instrumental" {
     const body = try client.buildMusicRequestBody(request);
     defer allocator.free(body);
 
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"music-2.5+\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"prompt\":") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"is_instrumental\": true") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"lyrics_optimizer\"") == null);
