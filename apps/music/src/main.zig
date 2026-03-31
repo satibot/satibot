@@ -235,14 +235,19 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
     }
     if (instrumental) {
         std.debug.print("Generating instrumental music\n", .{});
+    } else if (lyrics == null and !lyrics_optimizer) {
+        std.debug.print("No lyrics provided - generating instrumental music by default\n", .{});
     }
     std.debug.print("\n", .{});
+
+    // Default to instrumental when no lyrics are provided
+    const is_instrumental = instrumental or (lyrics == null and !lyrics_optimizer);
 
     const request: music.MusicGenerationRequest = .{
         .prompt = prompt,
         .lyrics = lyrics orelse "",
         .lyrics_optimizer = lyrics_optimizer,
-        .is_instrumental = instrumental,
+        .is_instrumental = is_instrumental,
     };
 
     var response = try client.generateMusic(request);
