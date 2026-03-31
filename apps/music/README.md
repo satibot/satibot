@@ -8,6 +8,7 @@ A command-line tool for generating music and lyrics using the MiniMax API.
 - Generate music with customizable style, mood, and vocals
 - Auto-generate lyrics from prompt using `lyrics_optimizer`
 - Generate instrumental tracks using `is_instrumental` (music-2.5+ only)
+- Automatic instrumental mode when no lyrics are provided
 - Support for both music-2.5 and music-2.5+ models
 - Configurable audio output (URL or hex format)
 - Automatic MP3 download from generated URLs
@@ -38,6 +39,7 @@ Generate music:
 ./zig-out/bin/s-music music "Soulful Blues, Rainy Night, Melancholy" <your-api-key>
 ```
 
+Note: When no lyrics are provided, music will be generated as instrumental by default.
 Generate music with custom lyrics:
 ```bash
 ./zig-out/bin/s-music music "Pop Rock, Upbeat" --lyrics "[Verse 1]\nCustom lyrics here" <your-api-key>
@@ -70,6 +72,8 @@ Then run without the API key:
 ```bash
 ./zig-out/bin/s-music music "Jazz, Smooth, Evening"
 ```
+
+Note: This will generate instrumental music by default since no lyrics are provided.
 
 ## Output
 
@@ -148,7 +152,6 @@ Use the provided test script to try all features:
 ## Add script to PATH
 
 To make the CLI globally available, add the following to your shell profile (e.g., `~/.zshrc` or `~/.bashrc`):
-
 ```bash
 # Option 1: Add project directory to PATH (easiest)
 export PATH="/Users/username/w/satibot:$PATH"
@@ -203,10 +206,9 @@ source ~/.zshrc # or source ~/.bashrc
 ### lyrics_optimizer
 
 When enabled, the MiniMax API will automatically generate lyrics based on your prompt. This is useful when you have a concept or theme but don't want to write specific lyrics.
-
-- **Default**: `false`
-- **Usage**: `--lyrics-optimizer`
-- **Model requirement**: Works with all music models
+- Default: `false`
+- Usage: `--lyrics-optimizer`
+- Model requirement: Works with all music models
 
 Example:
 ```bash
@@ -216,13 +218,14 @@ s-music music "Rock song about overcoming challenges" --lyrics-optimizer
 ### is_instrumental
 
 Generate music without vocals, creating purely instrumental tracks. This option is only available with music-2.5 and later models.
-
-- **Default**: `false`
-- **Usage**: `--instrumental`
-- **Model requirement**: music-2.5+ only
+- Default: `true` when no lyrics are provided, `false` otherwise
+- Usage: `--instrumental` (explicitly set instrumental mode)
+- Model requirement: music-2.5+ only
 
 Example:
 ```bash
+# These commands are equivalent - both generate instrumental music
+s-music music "Classical piano, emotional, minor key"
 s-music music "Classical piano, emotional, minor key" --instrumental
 ```
 
@@ -237,10 +240,12 @@ The CLI defaults to using the `music-2.5+` model which offers:
 ### Combining Parameters
 
 You can use these parameters together with other options:
-
 ```bash
-# Generate instrumental electronic music
+# Generate instrumental electronic music (explicit)
 s-music music "Synthwave, Retro, 80s" --instrumental
+
+# Generate instrumental electronic music (implicit - no lyrics provided)
+s-music music "Synthwave, Retro, 80s"
 
 # Generate rock music with auto-optimized lyrics
 s-music music "Alternative Rock, Grunge, 90s style" --lyrics-optimizer
@@ -265,8 +270,7 @@ The CLI validates all inputs before sending requests:
 ## Error Messages
 
 Common errors and their solutions:
-
 - `Prompt is required` - Provide a music style description
-- `Lyrics required` - Provide lyrics with --lyrics or use --lyrics-optimizer
+- `Lyrics required` - Provide lyrics with --lyrics, use --lyrics-optimizer, or let the CLI default to instrumental mode
 - `Prompt too long` - Keep prompt under 2000 characters
 - `Invalid API key` - Check your API key configuration
