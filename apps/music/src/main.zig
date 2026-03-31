@@ -248,6 +248,7 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
         .lyrics = lyrics orelse "",
         .lyrics_optimizer = lyrics_optimizer,
         .is_instrumental = is_instrumental,
+        .output_format = "url",
     };
 
     var response = try client.generateMusic(request);
