@@ -111,7 +111,6 @@ pub const MusicClient = struct {
         defer response.deinit();
 
         if (response.status != .ok) {
-            std.debug.print("[Minimax Music] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), response.body });
             return error.ApiRequestFailed;
         }
 
@@ -134,7 +133,6 @@ pub const MusicClient = struct {
         defer response.deinit();
 
         if (response.status != .ok) {
-            std.debug.print("[Minimax Lyrics] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), response.body });
             return error.ApiRequestFailed;
         }
 
@@ -200,62 +198,106 @@ pub const MusicClient = struct {
     }
 
     fn parseMusicResponse(self: *MusicClient, body: []const u8) !MusicGenerationResponse {
-        const Response = struct {
-            code: i32,
-            msg: []const u8,
-            data: ?struct {
-                audio: ?[]const u8 = null,
-                audio_type: ?[]const u8 = null,
-            } = null,
-        };
-
-        const parsed = try std.json.parseFromSlice(Response, self.allocator, body, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, body, .{});
         defer parsed.deinit();
+
+        if (parsed.value != .object) {
+            return error.InvalidResponse;
+        }
+
+        // Check for base_resp which contains error information
+        if (parsed.value.object.get("base_resp")) |base_resp| {
+            if (base_resp == .object) {
+                if (base_resp.object.get("status_code")) |status_code| {
+                    const code = @as(i32, @intCast(status_code.integer));
+                    if (code != 0) {
+                        const msg = if (base_resp.object.get("status_msg")) |msg_val|
+                            msg_val.string
+                        else
+                            "Unknown error";
+                        std.debug.print("API Error ({d}): {s}\n", .{ code, msg });
+                        return error.ApiRequestFailed;
+                    }
+                }
+            }
+        }
 
         var response: MusicGenerationResponse = .{
             .allocator = self.allocator,
-            .code = parsed.value.code,
-            .msg = try self.allocator.dupe(u8, parsed.value.msg),
+            .code = if (parsed.value.object.get("code")) |code_val| @intCast(code_val.integer) else 0,
+            .msg = if (parsed.value.object.get("msg")) |msg_val| try self.allocator.dupe(u8, msg_val.string) else "",
         };
 
-        if (parsed.value.data) |data| {
-            var music_data: MusicData = .{};
-            if (data.audio) |audio| {
-                music_data.audio = try self.allocator.dupe(u8, audio);
+        if (parsed.value.object.get("data")) |data_val| {
+            if (data_val == .object) {
+                var music_data: MusicData = .{};
+                if (data_val.object.get("audio")) |audio_val| {
+                    if (audio_val == .string) {
+                        music_data.audio = try self.allocator.dupe(u8, audio_val.string);
+                    }
+                }
+                if (data_val.object.get("audio_type")) |audio_type_val| {
+                    if (audio_type_val == .string) {
+                        music_data.audio_type = try self.allocator.dupe(u8, audio_type_val.string);
+                    }
+                }
+                response.data = music_data;
             }
-            if (data.audio_type) |audio_type| {
-                music_data.audio_type = try self.allocator.dupe(u8, audio_type);
-            }
-            response.data = music_data;
         }
 
         return response;
     }
 
     fn parseLyricsResponse(self: *MusicClient, body: []const u8) !LyricsGenerationResponse {
-        const Response = struct {
-            code: i32,
-            msg: []const u8,
-            data: ?struct {
-                lyrics: ?[]const u8 = null,
-            } = null,
-        };
-
-        const parsed = try std.json.parseFromSlice(Response, self.allocator, body, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, body, .{});
         defer parsed.deinit();
+
+        if (parsed.value != .object) {
+            return error.InvalidResponse;
+        }
+
+        // Check for base_resp which contains error information
+        if (parsed.value.object.get("base_resp")) |base_resp| {
+            if (base_resp == .object) {
+                if (base_resp.object.get("status_code")) |status_code| {
+                    const code = @as(i32, @intCast(status_code.integer));
+                    if (code != 0) {
+                        const msg = if (base_resp.object.get("status_msg")) |msg_val|
+                            msg_val.string
+                        else
+                            "Unknown error";
+                        std.debug.print("API Error ({d}): {s}\n", .{ code, msg });
+                        return error.ApiRequestFailed;
+                    }
+                }
+            }
+        }
 
         var response: LyricsGenerationResponse = .{
             .allocator = self.allocator,
-            .code = parsed.value.code,
-            .msg = try self.allocator.dupe(u8, parsed.value.msg),
+            .code = if (parsed.value.object.get("base_resp")) |base_resp|
+                if (base_resp.object.get("status_code")) |status_code|
+                    @as(i32, @intCast(status_code.integer))
+                else
+                    0
+            else
+                0,
+            .msg = if (parsed.value.object.get("base_resp")) |base_resp|
+                if (base_resp.object.get("status_msg")) |msg_val|
+                    try self.allocator.dupe(u8, msg_val.string)
+                else
+                    ""
+            else
+                "",
         };
 
-        if (parsed.value.data) |data| {
-            var lyrics_data: LyricsData = .{};
-            if (data.lyrics) |lyrics| {
-                lyrics_data.lyrics = try self.allocator.dupe(u8, lyrics);
+        // The lyrics are directly in the response, not in a data object
+        if (parsed.value.object.get("lyrics")) |lyrics_val| {
+            if (lyrics_val == .string) {
+                var lyrics_data: LyricsData = .{};
+                lyrics_data.lyrics = try self.allocator.dupe(u8, lyrics_val.string);
+                response.data = lyrics_data;
             }
-            response.data = lyrics_data;
         }
 
         return response;

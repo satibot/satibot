@@ -6,6 +6,8 @@
 //! - Music generation with customizable style, mood, and vocals
 //! - Lyrics generation from themes
 //! - Configurable audio output settings
+//! - Automatic MP3 download from generated URLs
+//! - Attempts to play MP3 with system default player
 //! - Configuration file support for API key management
 //!
 //! ## Usage
@@ -30,6 +32,11 @@
 //! s-music lyrics "A soulful blues song about a rainy night"
 //! ```
 //! Config should contain: { "providers": { "minimax": { "apiKey": "your-api-key" } } }
+//!
+//! ## Output
+//! - Lyrics are printed directly to the console
+//! - Music files are downloaded as `generated_music_<timestamp>.mp3`
+//! - The CLI attempts to open the MP3 with your system's default player
 
 const std = @import("std");
 const music = @import("minimax-music").music;
@@ -96,20 +103,32 @@ pub fn main() !void {
 }
 
 fn printUsage(prog_name: []const u8) void {
-    std.debug.print("Usage: {s} <subcommand> [options] [prompt] [api_key]\n", .{prog_name});
-    std.debug.print("\nSubcommands:\n", .{});
-    std.debug.print("  lyrics <prompt> [api_key]   Generate lyrics from a prompt\n", .{});
-    std.debug.print("  music <prompt> [api_key]   Generate music from a prompt\n", .{});
-    std.debug.print("\nOptions:\n", .{});
-    std.debug.print("  -l, --lyrics <text>       Custom lyrics for music generation\n", .{});
-    std.debug.print("  -h, --help                Show this help message\n", .{});
-    std.debug.print("\nExamples:\n", .{});
-    std.debug.print("  {s} lyrics \"A soulful blues song about a rainy night\"\n", .{prog_name});
-    std.debug.print("  {s} music \"Soulful Blues, Rainy Night, Melancholy\"\n", .{prog_name});
-    std.debug.print("  {s} music \"Jazz, Smooth, Evening\" --lyrics \"[Verse 1]\\nTest\"\n", .{prog_name});
-    std.debug.print("\nConfiguration:\n", .{});
-    std.debug.print("  If no API key is provided, reads from config.json:\n", .{});
-    std.debug.print("  {{ \"providers\": {{ \"minimax\": {{ \"apiKey\": \"your-key\" }} }} }}\n", .{});
+    const usage_text =
+        \\Usage: {s} <subcommand> [options] [prompt] [api_key]
+        \\
+        \\Subcommands:
+        \\  lyrics <prompt> [api_key]   Generate lyrics from a prompt
+        \\  music <prompt> [api_key]   Generate music from a prompt
+        \\
+        \\Options:
+        \\  -l, --lyrics <text>       Custom lyrics for music generation
+        \\  -h, --help                Show this help message
+        \\
+        \\Examples:
+        \\  {s} lyrics "A soulful blues song about a rainy night"
+        \\  {s} music "Soulful Blues, Rainy Night, Melancholy"
+        \\  {s} music "Jazz, Smooth, Evening" --lyrics "[Verse 1]\\nTest"
+        \\
+        \\Features:
+        \\  - Automatically downloads generated MP3 files
+        \\  - Attempts to play the MP3 with default player
+        \\  - Saves files as 'generated_music_<timestamp>.mp3'
+        \\
+        \\Configuration:
+        \\  If no API key is provided, reads from config.json:
+        \\  {{ "providers": {{ "minimax": {{ "apiKey": "your-key" }} }} }}
+    ;
+    std.debug.print(usage_text, .{ prog_name, prog_name, prog_name, prog_name });
 }
 
 fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
@@ -124,13 +143,15 @@ fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
             Config,
             allocator,
             content,
-            .{},
-        ) catch null;
+            .{ .ignore_unknown_fields = true },
+        ) catch return null;
+        defer parsed.deinit();
 
-        if (parsed) |p| {
-            defer p.deinit();
-            if (p.value.providers.minimax.apiKey) |key| {
-                return allocator.dupe(u8, key) catch null;
+        if (parsed.value.providers) |providers| {
+            if (providers.minimax) |minimax| {
+                if (minimax.apiKey) |key| {
+                    return allocator.dupe(u8, key) catch null;
+                }
             }
         }
     }
@@ -138,9 +159,9 @@ fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
 }
 
 const Config = struct {
-    providers: Providers = .{},
+    providers: ?Providers = null,
     const Providers = struct {
-        minimax: MiniMax = .{},
+        minimax: ?MiniMax = null,
         const MiniMax = struct {
             apiKey: ?[]const u8 = null,
         };
@@ -151,10 +172,9 @@ fn generateLyrics(allocator: std.mem.Allocator, prompt: []const u8, api_key: []c
     var client = try music.MusicClient.init(allocator, api_key);
     defer client.deinit();
 
-    std.debug.print("Generating lyrics for: {s}\n\n", .{prompt});
+    std.debug.print("Generating lyrics for: {s}\n", .{prompt});
 
     const request: music.LyricsGenerationRequest = .{
-        .mode = "write_full_song",
         .prompt = prompt,
     };
 
@@ -168,10 +188,20 @@ fn generateLyrics(allocator: std.mem.Allocator, prompt: []const u8, api_key: []c
 
     if (response.data) |data| {
         if (data.lyrics) |lyrics| {
-            std.debug.print("Generated Lyrics:\n", .{});
-            std.debug.print("=================\n\n", .{});
-            std.debug.print("{s}\n", .{lyrics});
+            const lyrics_output =
+                \\
+                \\Generated Lyrics:
+                \\==================
+                \\
+                \\{s}
+                \\
+            ;
+            std.debug.print(lyrics_output, .{lyrics});
+        } else {
+            std.debug.print("No lyrics generated\n", .{});
         }
+    } else {
+        std.debug.print("No data in response\n", .{});
     }
 }
 
@@ -200,12 +230,130 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
     }
 
     if (response.data) |data| {
-        if (data.audio) |audio| {
-            std.debug.print("Generated Music URL:\n", .{});
-            std.debug.print("====================\n\n", .{});
-            std.debug.print("{s}\n", .{audio});
+        if (data.audio) |audio_url| {
+            const url_output =
+                \\
+                \\Generated Music URL:
+                \\====================
+                \\
+                \\{s}
+                \\
+            ;
+            std.debug.print(url_output, .{audio_url});
 
-            std.debug.print("\nNote: Use the URL to download the audio file.\n", .{});
+            const filename = try downloadMp3(allocator, audio_url);
+            defer allocator.free(filename);
+
+            const download_msg =
+                \\Downloaded to: {s}
+                \\
+            ;
+            std.debug.print(download_msg, .{filename});
+
+            // Try to open the file with the default player
+            try playMp3(filename);
         }
     }
+}
+
+fn downloadMp3(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
+    // Generate filename with timestamp
+    const timestamp = std.time.timestamp();
+    const filename = try std.fmt.allocPrint(allocator, "generated_music_{d}.mp3", .{timestamp});
+
+    std.debug.print("Downloading MP3 from: {s}\n", .{url});
+
+    // Try using curl first
+    const curl_result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "curl", "-L", "-o", filename, url },
+    });
+
+    if (curl_result) |result| {
+        defer {
+            allocator.free(result.stdout);
+            allocator.free(result.stderr);
+        }
+
+        if (result.term.Exited == 0) {
+            // Check if file was created and has content
+            if (std.fs.cwd().openFile(filename, .{})) |file| {
+                defer file.close();
+                const stat = try file.stat();
+                if (stat.size > 0) {
+                    std.debug.print("Successfully downloaded to: {s}\n", .{filename});
+                    return filename;
+                }
+            } else |_| {}
+            std.debug.print("Curl completed but file may be empty\n", .{});
+        }
+    } else |err| {
+        const error_msg =
+            \\Download failed: {}
+            \\This may be due to URL authentication requirements.
+            \\Please download manually: {s}
+            \\
+            \\To download manually:
+            \\1. Copy the URL above
+            \\2. Open it in your browser
+            \\3. Save the file as: {s}
+        ;
+        std.debug.print(error_msg, .{ err, url, filename });
+        return filename;
+    }
+
+    // If curl fails, try opening in browser
+    const fallback_msg =
+        \\Unable to download automatically.
+        \\Opening URL in browser for manual download...
+        \\
+        \\Manual download instructions:
+        \\1. The URL should open in your browser
+        \\2. Right-click and save the audio as: {s}
+        \\3. Once downloaded, you can play it with: open {s}
+    ;
+    std.debug.print(fallback_msg, .{ filename, filename });
+
+    _ = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "open", url },
+    }) catch |err| {
+        const browser_error_msg =
+            \\Failed to open browser: {}
+            \\You can manually download the file by:
+            \\1. Copying the URL: {s}
+            \\2. Opening it in your browser
+            \\3. Saving the file as: {s}
+            \\4. Playing it with: open {s}
+        ;
+        std.debug.print(browser_error_msg, .{ err, url, filename, filename });
+    };
+
+    return filename;
+}
+
+fn playMp3(filename: []const u8) !void {
+    // Try different players based on the platform
+    const players = [_][]const u8{
+        "open", // macOS
+        "xdg-open", // Linux
+        "start", // Windows
+    };
+
+    for (players) |player| {
+        const result = std.process.Child.run(.{
+            .allocator = std.heap.page_allocator,
+            .argv = &.{ player, filename },
+        }) catch continue;
+
+        if (result.term.Exited == 0) {
+            std.debug.print("Playing MP3 with {s}...\n", .{player});
+            return;
+        }
+    }
+    const play_error_msg =
+        \\Could not auto-play the MP3 file.
+        \\You can play it manually with: {s}
+    ;
+    std.debug.print(play_error_msg, .{filename});
 }

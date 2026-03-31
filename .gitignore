@@ -24,3 +24,5 @@ logs/
 coverage-out/
 
 .env
+config.json
+*.mp3

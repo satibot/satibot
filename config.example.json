@@ -1,0 +1,7 @@
+{
+  "providers": {
+    "minimax": {
+      "apiKey": "your-minimax-api-key-here"
+    }
+  }
+}
