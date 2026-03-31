@@ -10,7 +10,7 @@ A command-line tool for generating music and lyrics using the MiniMax API.
 - Generate instrumental tracks using `is_instrumental` (music-2.5+ only)
 - Automatic instrumental mode when no lyrics are provided
 - Support for both music-2.5 and music-2.5+ models
-- Configurable audio output (URL or hex format)
+- URL output format by default (better download handling, hex supported)
 - Automatic MP3 download from generated URLs
 - Attempts to play MP3 with system default player
 - Configuration file support for API key management
@@ -20,7 +20,17 @@ A command-line tool for generating music and lyrics using the MiniMax API.
 
 ```bash
 cd /path/to/satibot
+# dev build
 zig build s-music
+
+# release build
+zig build -Doptimize=ReleaseSafe s-music
+
+# release fast build
+zig build -Doptimize=ReleaseFast s-music
+
+# clean and build release fast
+rm -rf zig-cache zig-out && zig build -Doptimize=ReleaseFast s-music
 ```
 
 The binary will be created at `./zig-out/bin/s-music`.
