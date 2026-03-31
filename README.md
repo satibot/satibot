@@ -1,21 +1,20 @@
 <p align="center">
-  <img src="docs/icons/icon.png" alt="satibot mascot" width="180" />
+ <img src="docs/icons/icon.png" alt="satibot mascot" width="180" />
 </p>
 
 # 🧘 satibot: The Mindful AI Agent Framework
 
 Built in Zig for performance, designed for awareness.
-
 `satibot` is a lightweight, memory-aware AI agent framework that never forgets. Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), it combines the power of ReAct loops with persistent memory to create agents that remember, learn, and assist.
 
 IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and console, other features are under development.
-
 - [x] Telegram + OpenRouter (Sync version)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 - [x] VectorDB - very simple local first vector searching for similar content chat logs.
 - [x] OpenTelemetry tracing for observability
 - [x] HTTP Web API (zap framework) for REST interface built on top of the Zap logging library (used for fast, structured logging)
+- [x] [apps/music/README.md](apps/music/README.md) - MiniMax music generation CLI
 - [x] File operations - built-in `read_file` tool for reading local files with security restrictions
 - [x] Web fetching - built-in `web_fetch` tool for fetching and extracting readable content from URLs
 
@@ -37,15 +36,10 @@ IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and c
 
 View more in [Features](docs/FEATURES.md).
 
----
-
 ## 📋 Requirements
 
 - OS: Linux, macOS, or Windows (with WSL)
-
 > Note: This project uses Zig 0.15.2's thread-based concurrency with XevEventLoop.
-
----
 
 ## ✨ Key Features
 
@@ -59,14 +53,11 @@ View more in [Features](docs/FEATURES.md).
 ⏰ Proactive: Heartbeat system wakes agent for pending tasks
 📅 Scheduled: Built-in cron for recurring tasks
 
----
-
 ## 🚀 Quick Start
 
 ### 1. Install
 
 Install Zig: <https://ziglang.org/learn/getting-started/>
-
 ```bash
 # verify zig version
 zig version
@@ -101,7 +92,6 @@ sati init
 ### Project Structure
 
 This is a Zig monorepo with the following structure:
-
 ```text
 libs/
   ├── core/         - Config and constants (shared)
@@ -120,7 +110,6 @@ apps/
 ### 2. Configure
 
 Read [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md) for more details about Telegram + OpenRouter setup.
-
 Edit `~/.bots/config.json`:
 
 ```json
@@ -145,7 +134,6 @@ Edit `~/.bots/config.json`:
 ```
 
 Add `sati` to your PATH, for example add to `~/.zshrc`:
-
 ```bash
 export PATH="/Users/your-username/chatbot/satibot/zig-out/bin:$PATH"
 ```
@@ -226,7 +214,6 @@ zig build run-web -Dweb=true   # Build and run web app directly
 ### Agent Command Options
 
 When using `sati agent`, you can use these options:
-
 ```bash
 # Disable RAG (Retrieval-Augmented Generation)
 sati agent --no-rag
@@ -241,7 +228,6 @@ sati agent -s chat123 --no-rag
 ### Telegram Bot Versions
 
 satibot offers two Telegram bot implementations:
-
 🔄 Sync Version (`s-telegram-sync`)
 
 - Simple, reliable, single-threaded
@@ -251,27 +237,22 @@ satibot offers two Telegram bot implementations:
 - Best for: development, small deployments, resource-constrained environments
 
 ⚡ Async Version (`s-telegram`)
-
 - High-performance, event-driven (xev-based)
 - Processes multiple messages concurrently
-- Higher resource usage - RAM usage more than  3.5MB on macOS M1 (disable RAG with `--no-rag` option)
+- Higher resource usage - RAM usage more than 3.5MB on macOS M1 (disable RAG with `--no-rag` option)
 
-See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detailed comparison.
-
----
+See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAMSYNCVS_ASYNC.md) for detailed comparison.
 
 ## 💬 Chat Integrations
 
 - Telegram: `sati telegram-sync` or `sati telegram`
-  - [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
-  - [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md)
-  - [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
+- [docs/TELEGRAM_GUIDE.md](docs/TELEGRAM_GUIDE.md)
+- [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAMSYNCVS_ASYNC.md)
+- [docs/TELEGRAM_SYNC.md](docs/TELEGRAM_SYNC.md)
 - Terminal console: `sati console-sync` or `sati console`
-  - [docs/CONSOLE.md](docs/CONSOLE.md)
+- [docs/CONSOLE.md](docs/CONSOLE.md)
 - Web API: `sati web -Dweb=true` (requires web module enabled)
-  - [docs/WEB_API.md](docs/WEB_API.md)
-
----
+- [docs/WEB_API.md](docs/WEB_API.md)
 
 ## 🛠️ Advanced Features
 
@@ -285,7 +266,6 @@ See [docs/TELEGRAM_SYNC_VS_ASYNC.md](docs/TELEGRAM_SYNC_VS_ASYNC.md) for detaile
 ### 📚 VectorDB
 
 🎯 Perfect For Chat Logs:
-
 - Semantic Search: Find similar conversations by meaning, not just keywords
 - Local First: No external database dependencies
 - Fast Enough: Linear search suitable for thousands of entries
@@ -304,7 +284,6 @@ sati vector-db add "my name is John"
 ### 🔧 Skills & Tools
 
 Browse and install skills from the community:
-
 ```bash
 # Browse available skills
 curl https://agent-skills.md/
@@ -319,11 +298,9 @@ zig build s-console -- -- agent -m "Run: ls -la"
 #### Built-in Tools
 
 📁 read_file - Read local files
-
 The `read_file` tool allows the AI agent to read contents of local files on your system.
 
 Usage Examples:
-
 ```bash
 # Ask the agent to read a file
 sati console-sync
@@ -337,11 +314,9 @@ sati console-sync
 ```
 
 Arguments:
-
 - `path` (required): Absolute or relative path to the file to read
 
 Example JSON:
-
 ```json
 {
   "path": "/path/to/your/file.txt"
@@ -349,7 +324,6 @@ Example JSON:
 ```
 
 Features:
-
 - ✅ Supports text files of any size (10MB limit)
 - ✅ Handles absolute and relative paths
 - ✅ Proper error handling for missing files
@@ -357,7 +331,6 @@ Features:
 - ✅ Memory-efficient with automatic cleanup
 
 Security Restrictions:
-
 For security reasons, the tool automatically blocks access to sensitive files:
 
 - Environment files: `.env`, `.env.local`, `.env.*` variations
@@ -366,7 +339,6 @@ For security reasons, the tool automatically blocks access to sensitive files:
 - Sensitive directories: `.ssh/`, `.aws/`, `.kube/`
 
 Examples of blocked files:
-
 - `.env` ❌
 - `id_rsa` ❌
 - `private_key.pem` ❌
@@ -376,13 +348,11 @@ Examples of blocked files:
 - `data.json` ✅
 
 🌐 web_fetch - Fetch web content
-
 See [docs/tasks/web-fetch.md](docs/tasks/web-fetch.md) for detailed documentation.
 
 ### ⏰ Automation
 
 Heartbeat: Proactive task checking
-
 ```bash
 # Create a heartbeat task
 echo "Check emails" > ~/.bots/HEARTBEAT.md
@@ -396,38 +366,30 @@ zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
 
 TODO: Cron: Schedule recurring tasks via configuration in `~/.bots/config.json`
 
----
-
 ## 📚 Documentation
 
-|Guide|Description|
+| Guide | Description |
 |----|------------|
-|[Features](docs/FEATURES.md)|Deep dive into Gateway, Voice, Cron systems|
-|[Configuration](docs/CONFIGURATION.md)|Complete config guide for providers & tools|
-|[Architecture](docs/ARCHITECTURE.md)|Technical guide to Agent Loop & Functional Architecture|
-|[Functional Design](docs/FUNCTIONAL_DESIGN.md)|Pure functional approach and session cache|
-|[Telegram Guide](docs/TELEGRAM_GUIDE.md)|Step-by-step Telegram bot setup|
-|[WhatsApp Guide](docs/WHATSAPP_GUIDE.md)|WhatsApp Business API setup|
-|[RAG Guide](docs/RAG.md)|Understanding the memory system|
-|[OpenTelemetry](docs/OPENTELEMETRY.md)|Distributed tracing setup with OTEL|
-|[Web API Guide](docs/WEB_API.md)|Backend setup for web interfaces & CORS|
-|[⚠️ Security](docs/SECURITY.md)|Security risks, best practices, and guidelines|
-|[Release Guide](docs/RELEASE_GUIDE.md)|Cross-platform builds and GitHub releases|
-
----
+| [Features](docs/FEATURES.md) | Deep dive into Gateway, Voice, Cron systems |
+| [Configuration](docs/CONFIGURATION.md) | Complete config guide for providers & tools |
+| [Architecture](docs/ARCHITECTURE.md) | Technical guide to Agent Loop & Functional Architecture |
+| [Functional Design](docs/FUNCTIONAL_DESIGN.md) | Pure functional approach and session cache |
+| [Telegram Guide](docs/TELEGRAM_GUIDE.md) | Step-by-step Telegram bot setup |
+| [WhatsApp Guide](docs/WHATSAPP_GUIDE.md) | WhatsApp Business API setup |
+| [RAG Guide](docs/RAG.md) | Understanding the memory system |
+| [OpenTelemetry](docs/OPENTELEMETRY.md) | Distributed tracing setup with OTEL |
+| [Web API Guide](docs/WEB_API.md) | Backend setup for web interfaces & CORS |
+| [⚠️ Security](docs/SECURITY.md) | Security risks, best practices, and guidelines |
+| [Release Guide](docs/RELEASE_GUIDE.md) | Cross-platform builds and GitHub releases |
 
 ## 🤝 Contributing
 
 We welcome contributions!
-
 Please read our [docs/DEV.md](docs/DEV.md) for more information.
-
----
 
 ## 📖 The Meaning of Sati
 
 Sati (Pāli) means "mindful awareness" — the art of not forgetting the present moment - "remembering to stay aware of what is happening right now.".
-
 In Buddhist psychology, sati evolved from simple memory to profound awareness:
 
 - Remember you are breathing
@@ -435,20 +397,14 @@ In Buddhist psychology, sati evolved from simple memory to profound awareness:
 - Remember what is happening now
 
 SatiBot embodies this principle:
-
 - Never forgets context or conversations
 - Tracks state consistently across sessions
 - Stays aware of ongoing processes
 - Never loses events in the flow
 
----
-
 ## 📄 License
 
 Licensed under the MIT License.
-
----
-
 <div align="center">
-  <sub>Built with ❤️ by the SatiBot community</sub>
+ <sub>Built with ❤️ by the SatiBot community</sub>
 </div>
