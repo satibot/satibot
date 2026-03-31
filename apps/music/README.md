@@ -235,7 +235,7 @@ The CLI defaults to using the `music-2.5+` model which offers:
 - Enhanced audio quality
 - Better instrument separation
 - Extended duration support
-- Hex output format for direct audio data
+- "url" output format for better download handling
 
 ### Combining Parameters
 

@@ -27,7 +27,7 @@ pub const MusicGenerationRequest = struct {
     prompt: []const u8,
     lyrics: []const u8 = "",
     audio_setting: AudioSetting = .{},
-    output_format: []const u8 = "hex",
+    output_format: []const u8 = "url",
     /// Auto-generate lyrics from prompt (default: false)
     lyrics_optimizer: bool = false,
     /// Generate instrumental music (default: false, music-2.5+ only)
