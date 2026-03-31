@@ -40,6 +40,7 @@
 
 const std = @import("std");
 const music = @import("minimax-music").music;
+const build_options = @import("build_options");
 
 pub fn main() !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
@@ -61,9 +62,16 @@ pub fn main() !void {
         return;
     }
 
+    if (std.mem.eql(u8, subcommand, "--version") or std.mem.eql(u8, subcommand, "-v")) {
+        std.debug.print("{s}\n", .{build_options.version});
+        return;
+    }
+
     var lyrics_arg: ?[]const u8 = null;
     var api_key: ?[]const u8 = null;
     var prompt: ?[]const u8 = null;
+    var lyrics_optimizer: bool = false;
+    var instrumental: bool = false;
 
     var i: usize = 2;
     while (i < args.len) : (i += 1) {
@@ -72,6 +80,10 @@ pub fn main() !void {
                 lyrics_arg = args[i + 1];
                 i += 1;
             }
+        } else if (std.mem.eql(u8, args[i], "--lyrics-optimizer")) {
+            lyrics_optimizer = true;
+        } else if (std.mem.eql(u8, args[i], "--instrumental")) {
+            instrumental = true;
         } else if (prompt == null) {
             prompt = args[i];
         } else if (api_key == null) {
@@ -95,7 +107,7 @@ pub fn main() !void {
     if (std.mem.eql(u8, subcommand, "lyrics")) {
         try generateLyrics(allocator, prompt.?, key.?);
     } else if (std.mem.eql(u8, subcommand, "music")) {
-        try generateMusic(allocator, prompt.?, lyrics_arg, key.?);
+        try generateMusic(allocator, prompt.?, lyrics_arg, key.?, lyrics_optimizer, instrumental);
     } else {
         std.debug.print("Error: Unknown subcommand '{s}'. Use 'lyrics' or 'music'\n\n", .{subcommand});
         printUsage(args[0]);
@@ -111,13 +123,18 @@ fn printUsage(prog_name: []const u8) void {
         \\  music <prompt> [api_key]   Generate music from a prompt
         \\
         \\Options:
-        \\  -l, --lyrics <text>       Custom lyrics for music generation
-        \\  -h, --help                Show this help message
+        \\  -l, --lyrics <text>         Custom lyrics for music generation
+        \\  --lyrics-optimizer          Auto-generate lyrics from prompt
+        \\  --instrumental              Generate instrumental music (no vocals)
+        \\  -h, --help                  Show this help message
+        \\  -v, --version               Show version information
         \\
         \\Examples:
         \\  {s} lyrics "A soulful blues song about a rainy night"
         \\  {s} music "Soulful Blues, Rainy Night, Melancholy"
         \\  {s} music "Jazz, Smooth, Evening" --lyrics "[Verse 1]\\nTest"
+        \\  {s} music "Rock, Energetic" --lyrics-optimizer
+        \\  {s} music "Piano, Melancholy" --instrumental
         \\
         \\Features:
         \\  - Automatically downloads generated MP3 files
@@ -128,7 +145,7 @@ fn printUsage(prog_name: []const u8) void {
         \\  If no API key is provided, reads from config.json:
         \\  {{ "providers": {{ "minimax": {{ "apiKey": "your-key" }} }} }}
     ;
-    std.debug.print(usage_text, .{ prog_name, prog_name, prog_name, prog_name });
+    std.debug.print(usage_text, .{ prog_name, prog_name, prog_name, prog_name, prog_name, prog_name });
 }
 
 fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
@@ -205,7 +222,7 @@ fn generateLyrics(allocator: std.mem.Allocator, prompt: []const u8, api_key: []c
     }
 }
 
-fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]const u8, api_key: []const u8) !void {
+fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]const u8, api_key: []const u8, lyrics_optimizer: bool, instrumental: bool) !void {
     var client = try music.MusicClient.init(allocator, api_key);
     defer client.deinit();
 
@@ -213,11 +230,19 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
     if (lyrics) |l| {
         std.debug.print("With custom lyrics: {s}\n", .{l});
     }
+    if (lyrics_optimizer) {
+        std.debug.print("With lyrics optimizer: enabled\n", .{});
+    }
+    if (instrumental) {
+        std.debug.print("Generating instrumental music\n", .{});
+    }
     std.debug.print("\n", .{});
 
     const request: music.MusicGenerationRequest = .{
         .prompt = prompt,
         .lyrics = lyrics orelse "",
+        .lyrics_optimizer = lyrics_optimizer,
+        .is_instrumental = instrumental,
     };
 
     var response = try client.generateMusic(request);

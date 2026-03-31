@@ -246,6 +246,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "minimax-music", .module = minimax_music },
                 .{ .name = "http", .module = http },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });

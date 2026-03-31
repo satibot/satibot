@@ -8,9 +8,12 @@ A command-line tool for generating music and lyrics using the MiniMax API.
 - Generate music with customizable style, mood, and vocals
 - Auto-generate lyrics from prompt using `lyrics_optimizer`
 - Generate instrumental tracks using `is_instrumental` (music-2.5+ only)
+- Support for both music-2.5 and music-2.5+ models
+- Configurable audio output (URL or hex format)
 - Automatic MP3 download from generated URLs
 - Attempts to play MP3 with system default player
 - Configuration file support for API key management
+- Built-in request validation with helpful error messages
 
 ## Building
 
@@ -223,6 +226,14 @@ Example:
 s-music music "Classical piano, emotional, minor key" --instrumental
 ```
 
+### Model Selection
+
+The CLI defaults to using the `music-2.5+` model which offers:
+- Enhanced audio quality
+- Better instrument separation
+- Extended duration support
+- Hex output format for direct audio data
+
 ### Combining Parameters
 
 You can use these parameters together with other options:
@@ -243,3 +254,19 @@ s-music music "Alternative Rock, Grunge, 90s style" --lyrics-optimizer
 - Zig 0.15.0 or later
 - MiniMax API key (sign up at <https://api.minimax.io>)
 - Internet connection for API calls and MP3 downloads
+
+## Validation
+
+The CLI validates all inputs before sending requests:
+- Prompt: Maximum 2000 characters
+- Lyrics: Maximum 3500 characters (if provided)
+- Audio settings: Validated sample rates, bitrates, and formats
+
+## Error Messages
+
+Common errors and their solutions:
+
+- `Prompt is required` - Provide a music style description
+- `Lyrics required` - Provide lyrics with --lyrics or use --lyrics-optimizer
+- `Prompt too long` - Keep prompt under 2000 characters
+- `Invalid API key` - Check your API key configuration
