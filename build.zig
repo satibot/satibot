@@ -145,6 +145,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const minimax_video = b.addModule("minimax-video", .{
+        .root_source_file = b.path("libs/minimax-video/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http", .module = http },
+        },
+    });
+
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
         .root_source_file = b.path("apps/telegram/src/telegram/telegram.zig"),
@@ -251,6 +260,22 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(music_cli);
+
+    // Video CLI App
+    const video_cli = b.addExecutable(.{
+        .name = "s-video",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/minimax-video/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "minimax-video", .module = minimax_video },
+                .{ .name = "http", .module = http },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    b.installArtifact(video_cli);
 
     // Facebook CLI App
     const facebook_cli = b.addExecutable(.{
@@ -417,6 +442,13 @@ pub fn build(b: *std.Build) void {
     const run_music = b.step("run-music", "Run music CLI app");
     run_music.dependOn(&run_music_cmd.step);
 
+    const run_video_cmd = b.addRunArtifact(video_cli);
+    if (b.args) |args| {
+        run_video_cmd.addArgs(args);
+    }
+    const run_video = b.step("run-video", "Run video CLI app");
+    run_video.dependOn(&run_video_cmd.step);
+
     const run_facebook_cmd = b.addRunArtifact(facebook_cli);
     if (b.args) |args| {
         run_facebook_cmd.addArgs(args);
@@ -453,6 +485,9 @@ pub fn build(b: *std.Build) void {
 
     const build_music_binary = b.step("s-music", "Build s-music binary");
     build_music_binary.dependOn(&music_cli.step);
+
+    const build_video_binary = b.step("s-video", "Build s-video binary");
+    build_video_binary.dependOn(&video_cli.step);
 
     const build_facebook_binary = b.step("s-facebook", "Build s-facebook binary");
     build_facebook_binary.dependOn(&facebook_cli.step);
