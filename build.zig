@@ -527,4 +527,19 @@ pub fn build(b: *std.Build) void {
         const app_web_test_run = b.addRunArtifact(app_web_test);
         test_step.dependOn(&app_web_test_run.step);
     }
+
+    // Music app tests
+    const music_test = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/music/src/main_test.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "minimax-music", .module = minimax_music },
+                .{ .name = "http", .module = http },
+            },
+        }),
+    });
+    const music_test_run = b.addRunArtifact(music_test);
+    test_step.dependOn(&music_test_run.step);
 }

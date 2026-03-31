@@ -259,30 +259,91 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
     }
 
     if (response.data) |data| {
-        if (data.audio) |audio_url| {
-            const url_output =
-                \\
-                \\Generated Music URL:
-                \\====================
-                \\
-                \\{s}
-                \\
-            ;
-            std.debug.print(url_output, .{audio_url});
+        if (data.audio) |audio| {
+            // Check if the audio is a URL or hex data
+            if (data.audio_type) |audio_type| {
+                if (std.mem.eql(u8, audio_type, "url")) {
+                    const url_output =
+                        \\
+                        \\Generated Music URL:
+                        \\====================
+                        \\
+                        \\{s}
+                        \\
+                    ;
+                    std.debug.print(url_output, .{audio});
 
-            const filename = try downloadMp3(allocator, audio_url);
-            defer allocator.free(filename);
+                    const filename = try downloadMp3(allocator, audio);
+                    defer allocator.free(filename);
 
-            const download_msg =
-                \\Downloaded to: {s}
-                \\
-            ;
-            std.debug.print(download_msg, .{filename});
+                    const download_msg =
+                        \\Downloaded to: {s}
+                        \\
+                    ;
+                    std.debug.print(download_msg, .{filename});
 
-            // Try to open the file with the default player
-            try playMp3(filename);
+                    // Try to open the file with the default player
+                    try playMp3(filename);
+                } else if (std.mem.eql(u8, audio_type, "hex")) {
+                    // If we receive hex data, we need to save it directly
+                    const filename = try saveHexAsMp3(allocator, audio);
+                    defer allocator.free(filename);
+
+                    const hex_msg =
+                        \\Received audio data in hex format.
+                        \\Saved to: {s}
+                        \\
+                    ;
+                    std.debug.print(hex_msg, .{filename});
+
+                    // Try to open the file with the default player
+                    try playMp3(filename);
+                } else {
+                    std.debug.print("Unknown audio type: {s}\n", .{audio_type});
+                    std.debug.print("Audio data: {s}\n", .{audio});
+                }
+            } else {
+                // No audio type specified, assume it's a URL
+                const url_output =
+                    \\
+                    \\Generated Music:
+                    \\================
+                    \\
+                    \\{s}
+                    \\
+                ;
+                std.debug.print(url_output, .{audio});
+            }
         }
     }
+}
+
+fn saveHexAsMp3(allocator: std.mem.Allocator, hex_data: []const u8) ![]const u8 {
+    // Generate filename with timestamp
+    const timestamp = std.time.timestamp();
+    const filename = try std.fmt.allocPrint(allocator, "generated_music_{d}.mp3", .{timestamp});
+
+    std.debug.print("Saving MP3 from hex data ({d} chars)...\n", .{hex_data.len});
+
+    // Calculate the required buffer size (hex string is 2x the binary size)
+    const binary_size = hex_data.len / 2;
+    const binary_data = try allocator.alloc(u8, binary_size);
+    defer allocator.free(binary_data);
+
+    // Convert hex string to binary data
+    for (0..binary_size) |i| {
+        const high_byte = std.fmt.charToDigit(hex_data[i * 2], 16) catch continue;
+        const low_byte = std.fmt.charToDigit(hex_data[i * 2 + 1], 16) catch continue;
+        binary_data[i] = @as(u8, @intCast(high_byte * 16 + low_byte));
+    }
+
+    // Write binary data to file
+    const file = try std.fs.cwd().createFile(filename, .{});
+    defer file.close();
+    try file.writeAll(binary_data);
+
+    std.debug.print("Successfully saved MP3 to: {s}\n", .{filename});
+    return filename;
 }
 
 fn downloadMp3(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {

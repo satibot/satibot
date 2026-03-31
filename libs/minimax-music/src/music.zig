@@ -169,7 +169,7 @@ pub const MusicClient = struct {
         return self.parseLyricsResponse(response.body);
     }
 
-    fn buildMusicRequestBody(self: *MusicClient, request: MusicGenerationRequest) ![]u8 {
+    pub fn buildMusicRequestBody(self: *MusicClient, request: MusicGenerationRequest) ![]u8 {
         var json_buf: std.ArrayList(u8) = .empty;
         defer json_buf.deinit(self.allocator);
         const writer = json_buf.writer(self.allocator);
@@ -286,7 +286,7 @@ pub const MusicClient = struct {
         }
     }
 
-    fn parseMusicResponse(self: *MusicClient, body: []const u8) !MusicGenerationResponse {
+    pub fn parseMusicResponse(self: *MusicClient, body: []const u8) !MusicGenerationResponse {
         const parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, body, .{});
         defer parsed.deinit();
 
