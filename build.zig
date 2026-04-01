@@ -154,6 +154,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const minimax_speech = b.addModule("minimax-speech", .{
+        .root_source_file = b.path("libs/minimax-speech/src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "http", .module = http },
+        },
+    });
+
     // Telegram module (for agent/gateway to use)
     const telegram_mod = b.addModule("telegram", .{
         .root_source_file = b.path("apps/telegram/src/telegram/telegram.zig"),
@@ -276,6 +285,22 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(video_cli);
+
+    // Speech CLI App
+    const speech_cli = b.addExecutable(.{
+        .name = "s-speech",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/speech/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "minimax-speech", .module = minimax_speech },
+                .{ .name = "http", .module = http },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    b.installArtifact(speech_cli);
 
     // Facebook CLI App
     const facebook_cli = b.addExecutable(.{
@@ -449,6 +474,13 @@ pub fn build(b: *std.Build) void {
     const run_video = b.step("run-video", "Run video CLI app");
     run_video.dependOn(&run_video_cmd.step);
 
+    const run_speech_cmd = b.addRunArtifact(speech_cli);
+    if (b.args) |args| {
+        run_speech_cmd.addArgs(args);
+    }
+    const run_speech = b.step("run-speech", "Run speech CLI app");
+    run_speech.dependOn(&run_speech_cmd.step);
+
     const run_facebook_cmd = b.addRunArtifact(facebook_cli);
     if (b.args) |args| {
         run_facebook_cmd.addArgs(args);
@@ -488,6 +520,9 @@ pub fn build(b: *std.Build) void {
 
     const build_video_binary = b.step("s-video", "Build s-video binary");
     build_video_binary.dependOn(&video_cli.step);
+
+    const build_speech_binary = b.step("s-speech", "Build s-speech binary");
+    build_speech_binary.dependOn(&speech_cli.step);
 
     const build_facebook_binary = b.step("s-facebook", "Build s-facebook binary");
     build_facebook_binary.dependOn(&facebook_cli.step);
