@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     // Build options
     const build_options = b.addOptions();
-    const build_time_timestamp = std.time.timestamp();
+    const build_time_timestamp = std.fmt.parseInt(i64, std.mem.trim(u8, b.run(&.{ "date", "-u", "+%s" }), "\n\r "), 10) catch 0;
     build_options.addOption(i64, "build_time", build_time_timestamp);
 
     const date_output = b.run(&.{ "date", "-u", "+%Y-%m-%d %H:%M:%S" });

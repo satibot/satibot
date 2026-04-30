@@ -1,7 +1,8 @@
 .{
     .name = .web,
     .version = "0.0.0",
-    .minimum_zig_version = "0.15.2",
+    .fingerprint = 0x15c9385120a7ff8a,
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{
         // zap is owned here so the root monorepo build.zig.zon doesn't need it
         .zap = .{
