@@ -175,6 +175,10 @@ zig build console-sync -- --no-rag
 
 # Build and run Telegram bot
 zig build run-telegram
+
+# Build and run Memvid CLI to verify single-file AI memory
+zig build run-memvid -- create "My Title" "My Content"
+zig build run-memvid -- search "My Title"
 ```
 
 ### Module Development
