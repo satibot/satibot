@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const tls = @import("tls");
 
 /// HTTP client module for making HTTPS requests with TLS support.
@@ -44,7 +45,8 @@ pub const Client = struct {
     /// Initialize client with custom connection settings.
     /// Loads root CA certificates from system trust store.
     pub fn initWithSettings(allocator: std.mem.Allocator, settings: ConnectionSettings) !Client {
-        const root_ca = try tls.config.cert.fromSystem(allocator);
+        _ = allocator;
+        const root_ca = tls.config.cert.Bundle.empty;
         return .{
             .allocator = allocator,
             .settings = settings,

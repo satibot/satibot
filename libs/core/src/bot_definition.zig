@@ -6,32 +6,35 @@ pub const BotDefinition = struct {
     memory: ?[]const u8 = null,
 };
 
-fn loadFile(allocator: std.mem.Allocator, path: []const u8) ?[]const u8 {
-    const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            return null;
-        }
-        std.log.warn("Failed to open {s}: {any}", .{ path, err });
-        return null;
-    };
-    defer file.close();
+fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return null;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(allocator, temp[0..n]);
+    }
+    return try buf.toOwnedSlice(allocator);
+}
 
-    const stat = file.stat() catch |err| {
-        std.log.warn("Failed to stat {s}: {any}", .{ path, err });
-        return null;
-    };
-    const content = file.readToEndAlloc(allocator, stat.size) catch |err| {
+fn loadFile(allocator: std.mem.Allocator, path: []const u8) ?[]const u8 {
+    return readFileAlloc(allocator, path) catch |err| {
         std.log.warn("Failed to read {s}: {any}", .{ path, err });
         return null;
     };
-    return content;
 }
 
 pub fn load(allocator: std.mem.Allocator) BotDefinition {
-    const home = std.posix.getenv("HOME") orelse {
+    const home_ptr = std.c.getenv("HOME") orelse {
         std.log.warn("HOME environment variable not found", .{});
         return .{};
     };
+    const home = std.mem.span(home_ptr);
     const bots_dir = std.fs.path.join(allocator, &.{ home, ".bots" }) catch return .{};
     defer allocator.free(bots_dir);
 

@@ -32,7 +32,11 @@
 //! ```
 
 const std = @import("std");
+
 const core = @import("core");
+
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+extern "c" fn unsetenv(name: [*:0]const u8) c_int;
 
 /// SatiCode configuration structure
 pub const SatiCodeConfig = struct {
@@ -113,7 +117,8 @@ pub fn load(allocator: std.mem.Allocator) !LoadedConfig {
         return config;
     } else |_| {
         // Try ~/.bots/saticode.json
-        const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+        const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+        const home = std.mem.span(home_ptr);
         const bots_json_path = try std.fs.path.join(allocator, &.{ home, ".bots", "saticode.json" });
         defer allocator.free(bots_json_path);
         if (loadFromPath(allocator, bots_json_path)) |config| {
@@ -139,19 +144,9 @@ pub fn load(allocator: std.mem.Allocator) !LoadedConfig {
 
 /// Load configuration from a specific file path
 pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !LoadedConfig {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            return error.ConfigNotFound;
-        }
-        return err;
-    };
-    defer file.close();
-
-    const content = file.readToEndAlloc(allocator, 1024 * 1024) catch |err| {
-        if (err == error.FileTooBig) {
-            return error.ConfigTooLarge;
-        }
-        return err;
+    const content = readFileAbsolute(allocator, path) catch |err| {
+        if (err == error.ConfigNotFound or err == error.ConfigTooLarge) return err;
+        return error.ConfigReadError;
     };
     defer allocator.free(content);
 
@@ -439,8 +434,10 @@ fn expandEnvVars(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
             if (end < input.len) {
                 // Extract variable name
                 const var_name = input[start..end];
-                if (std.posix.getenv(var_name)) |var_value| {
-                    try result.appendSlice(allocator, var_value);
+                const var_name_z = try allocator.dupeZ(u8, var_name);
+                defer allocator.free(var_name_z);
+                if (std.c.getenv(var_name_z.ptr)) |var_value| {
+                    try result.appendSlice(allocator, std.mem.span(var_value));
                 } else {
                     // Keep original if environment variable not found
                     try result.appendSlice(allocator, input[i .. end + 1]);
@@ -461,9 +458,9 @@ test "expandEnvVars" {
     const allocator = std.testing.allocator;
 
     // Set test environment variable using posix.getenv compatible approach
-    // Note: expandEnvVars uses std.posix.getenv, so we need to set it in the actual environment
-    try std.posix.setenv("TEST_VAR", "test_value");
-    defer std.posix.unsetenv("TEST_VAR");
+    // Note: expandEnvVars uses std.c.getenv, so we need to set it in the actual environment
+    if (setenv("TEST_VAR", "test_value", 1) != 0) return error.SetenvFailed;
+    defer _ = unsetenv("TEST_VAR");
 
     const input = "prefix_${TEST_VAR}_suffix";
     const expected = "prefix_test_value_suffix";
@@ -531,4 +528,21 @@ test "parseSatiCodeConfig.basic" {
             try std.testing.expectEqualStrings("test-key", minimax.apiKey);
         }
     }
+}
+
+fn readFileAbsolute(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return error.ConfigNotFound;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(allocator, temp[0..n]);
+    }
+    if (buf.items.len > 1048576) return error.ConfigTooLarge;
+    return buf.toOwnedSlice(allocator);
 }

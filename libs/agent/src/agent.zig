@@ -1,20 +1,28 @@
 const std = @import("std");
-pub const Config = @import("core").config.Config;
+
 const bot_definition = @import("core").bot_definition;
-const context = @import("agent/context.zig");
-const tools = @import("agent/tools.zig");
+pub const Config = @import("core").config.Config;
+const db = @import("db");
+const session = db.session;
+const local_embeddings = db.local_embeddings;
 const providers = @import("providers");
 const openrouter = providers.openrouter;
 const anthropic = providers.anthropic;
 const minimax = providers.minimax;
 const base = providers.base;
 const OpenRouterError = openrouter.OpenRouterError;
-const db = @import("db");
-const session = db.session;
-const local_embeddings = db.local_embeddings;
+
+const context = @import("agent/context.zig");
+const tools = @import("agent/tools.zig");
 const observability = @import("observability.zig");
 const Observer = observability.Observer;
 const ObserverEvent = observability.ObserverEvent;
+
+fn getCurrentTimeMs() i64 {
+    var tv: std.posix.timeval = undefined;
+    _ = std.c.gettimeofday(&tv, null);
+    return @as(i64, tv.tv_sec) * 1000 + @divTrunc(@as(i64, tv.tv_usec), 1000);
+}
 
 /// Helper function to print streaming response chunks to stdout.
 pub fn printChunk(ctx: ?*anyopaque, chunk: []const u8) void {
@@ -275,7 +283,7 @@ pub const Agent = struct {
             return local_embeddings.LocalEmbedder.generate(allocator, input);
         }
 
-        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
             return error.NoApiKey;
         };
         var provider = try openrouter.OpenRouterProvider.init(allocator, api_key);
@@ -298,7 +306,7 @@ pub const Agent = struct {
 
     fn spawnSubagent(ctx: tools.ToolContext, task: []const u8, label: []const u8) anyerror![]const u8 {
         std.debug.print("\n🚀 Spawning subagent: {s}\n", .{label});
-        const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, std.time.milliTimestamp() });
+        const sub_session_id = try std.fmt.allocPrint(ctx.allocator, "sub_{s}_{d}", .{ label, getCurrentTimeMs() });
         defer ctx.allocator.free(sub_session_id);
 
         var subagent = try Agent.init(ctx.allocator, ctx.config, sub_session_id, true);
@@ -322,7 +330,7 @@ pub const Agent = struct {
         try self.ctx.addMessage(.{ .role = "user", .content = message });
 
         const model = self.config.agents.defaults.model;
-        self.agent_start_time = std.time.milliTimestamp();
+        self.agent_start_time = getCurrentTimeMs();
 
         // Record agent start event
         const provider_name: []const u8 = blk: {
@@ -497,7 +505,7 @@ pub const Agent = struct {
             }.call;
 
             // Record LLM request event
-            const timer_start = std.time.milliTimestamp();
+            const timer_start = getCurrentTimeMs();
             const req_event: ObserverEvent = .{ .llm_request = .{
                 .provider = detectProviderName(model),
                 .model = model,
@@ -516,7 +524,7 @@ pub const Agent = struct {
                 self,
             ) catch |err| {
                 // Record failed LLM response event
-                const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
+                const duration_ms: u64 = @intCast(@max(0, getCurrentTimeMs() - timer_start));
                 const fail_event: ObserverEvent = .{ .llm_response = .{
                     .provider = detectProviderName(model),
                     .model = model,
@@ -541,7 +549,7 @@ pub const Agent = struct {
             defer response.deinit();
 
             // Record successful LLM response event
-            const duration_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - timer_start));
+            const duration_ms: u64 = @intCast(@max(0, getCurrentTimeMs() - timer_start));
             const resp_event: ObserverEvent = .{ .llm_response = .{
                 .provider = detectProviderName(model),
                 .model = model,
@@ -584,12 +592,12 @@ pub const Agent = struct {
                     const tool_start_event: ObserverEvent = .{ .tool_call_start = .{ .tool = call.function.name } };
                     self.observer.recordEvent(&tool_start_event);
 
-                    const tool_timer_start = std.time.milliTimestamp();
+                    const tool_timer_start = getCurrentTimeMs();
 
                     if (self.registry.get(call.function.name)) |tool| {
                         const result = tool.execute(tool_ctx, call.function.arguments) catch |err| {
                             // Record tool failure event
-                            const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
+                            const tool_duration: u64 = @intCast(@max(0, getCurrentTimeMs() - tool_timer_start));
                             const tool_fail_event: ObserverEvent = .{ .tool_call = .{
                                 .tool = call.function.name,
                                 .duration_ms = tool_duration,
@@ -610,7 +618,7 @@ pub const Agent = struct {
                         defer self.allocator.free(result);
 
                         // Record tool success event
-                        const tool_duration: u64 = @intCast(@max(0, std.time.milliTimestamp() - tool_timer_start));
+                        const tool_duration: u64 = @intCast(@max(0, getCurrentTimeMs() - tool_timer_start));
                         const tool_event: ObserverEvent = .{ .tool_call = .{
                             .tool = call.function.name,
                             .duration_ms = tool_duration,
@@ -651,7 +659,7 @@ pub const Agent = struct {
 
         // Record agent end event
         const duration_ms: u64 = if (self.agent_start_time > 0)
-            @intCast(std.time.milliTimestamp() - self.agent_start_time)
+            @intCast(getCurrentTimeMs() - self.agent_start_time)
         else
             0;
         const end_event: ObserverEvent = .{ .agent_end = .{

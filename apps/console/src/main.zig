@@ -2,14 +2,13 @@ const std = @import("std");
 const agent = @import("agent");
 const console_sync = agent.console_sync;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
     var rag_enabled = true;
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.args.toSlice(allocator);
     for (args) |arg| {
         if (std.mem.eql(u8, arg, "--no-rag")) {
             rag_enabled = false;

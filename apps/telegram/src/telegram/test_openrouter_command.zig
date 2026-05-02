@@ -1,4 +1,8 @@
 const std = @import("std");
+
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+extern "c" fn unsetenv(name: [*:0]const u8) c_int;
+
 const config = @import("../../config.zig");
 const telegram_handlers = @import("telegram_handlers.zig");
 const http = @import("../../http.zig");
@@ -55,15 +59,15 @@ test "handleOpenrouterCommand: valid model update" {
     defer ctx.deinit();
 
     // Mock HOME environment variable to point to our temp directory
-    const original_home = std.posix.getenv("HOME");
+    const original_home = std.c.getenv("HOME");
     defer if (original_home) |home| {
         _ = std.posix.setenv("HOME", home) catch {};
     } else {
-        _ = std.posix.unsetenv("HOME") catch {};
+        _ = if (unsetenv("HOME") catch {};
     };
     const temp_home = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(temp_home);
-    try std.posix.setenv("HOME", temp_home);
+    if (setenv("HOME", temp_home, 1) != 0) return error.SetenvFailed;
 
     // Create test data
     const tg_data: telegram_handlers.TelegramTaskData = .{
@@ -147,13 +151,13 @@ test "handleOpenrouterCommand: no config file" {
     defer ctx.deinit();
 
     // Mock HOME to a non-existent directory
-    const original_home = std.posix.getenv("HOME");
+    const original_home = std.c.getenv("HOME");
     defer if (original_home) |home| {
         _ = std.posix.setenv("HOME", home) catch {};
     } else {
-        _ = std.posix.unsetenv("HOME") catch {};
+        _ = if (unsetenv("HOME") catch {};
     };
-    try std.posix.setenv("HOME", "/non/existent/path");
+    if (setenv("HOME", "/non/existent/path", 1) != 0) return error.SetenvFailed;
 
     const tg_data: telegram_handlers.TelegramTaskData = .{
         .chat_id = 12345,

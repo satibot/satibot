@@ -33,7 +33,8 @@ pub const LlmTester = struct {
         const timer = try xev.Timer.init();
 
         // Load configuration from ~/.bots/config.json
-        const home = std.posix.getenv("HOME") orelse "/tmp";
+        const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+        const home = std.mem.span(home_ptr);
         const config_path = try std.fs.path.join(allocator, &.{ home, ".bots", "config.json" });
         defer allocator.free(config_path);
 

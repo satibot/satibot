@@ -1,6 +1,34 @@
 const std = @import("std");
-const xev = @import("xev");
+
 pub const Config = @import("core").config.Config;
+const xev = @import("xev");
+
+const timeval = extern struct {
+    tv_sec: c_long,
+    tv_usec: c_long,
+};
+extern "c" fn gettimeofday(tv: *timeval, tz: ?*anyopaque) c_int;
+
+const timespec = extern struct {
+    tv_sec: c_long,
+    tv_nsec: c_long,
+};
+
+fn currentTimeMs() i64 {
+    var tv: timeval = undefined;
+    _ = gettimeofday(&tv, null);
+    return @as(i64, tv.tv_sec) * 1000 + @divTrunc(@as(i64, tv.tv_usec), 1000);
+}
+
+fn sleepMs(ms: u64) void {
+    var req = timespec{ .tv_sec = @intCast(ms / 1000), .tv_nsec = @intCast((ms % 1000) * 1_000_000) };
+    var rem: timespec = undefined;
+    _ = std.c.nanosleep(&req, &rem);
+}
+
+fn mutexLock(mutex: *std.atomic.Mutex) void {
+    while (!mutex.tryLock()) {}
+}
 
 /// Task structure for work items
 pub const Task = struct {
@@ -58,16 +86,14 @@ pub const XevEventLoop = struct {
     // Thread-safe task queue for immediate processing
     task_queue: std.ArrayList(Task),
     // Mutex for thread-safe access to task queue
-    task_mutex: std.Thread.Mutex,
-    // Condition variable for task queue
-    task_condition: std.Thread.Condition,
+    task_mutex: std.atomic.Mutex,
     // Counter for pending tasks (atomic for lock-free checking)
     pending_tasks: std.atomic.Value(usize),
 
     // Priority queue for scheduled events
     event_queue: std.PriorityQueue(Event, void, Event.compare),
     // Mutex for thread-safe access to event queue
-    event_mutex: std.Thread.Mutex,
+    event_mutex: std.atomic.Mutex,
 
     // Callback handlers
     task_handler: ?TaskHandler,
@@ -96,11 +122,10 @@ pub const XevEventLoop = struct {
             .config = config,
             .loop = loop,
             .task_queue = std.ArrayList(Task).initCapacity(allocator, 0) catch return error.OutOfMemory,
-            .task_mutex = .{},
-            .task_condition = .{},
+            .task_mutex = .unlocked,
             .pending_tasks = std.atomic.Value(usize).init(0),
-            .event_queue = std.PriorityQueue(Event, void, Event.compare).init(allocator, {}),
-            .event_mutex = .{},
+            .event_queue = std.PriorityQueue(Event, void, Event.compare).initContext({}),
+            .event_mutex = .unlocked,
             .task_handler = null,
             .event_handler = null,
             .shutdown = std.atomic.Value(bool).init(false),
@@ -131,17 +156,16 @@ pub const XevEventLoop = struct {
             .source = try self.allocator.dupe(u8, source),
         };
 
-        self.task_mutex.lock();
+        mutexLock(&self.task_mutex);
         defer self.task_mutex.unlock();
 
         try self.task_queue.append(self.allocator, task);
         _ = self.pending_tasks.fetchAdd(1, .seq_cst);
-        self.task_condition.signal();
     }
 
     /// Schedule an event for future execution
     pub fn scheduleEvent(self: *XevEventLoop, id: []const u8, event_type: EventType, payload: ?[]const u8, delay_ms: u64) !void {
-        const expires = std.time.nanoTimestamp() + (@as(i64, @intCast(delay_ms)) * std.time.ns_per_ms);
+        const expires = currentTimeMs() + @as(i64, @intCast(delay_ms));
 
         var event_payload: ?[]const u8 = null;
         if (payload) |p| {
@@ -155,10 +179,10 @@ pub const XevEventLoop = struct {
             .expires = @intCast(expires),
         };
 
-        self.event_mutex.lock();
+        mutexLock(&self.event_mutex);
         defer self.event_mutex.unlock();
 
-        try self.event_queue.add(event);
+        try self.event_queue.push(self.allocator, event);
     }
 
     /// Get the current offset value
@@ -175,7 +199,7 @@ pub const XevEventLoop = struct {
     fn processPendingTasks(self: *XevEventLoop) void {
         var processed: usize = 0;
         while (self.pending_tasks.load(.seq_cst) > 0) {
-            self.task_mutex.lock();
+            mutexLock(&self.task_mutex);
             if (self.task_queue.items.len == 0) {
                 self.task_mutex.unlock();
                 if (processed > 0) {
@@ -206,9 +230,11 @@ pub const XevEventLoop = struct {
     /// Worker thread function
     fn workerThreadFn(self: *XevEventLoop, thread_id: usize) void {
         while (!self.shutdown.load(.seq_cst)) {
-            self.task_mutex.lock();
+            mutexLock(&self.task_mutex);
             while (self.task_queue.items.len == 0 and !self.shutdown.load(.seq_cst)) {
-                self.task_condition.wait(&self.task_mutex);
+                self.task_mutex.unlock();
+                sleepMs(1);
+                mutexLock(&self.task_mutex);
             }
 
             if (self.shutdown.load(.seq_cst)) {
@@ -247,7 +273,7 @@ pub const XevEventLoop = struct {
         defer {
             // Stop all worker threads
             self.shutdown.store(true, .seq_cst);
-            self.task_condition.broadcast();
+            // condition variable removed for Zig 0.16 compatibility
             for (self.worker_threads.items) |thread| {
                 thread.join();
             }
@@ -259,12 +285,12 @@ pub const XevEventLoop = struct {
             self.processPendingTasks();
 
             // Check for scheduled events
-            const now = std.time.nanoTimestamp();
+            const now = currentTimeMs();
             if (self.event_queue.peek()) |next_event| {
                 if (next_event.expires <= now) {
                     // Event is due, remove and process it
-                    self.event_mutex.lock();
-                    const event = self.event_queue.remove();
+                    mutexLock(&self.event_mutex);
+                    const event = self.event_queue.pop().?;
                     self.event_mutex.unlock();
 
                     if (self.event_handler) |handler| {
@@ -277,8 +303,7 @@ pub const XevEventLoop = struct {
                     event.deinit(self.allocator);
                 } else {
                     // Calculate dynamic delay based on next event timing
-                    const delay_ns = next_event.expires - now;
-                    const delay_ms: u32 = @max(1, @min(100, @as(u32, @intCast(@divTrunc(delay_ns, std.time.ns_per_ms))))); // Clamp between 1-100ms
+                    const delay_ms: u32 = @max(1, @min(100, @as(u32, @intCast(next_event.expires - now)))); // Clamp between 1-100ms
 
                     self.timer.run(&self.loop, &self.timer_completion, delay_ms * std.time.ns_per_ms, XevEventLoop, self, timerCallback);
 
@@ -289,7 +314,7 @@ pub const XevEventLoop = struct {
                 }
             } else {
                 // No events, just sleep briefly
-                std.Thread.sleep(50 * std.time.ns_per_ms);
+                sleepMs(50);
             }
         }
     }
@@ -305,10 +330,10 @@ pub const XevEventLoop = struct {
         };
 
         // Process any due events
-        const now = std.time.nanoTimestamp();
+        const now = currentTimeMs();
         while (self.event_queue.peek()) |event| {
             if (event.expires <= now) {
-                self.event_mutex.lock();
+                mutexLock(&self.event_mutex);
                 const due_event = self.event_queue.remove();
                 self.event_mutex.unlock();
 
@@ -331,13 +356,12 @@ pub const XevEventLoop = struct {
     /// Request shutdown of the event loop
     pub fn requestShutdown(self: *XevEventLoop) void {
         self.shutdown.store(true, .seq_cst);
-        self.task_condition.broadcast();
     }
 
     /// Clean up resources
     pub fn deinit(self: *XevEventLoop) void {
         // Free remaining tasks
-        self.task_mutex.lock();
+        mutexLock(&self.task_mutex);
         for (self.task_queue.items) |task| {
             task.deinit(self.allocator);
         }
@@ -345,11 +369,11 @@ pub const XevEventLoop = struct {
         self.task_mutex.unlock();
 
         // Free remaining events
-        self.event_mutex.lock();
-        while (self.event_queue.removeOrNull()) |event| {
+        mutexLock(&self.event_mutex);
+        while (self.event_queue.pop()) |event| {
             event.deinit(self.allocator);
         }
-        self.event_queue.deinit();
+        self.event_queue.deinit(self.allocator);
         self.event_mutex.unlock();
 
         // Clean up worker threads

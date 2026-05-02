@@ -6,7 +6,7 @@ var Home_Dir: []const u8 = undefined;
 
 // Initialize Home_Dir at runtime
 fn initHomeDir() void {
-    Home_Dir = std.posix.getenv("HOME") orelse "/tmp";
+    Home_Dir = std.c.getenv("HOME") orelse "/tmp";
 }
 
 /// Configuration data - immutable after creation

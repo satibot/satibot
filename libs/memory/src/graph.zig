@@ -69,10 +69,12 @@ pub const GraphMemory = struct {
         self.* = undefined;
     }
 
+    extern "c" fn time(t: ?*c_long) c_long;
+
     fn generateId(allocator: std.mem.Allocator) ![]const u8 {
-        const timestamp = std.time.timestamp();
-        var random: u32 = undefined;
-        std.crypto.random.bytes(std.mem.asBytes(&random));
+        const timestamp = time(null);
+        var prng = std.Random.DefaultPrng.init(0);
+        const random = prng.random().int(u32);
         return std.fmt.allocPrint(allocator, "{d}-{x}", .{ timestamp, random });
     }
 
@@ -97,7 +99,7 @@ pub const GraphMemory = struct {
             .id = id_copy,
             .label = label_copy,
             .properties = props,
-            .created_at = std.time.timestamp(),
+            .created_at = time(null),
         };
 
         try self.entities.put(id_copy, entity);
@@ -164,7 +166,7 @@ pub const GraphMemory = struct {
             .target_id = target_copy,
             .relation_type = type_copy,
             .properties = props,
-            .created_at = std.time.timestamp(),
+            .created_at = time(null),
         };
 
         try self.relationships.append(self.allocator, relationship);

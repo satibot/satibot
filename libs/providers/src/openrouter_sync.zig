@@ -69,7 +69,7 @@ pub const OpenRouterProvider = struct {
 };
 
 fn chatInterface(allocator: std.mem.Allocator, config: Config, messages: []const base.Message, model: []const u8, tools: ?[]const base.Tool) !base.LlmResponse {
-    const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+    const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
         return error.NoApiKey;
     };
     var provider = try OpenRouterProvider.init(allocator, api_key);

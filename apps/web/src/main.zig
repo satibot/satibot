@@ -25,7 +25,8 @@ pub fn main() !void {
     }
 
     // Initialize memory store
-    const home = std.posix.getenv("HOME") orelse ".";
+    const home_ptr = std.c.getenv("HOME") orelse ".";
+    const home = std.mem.span(home_ptr);
     const memory_path = try std.fs.path.join(allocator, &.{ home, ".bots", "memory" });
     defer allocator.free(memory_path);
     memory_store = memory.memory.MemoryStore.init(allocator, memory_path);

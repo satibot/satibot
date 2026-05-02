@@ -12,7 +12,8 @@ const std = @import("std");
 /// saveLastChatId(6496574212); // Saves "6496574212" to file
 /// ```
 pub fn saveLastChatId(chat_id: i64) void {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const file_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt" }) catch return;
     defer std.heap.page_allocator.free(file_path);
 
@@ -60,7 +61,8 @@ pub fn saveLastChatId(chat_id: i64) void {
 /// }
 /// ```
 pub fn readLastChatId() ?i64 {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const file_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt" }) catch return null;
     defer std.heap.page_allocator.free(file_path);
 
@@ -82,7 +84,8 @@ pub fn readLastChatId() ?i64 {
 ///
 /// Deletes the file, useful for testing or when starting fresh.
 pub fn clearLastChatId() void {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const file_path = std.fs.path.join(std.heap.page_allocator, &.{ home, ".bots", "last_chat_id.txt" }) catch return;
     defer std.heap.page_allocator.free(file_path);
 

@@ -17,7 +17,8 @@ pub const Gateway = struct {
     /// Initialize the gateway with all required services.
     /// Loads cron jobs from disk.
     pub fn init(allocator: std.mem.Allocator, config: Config) !Gateway {
-        const home = std.posix.getenv("HOME") orelse "/tmp";
+        const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+        const home = std.mem.span(home_ptr);
         const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
         defer allocator.free(bots_dir);
 

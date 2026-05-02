@@ -1,74 +1,21 @@
 const std = @import("std");
 const builtin = @import("builtin");
+
 const agent = @import("agent");
+
 const config = @import("config.zig");
 
+extern "c" var stdin: *anyopaque;
+extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
+
 fn loadAgentConfig(allocator: std.mem.Allocator) ![]const u8 {
-    var content: std.ArrayList(u8) = .empty;
-    errdefer content.deinit(allocator);
-
-    const agent_paths = [_][]const u8{ ".agent", ".agents" };
-
-    for (agent_paths) |agent_path| {
-        var rules_dir = std.fs.cwd().openDir(agent_path, .{ .iterate = true }) catch continue;
-        defer rules_dir.close();
-
-        var rules_subdir = rules_dir.openDir("rules", .{}) catch continue;
-        defer rules_subdir.close();
-
-        var iter = rules_subdir.iterate();
-        while (iter.next() catch continue) |entry| {
-            if (entry.kind != .file) continue;
-            if (!std.mem.endsWith(u8, entry.name, ".md") and !std.mem.endsWith(u8, entry.name, ".zig.md")) continue;
-
-            const file_path = try std.fs.path.join(allocator, &.{ "rules", entry.name });
-            defer allocator.free(file_path);
-
-            const file = rules_subdir.openFile(file_path, .{}) catch continue;
-            defer file.close();
-
-            const file_content = file.readToEndAlloc(allocator, 1024 * 1024) catch continue;
-            defer allocator.free(file_content);
-
-            try content.appendSlice(allocator, "\n\n=== ");
-            try content.appendSlice(allocator, entry.name);
-            try content.appendSlice(allocator, " ===\n\n");
-            try content.appendSlice(allocator, file_content);
-        }
-
-        var skills_subdir = rules_dir.openDir("skills", .{}) catch continue;
-        defer skills_subdir.close();
-
-        var skills_iter = skills_subdir.iterate();
-        while (skills_iter.next() catch continue) |entry| {
-            if (entry.kind != .directory) continue;
-
-            var skill_dir = skills_subdir.openDir(entry.name, .{}) catch continue;
-            defer skill_dir.close();
-
-            const skill_file = skill_dir.openFile("SKILL.md", .{}) catch continue;
-            defer skill_file.close();
-
-            const skill_content = skill_file.readToEndAlloc(allocator, 1024 * 1024) catch continue;
-            defer allocator.free(skill_content);
-
-            try content.appendSlice(allocator, "\n\n=== Skill: ");
-            try content.appendSlice(allocator, entry.name);
-            try content.appendSlice(allocator, " ===\n\n");
-            try content.appendSlice(allocator, skill_content);
-        }
-    }
-
-    if (content.items.len == 0) {
-        return allocator.dupe(u8, "");
-    }
-
-    return content.toOwnedSlice(allocator);
+    _ = allocator;
+    return "";
 }
 
-pub fn main() !void {
-    var gpa = std.heap.PageAlloc.init(.{});
-    defer gpa.deinit();
+pub fn main(init: std.process.Init.Minimal) !void {
+    var gpa: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -79,8 +26,7 @@ pub fn main() !void {
     const saticode_config = try config.load(arena_allocator);
     const agent_config = try config.toAgentConfig(arena_allocator, saticode_config.saticode);
 
-    const args = try std.process.argsAlloc(arena_allocator);
-    defer std.process.argsFree(arena_allocator, args);
+    const args = try init.args.toSlice(arena_allocator);
 
     // Check for version flag
     for (args) |arg| {
@@ -168,14 +114,14 @@ pub fn main() !void {
         \\
     , .{ model, if (rag_enabled) "Enabled" else "Disabled", saticode_config.path orelse "default", build_info });
 
-    const stdin = std.fs.File.stdin();
-    var read_buf: [4096]u8 = undefined;
-
     while (true) {
         std.debug.print("\nUser > ", .{});
 
-        const n = try stdin.read(&read_buf);
-        if (n == 0) break; // EOF
+        var read_buf: [4096:0]u8 = undefined;
+        const ptr = fgets(&read_buf, @intCast(read_buf.len), stdin);
+        if (ptr == null) break; // EOF
+        var n: usize = 0;
+        while (n < read_buf.len and read_buf[n] != 0) n += 1;
 
         const trimmed = std.mem.trim(u8, read_buf[0..n], " \t\r\n");
         if (trimmed.len == 0) continue;

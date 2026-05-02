@@ -2,6 +2,7 @@
 /// Stores conversations as JSON files in ~/.bots/sessions/
 /// Each session is identified by a unique session ID.
 const std = @import("std");
+
 const providers = @import("providers");
 const base = providers.base;
 
@@ -15,7 +16,8 @@ pub const Session = struct {
 /// Creates the sessions directory if it doesn't exist.
 /// File is saved as {session_id}.json in ~/.bots/sessions/
 pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []const base.LlmMessage) !void {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
 
@@ -50,7 +52,8 @@ pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []co
 /// Returns empty array if session file doesn't exist.
 /// Caller owns the returned memory and must free it.
 pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LlmMessage {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     const filename = try std.fmt.allocPrint(allocator, "{s}.json", .{session_id});
     defer allocator.free(filename);
     const path = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions", filename });
@@ -59,18 +62,33 @@ pub fn load(allocator: std.mem.Allocator, session_id: []const u8) ![]base.LlmMes
 
 /// Internal function to load messages from a file path.
 /// Returns empty array if file not found.
+fn readFileAbsolute(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return null;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(allocator, temp[0..n]);
+    }
+    if (buf.items.len > 10485760) return error.FileTooBig;
+    return try buf.toOwnedSlice(allocator);
+}
+
 fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LlmMessage {
     defer allocator.free(path);
-    const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+    const content = readFileAbsolute(allocator, path) catch |err| {
         if (err == error.FileNotFound) return &[_]base.LlmMessage{};
         return err;
     };
-    defer file.close();
+    const content_slice = content orelse return &[_]base.LlmMessage{};
+    defer allocator.free(content_slice);
 
-    const content = try file.readToEndAlloc(allocator, 10485760); // 10 * 1024 * 1024
-    defer allocator.free(content);
-
-    const parsed = try std.json.parseFromSlice(Session, allocator, content, .{ .ignore_unknown_fields = true });
+    const parsed = try std.json.parseFromSlice(Session, allocator, content_slice, .{ .ignore_unknown_fields = true });
     // We need to dupe the messages because parsed will be deinitialized
     const msgs = try allocator.alloc(base.LlmMessage, parsed.value.messages.len);
     for (parsed.value.messages, 0..) |msg, i| {

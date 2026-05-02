@@ -14,6 +14,7 @@
 /// - Easy parsing: Zig's std.json makes serialization/deserialization trivial.
 /// - Interoperability: JSON is the universal language for web UIs and dashboards.
 const std = @import("std");
+
 const providers = @import("providers");
 const base = providers.base;
 
@@ -26,7 +27,7 @@ pub const Context = struct {
     /// Initialize a new empty conversation context.
     pub fn init(allocator: std.mem.Allocator) Context {
         return .{
-            .messages = .{},
+            .messages = .empty,
             .allocator = allocator,
         };
     }

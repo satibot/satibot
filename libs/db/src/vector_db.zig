@@ -1,6 +1,7 @@
 /// Vector database module for semantic search using embeddings.
 /// Stores text with vector embeddings and supports similarity search.
 const std = @import("std");
+
 const agent = @import("agent");
 const Config = agent.config.Config;
 
@@ -13,7 +14,7 @@ pub const VectorEntry = struct {
 /// In-memory vector store with cosine similarity search.
 pub const VectorStore = struct {
     allocator: std.mem.Allocator,
-    entries: std.ArrayListUnmanaged(VectorEntry) = .{},
+    entries: std.ArrayListUnmanaged(VectorEntry) = .empty,
 
     /// Initialize an empty vector store.
     pub fn init(allocator: std.mem.Allocator) VectorStore {
@@ -110,10 +111,21 @@ pub const VectorStore = struct {
     }
 
     pub fn load(self: *VectorStore, path: []const u8) !void {
-        const file = std.fs.cwd().openFile(path, .{}) catch return;
-        defer file.close();
+        const path_z = std.cstr.toCstr(self.allocator, path) catch return;
+        defer self.allocator.free(path_z);
+        const fp = std.c.fopen(path_z, "r");
+        if (fp == null) return;
+        defer _ = std.c.fclose(fp);
 
-        const content = try file.readToEndAlloc(self.allocator, 104857600); // 100 * 1024 * 1024
+        var buf = std.ArrayList(u8).init(self.allocator);
+        defer buf.deinit();
+        var temp: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&temp, 1, temp.len, fp);
+            if (n == 0) break;
+            try buf.appendSlice(temp[0..n]);
+        }
+        const content = try buf.toOwnedSlice();
         defer self.allocator.free(content);
 
         // Handle empty file - nothing to load

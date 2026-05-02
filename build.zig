@@ -331,20 +331,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(graph_memory_cli);
 
-    // Memvid CLI App
-    const memvid_cli = b.addExecutable(.{
-        .name = "s-memvid",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("apps/memvid/src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "memory", .module = memory },
-            },
-        }),
-    });
-    b.installArtifact(memvid_cli);
-
     // Web CLI App
     const web_cli = b.addExecutable(.{
         .name = "s-web-cli",
@@ -428,20 +414,20 @@ pub fn build(b: *std.Build) void {
 
         // Link SQLite to web app if enabled
         if (enable_sqlite) {
-            web_app.linkLibC();
-            web_app.linkSystemLibrary("sqlite3");
+            web_app.root_module.link_libc = true;
+            web_app.root_module.linkSystemLibrary("sqlite3", .{});
         }
     } else {
         // Link SQLite to executables that need it (non-web)
         if (enable_sqlite) {
-            console_sync.linkLibC();
-            console_sync.linkSystemLibrary("sqlite3");
-            console_xev.linkLibC();
-            console_xev.linkSystemLibrary("sqlite3");
-            telegram.linkLibC();
-            telegram.linkSystemLibrary("sqlite3");
-            agent_cli.linkLibC();
-            agent_cli.linkSystemLibrary("sqlite3");
+            console_sync.root_module.link_libc = true;
+            console_sync.root_module.linkSystemLibrary("sqlite3", .{});
+            console_xev.root_module.link_libc = true;
+            console_xev.root_module.linkSystemLibrary("sqlite3", .{});
+            telegram.root_module.link_libc = true;
+            telegram.root_module.linkSystemLibrary("sqlite3", .{});
+            agent_cli.root_module.link_libc = true;
+            agent_cli.root_module.linkSystemLibrary("sqlite3", .{});
         }
     }
 
@@ -509,13 +495,6 @@ pub fn build(b: *std.Build) void {
     const run_graph_memory = b.step("run-graph-memory", "Run graph memory CLI app");
     run_graph_memory.dependOn(&run_graph_memory_cmd.step);
 
-    const run_memvid_cmd = b.addRunArtifact(memvid_cli);
-    if (b.args) |args| {
-        run_memvid_cmd.addArgs(args);
-    }
-    const run_memvid = b.step("run-memvid", "Run memvid CLI app");
-    run_memvid.dependOn(&run_memvid_cmd.step);
-
     const run_web_cli_cmd = b.addRunArtifact(web_cli);
     if (b.args) |args| {
         run_web_cli_cmd.addArgs(args);
@@ -550,9 +529,6 @@ pub fn build(b: *std.Build) void {
 
     const build_graph_memory_binary = b.step("s-graph-memory", "Build s-graph-memory binary");
     build_graph_memory_binary.dependOn(&graph_memory_cli.step);
-
-    const build_memvid_binary = b.step("s-memvid", "Build s-memvid binary");
-    build_memvid_binary.dependOn(&memvid_cli.step);
 
     const build_web_cli_binary = b.step("s-web-cli", "Build s-web-cli binary");
     build_web_cli_binary.dependOn(&web_cli.step);

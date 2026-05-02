@@ -27,16 +27,16 @@
 //! ```
 
 const std = @import("std");
-const speech = @import("minimax-speech").speech;
 const build_options = @import("build_options");
 
-pub fn main() !void {
+const speech = @import("minimax-speech").speech;
+
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.args.toSlice(allocator);
 
     if (args.len < 2) {
         printUsage(args[0]);
@@ -158,13 +158,16 @@ pub fn main() !void {
     }
 
     if (text_file) |file_path| {
-        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+        const content = readFileAlloc(allocator, file_path) catch |err| {
             std.debug.print("Error: Could not open file '{s}': {}\n", .{ file_path, err });
             return;
         };
-        defer file.close();
-        const stat = try file.stat();
-        text = try file.readToEndAlloc(allocator, stat.size);
+        if (content) |c| {
+            text = c;
+        } else {
+            std.debug.print("Error: Could not open file '{s}'\n", .{file_path});
+            return;
+        }
     }
 
     try synthesizeSpeech(allocator, text.?, model, voice_id, speed, vol, pitch, audio_format, sample_rate, bitrate, channel, output_file, poll_interval, key.?);
@@ -217,16 +220,13 @@ fn printUsage(prog_name: []const u8) void {
 
 fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
     const config_path = "config.json";
-    const config_file = std.fs.cwd().openFile(config_path, .{}) catch null;
-    if (config_file) |file| {
-        defer file.close();
-        const content = try file.readToEndAlloc(allocator, 1024 * 1024);
-        defer allocator.free(content);
-
+    const content = readFileAlloc(allocator, config_path) catch return null;
+    if (content) |buf| {
+        defer allocator.free(buf);
         const parsed = std.json.parseFromSlice(
             Config,
             allocator,
-            content,
+            buf,
             .{ .ignore_unknown_fields = true },
         ) catch return null;
         defer parsed.deinit();
@@ -240,6 +240,22 @@ fn getApiKeyFromConfig(allocator: std.mem.Allocator) !?[]const u8 {
         }
     }
     return null;
+}
+
+fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return null;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(allocator, temp[0..n]);
+    }
+    return try buf.toOwnedSlice(allocator);
 }
 
 const Config = struct {

@@ -19,9 +19,17 @@
 /// For concurrent message processing with event loop,
 /// use the xev-based async version (`sati console`).
 const std = @import("std");
-pub const Config = @import("core").config.Config;
-const Agent = @import("../agent.zig").Agent;
+
 const build_opts = @import("build_opts");
+pub const Config = @import("core").config.Config;
+
+const Agent = @import("../agent.zig").Agent;
+
+const timespec = extern struct {
+    tv_sec: c_long,
+    tv_nsec: c_long,
+};
+extern "c" fn nanosleep(req: *const timespec, rem: *timespec) c_int;
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
 var shutdown_message_printed = std.atomic.Value(bool).init(false);
@@ -38,11 +46,10 @@ fn isQuitCommand(line: []const u8) bool {
 }
 
 fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return try allocator.alloc([]const u8, 0),
-        else => return err,
-    };
-    defer file.close();
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return try allocator.alloc([]const u8, 0);
+    defer _ = std.c.fclose(file);
 
     var lines: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -55,7 +62,7 @@ fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
     defer carry.deinit(allocator);
 
     while (true) {
-        const n = file.read(&read_buf) catch break;
+        const n = std.c.fread(&read_buf, 1, read_buf.len, file);
         if (n == 0) break;
         const data = read_buf[0..n];
 
@@ -118,7 +125,8 @@ fn saveHistory(history: []const []const u8, path: []const u8) !void {
 }
 
 fn getHistoryPath(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     return std.fs.path.join(allocator, &.{ home, ".satibot_history" });
 }
 
@@ -127,7 +135,7 @@ const SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 const SPINNER_DELAY_MS = 100; // 100ms between frames
 var spinner_active = std.atomic.Value(bool).init(false);
 
-fn signalHandler(sig: i32) callconv(.c) void {
+fn signalHandler(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
 
     if (!shutdown_message_printed.load(.seq_cst)) {
@@ -177,7 +185,9 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
     defer spinner_thread.join();
 
     // Small delay to ensure spinner starts before agent begins processing
-    std.posix.nanosleep(0, 50_000_000); // 50ms
+    var req = timespec{ .tv_sec = 0, .tv_nsec = 50_000_000 };
+    var rem: timespec = undefined;
+    _ = nanosleep(&req, &rem); // 50ms
     std.Thread.yield() catch |err| std.debug.print("Warning: Thread yield failed: {any}\n", .{err}); // Yield to ensure spinner thread runs
 
     var agent = try Agent.init(allocator, config, session_id, rag_enabled);
@@ -226,7 +236,9 @@ fn spinnerThread() void {
     while (spinner_active.load(.seq_cst)) {
         // Print spinner with carriage return to stay on same line
         std.debug.print("\r⚡ Thinking {c} ", .{SPINNER_FRAMES[frame_idx]});
-        std.posix.nanosleep(0, SPINNER_DELAY_MS * 1_000_000); // Convert ms to ns
+        var req2 = timespec{ .tv_sec = 0, .tv_nsec = SPINNER_DELAY_MS * 1_000_000 }; // Convert ms to ns
+        var rem2: timespec = undefined;
+        _ = nanosleep(&req2, &rem2);
 
         frame_idx = (frame_idx + 1) % SPINNER_FRAMES.len;
     }
@@ -248,25 +260,21 @@ pub const ConsoleSyncBot = struct {
         };
     }
 
+    extern "c" var stdin: *anyopaque;
+    extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
+
     pub fn tick(self: *ConsoleSyncBot) !void {
-        const stdin = std.fs.File.stdin();
-        var buf: [1024]u8 = undefined;
+        var buf: [1024:0]u8 = undefined;
 
         std.debug.print("\nUser > ", .{});
-        const n = stdin.read(&buf) catch |err| {
-            if (err == error.InputOutput or err == error.BrokenPipe) {
-                if (shutdown_requested.load(.seq_cst)) {
-                    return;
-                }
-                return;
-            }
-            return err;
-        };
-        if (n == 0) {
+        const ptr = fgets(&buf, @intCast(buf.len), stdin);
+        if (ptr == null) {
             // EOF received (Ctrl+D), trigger shutdown
             shutdown_requested.store(true, .seq_cst);
             return;
         }
+        var n: usize = 0;
+        while (n < buf.len and buf[n] != 0) n += 1;
 
         const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
         if (trimmed.len == 0) return;

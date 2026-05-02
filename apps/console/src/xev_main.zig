@@ -6,7 +6,7 @@ const build_options = agent.build_opts;
 
 /// Main entry point for sati application
 /// Handles command line arguments and dispatches to appropriate handlers
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     // Print startup banner with build timestamp
     std.debug.print("--- sati 🐸 (build: {s}) ---\n", .{build_options.build_time_str});
 
@@ -16,8 +16,7 @@ pub fn main() !void {
     const allocator = arena.allocator();
 
     // Parse command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.args.toSlice(allocator);
 
     // Handle help and version flags (only when no additional arguments)
     if (args.len >= 2) {
@@ -587,7 +586,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Get API key from config or environment
-    const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+    const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
         std.debug.print("Error: OpenRouter API key not configured. Set OPENROUTER_API_KEY env var or update config.json.\n", .{});
         return;
     };
@@ -802,7 +801,8 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
     const config = parsed_config.value;
 
     // Get DB path from ~/.bots/vector_db.json
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
     const db_path = try std.fs.path.join(allocator, &.{ bots_dir, "vector_db.json" });
@@ -856,7 +856,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         if (std.mem.eql(u8, emb_model, "local")) {
             resp = try agent.local_embeddings.LocalEmbedder.generate(allocator, &.{query});
         } else {
-            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
                 std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
                 return error.NoApiKey;
             };
@@ -913,7 +913,7 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         if (std.mem.eql(u8, emb_model, "local")) {
             resp = try agent.local_embeddings.LocalEmbedder.generate(allocator, &.{text});
         } else {
-            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY") orelse {
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
                 std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
                 return error.NoApiKey;
             };
@@ -968,7 +968,8 @@ fn runStatus(allocator: std.mem.Allocator) !void {
     }
 
     // Display data directory
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
     std.debug.print("\nData Directory: {s}\n", .{bots_dir});
@@ -990,13 +991,13 @@ fn validateConfig(config: agent.config.Config) !void {
     const model = config.agents.defaults.model;
     // Check for Claude models (require Anthropic API key)
     if (std.mem.indexOf(u8, model, "claude") != null) {
-        if (config.providers.anthropic == null and std.posix.getenv("ANTHROPIC_API_KEY") == null) {
+        if (config.providers.anthropic == null and std.c.getenv("ANTHROPIC_API_KEY") == null) {
             std.debug.print("\n❌ Error: Anthropic API key not found.\nPlease set ANTHROPIC_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
             std.process.exit(1);
         }
     } else {
         // Assume OpenRouter for other models
-        if (config.providers.openrouter == null and std.posix.getenv("OPENROUTER_API_KEY") == null) {
+        if (config.providers.openrouter == null and std.c.getenv("OPENROUTER_API_KEY") == null) {
             std.debug.print("\n❌ Error: OpenRouter API key not found.\nPlease set OPENROUTER_API_KEY environment variable or update config.json at ~/.bots/config.json\n\n", .{});
             std.process.exit(1);
         }
@@ -1064,7 +1065,8 @@ fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
         return error.WhatsAppDisabled;
     }
 
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
 
@@ -1134,7 +1136,8 @@ fn autoCreateWhatsAppConfig(allocator: std.mem.Allocator) !void {
 /// Auto-create Telegram configuration file
 /// Creates ~/.bots/config.json with Telegram settings if it doesn't exist
 fn autoCreateTelegramConfig(allocator: std.mem.Allocator) !void {
-    const home = std.posix.getenv("HOME") orelse "/tmp";
+    const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+    const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
 

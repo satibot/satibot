@@ -88,7 +88,8 @@ pub const SearchToolConfig = struct {
 /// Returns error.HomeNotFound if HOME environment variable is not set.
 /// If config file doesn't exist, returns default configuration.
 pub fn load(allocator: std.mem.Allocator) !std.json.Parsed(Config) {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     const path = try std.fs.path.join(allocator, &.{ home, ".bots", "config.json" });
     defer allocator.free(path);
 
@@ -99,7 +100,7 @@ pub fn load(allocator: std.mem.Allocator) !std.json.Parsed(Config) {
 /// If file doesn't exist, returns built-in default configuration.
 /// Allocates memory for parsing - caller must call deinit() on result.
 pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Parsed(Config) {
-    const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+    const content = readFileAbsolute(allocator, path) catch |err| {
         if (err == error.FileNotFound) {
             const default_json =
                 \\{
@@ -119,10 +120,6 @@ pub fn loadFromPath(allocator: std.mem.Allocator, path: []const u8) !std.json.Pa
         }
         return err;
     };
-    defer file.close();
-
-    // Read file content up to 0.5MB (524288 = 1024 * 512)
-    const content = try file.readToEndAlloc(allocator, 524288);
     defer allocator.free(content);
 
     return std.json.parseFromSlice(Config, allocator, content, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
@@ -250,7 +247,8 @@ test "Config: minimal configuration" {
 /// Save configuration to the default location (~/.bots/config.json).
 /// Returns error.HomeNotFound if HOME environment variable is not set.
 pub fn save(allocator: std.mem.Allocator, config: Config) !void {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     const path = try std.fs.path.join(allocator, &.{ home, ".bots", "config.json" });
     defer allocator.free(path);
 
@@ -441,4 +439,21 @@ test "Config save and load roundtrip with openrouter model" {
     defer reloaded.deinit();
 
     try std.testing.expectEqualStrings("z-ai/glm-4.5-air:free", reloaded.value.agents.defaults.model);
+}
+
+fn readFileAbsolute(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return error.FileNotFound;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(allocator, temp[0..n]);
+    }
+    if (buf.items.len > 524288) return error.FileTooBig;
+    return buf.toOwnedSlice(allocator);
 }

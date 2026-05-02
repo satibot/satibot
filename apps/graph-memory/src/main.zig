@@ -2,13 +2,12 @@ const std = @import("std");
 const memory = @import("memory");
 const graph = memory.graph;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.args.toSlice(allocator);
 
     var graph_memory = graph.GraphMemory.init(allocator);
     defer graph_memory.deinit();

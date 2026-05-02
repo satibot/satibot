@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const facebook = @import("facebook");
 
 const usage =
@@ -18,13 +19,12 @@ const usage =
     \\
 ;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
     const allocator = gpa.allocator();
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.args.toSlice(allocator);
 
     var access_token: ?[]const u8 = null;
     var test_conn = false;
@@ -89,7 +89,9 @@ pub fn main() !void {
     }
 
     if (access_token == null) {
-        access_token = std.posix.getenv("FACEBOOK_ACCESS_TOKEN");
+        if (std.c.getenv("FACEBOOK_ACCESS_TOKEN")) |token_ptr| {
+            access_token = std.mem.span(token_ptr);
+        }
     }
 
     const token = access_token orelse {

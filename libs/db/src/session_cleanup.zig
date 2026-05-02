@@ -4,7 +4,8 @@ const std = @import("std");
 
 /// Clean up sessions older than the specified number of days.
 pub fn cleanupOldSessions(allocator: std.mem.Allocator, max_age_days: u32) !void {
-    const home = std.posix.getenv("HOME") orelse return;
+    const home_ptr = std.c.getenv("HOME") orelse return;
+    const home = std.mem.span(home_ptr);
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
 
@@ -28,7 +29,8 @@ pub fn cleanupOldSessions(allocator: std.mem.Allocator, max_age_days: u32) !void
 
 /// Get total size of all session files in bytes.
 pub fn getSessionStorageSize(allocator: std.mem.Allocator) !usize {
-    const home = std.posix.getenv("HOME") orelse return 0;
+    const home_ptr = std.c.getenv("HOME") orelse return 0;
+    const home = std.mem.span(home_ptr);
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
 
@@ -50,7 +52,8 @@ pub fn getSessionStorageSize(allocator: std.mem.Allocator) !usize {
 
 /// List all session files with their sizes and ages.
 pub fn listSessions(allocator: std.mem.Allocator) !void {
-    const home = std.posix.getenv("HOME") orelse return;
+    const home_ptr = std.c.getenv("HOME") orelse return;
+    const home = std.mem.span(home_ptr);
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
 

@@ -164,7 +164,8 @@ pub const TelegramBot = struct {
                     // Usage: "/new" - clears session and sends confirmation
                     //        "/new <message>" - clears session and processes the message
                     if (std.mem.startsWith(u8, final_text, "/new")) {
-                        const home = std.posix.getenv("HOME") orelse "/tmp";
+                        const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+                        const home = std.mem.span(home_ptr);
                         const session_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(self.allocator, "{s}.json", .{session_id}) });
                         defer self.allocator.free(session_path);
                         std.fs.deleteFileAbsolute(session_path) catch |err| {

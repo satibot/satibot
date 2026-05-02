@@ -17,7 +17,8 @@ fn isQuitCommand(line: []const u8) bool {
 }
 
 fn getHistoryPath(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     return std.fs.path.join(allocator, &.{ home, ".satibot_history" });
 }
 
@@ -127,14 +128,14 @@ test "console.getHistoryPath" {
     const allocator = testing.allocator;
 
     // Test with HOME environment variable set
-    const original_home = std.posix.getenv("HOME");
+    const original_home = std.c.getenv("HOME");
     defer if (original_home) |home| {
         _ = home; // autofix
         // Note: setenv/unsetenv may not be available in all POSIX implementations
         // We'll skip this test for now and just test the basic functionality
     };
 
-    if (std.posix.getenv("HOME")) |home| {
+    if (std.c.getenv("HOME")) |home| {
         const path = try getHistoryPath(allocator);
         defer allocator.free(path);
 
@@ -150,7 +151,7 @@ test "console.getHistoryPath no HOME" {
 
     // This test is skipped since we can't reliably unset HOME in all environments
     // The function should return error.HomeNotFound when HOME is not set
-    if (std.posix.getenv("HOME")) |_| {
+    if (std.c.getenv("HOME")) |_| {
         // HOME is set, skip this test
         return;
     }

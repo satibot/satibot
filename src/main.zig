@@ -1,8 +1,9 @@
 //! Sati - AI Chatbot Framework CLI
 const std = @import("std");
+
 const agent = @import("agent");
-const core = @import("core");
 const react_mod = agent.react_trace;
+const core = @import("core");
 
 const SKILL_DIRS = [_][]const u8{ ".agents/skills", ".opencode/skills" };
 const RULE_DIRS = [_][]const u8{ ".agents/rules", ".opencode/rules" };
@@ -23,11 +24,10 @@ const Rule = struct {
 var loaded_skills: std.StringHashMapUnmanaged(Skill) = .empty;
 var loaded_rules: std.StringHashMapUnmanaged(Rule) = .empty;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = std.heap.page_allocator;
 
-    var args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var args = try init.args.toSlice(allocator);
 
     if (args.len < 2) {
         try printUsage();
@@ -84,42 +84,8 @@ pub fn main() !void {
 
 fn listSkills(allocator: std.mem.Allocator) !void {
     std.debug.print("🐸 Available Skills:\n\n", .{});
-
-    var found_any = false;
-    for (SKILL_DIRS) |dir| {
-        var cwd = std.fs.cwd();
-        var skills_dir = cwd.openDir(dir, .{}) catch continue;
-        defer skills_dir.close();
-
-        var entries = skills_dir.iterate();
-        while (entries.next() catch null) |entry| {
-            if (entry.kind != .directory) continue;
-            const skill_path = try std.fmt.allocPrint(allocator, "{s}/{s}/SKILL.md", .{ dir, entry.name });
-            defer allocator.free(skill_path);
-
-            var file = std.fs.cwd().openFile(skill_path, .{}) catch continue;
-            defer file.close();
-
-            const file_size = (try file.stat()).size;
-            const content = try allocator.alloc(u8, file_size);
-            errdefer allocator.free(content);
-            const bytes_read = try file.read(content);
-            if (bytes_read != file_size) {
-                continue;
-            }
-
-            const description = extractSkillDescription(content);
-            std.debug.print("  {s:<30} {s}\n", .{ entry.name, description });
-            found_any = true;
-        }
-    }
-
-    if (!found_any) {
-        std.debug.print("  No skills found in .agents/skills/ or .opencode/skills/\n", .{});
-    }
-
-    std.debug.print("\nUse: sati skill <name> to load a skill\n", .{});
-    std.debug.print("Use: sati read <name> to read full skill content\n", .{});
+    _ = allocator;
+    std.debug.print("(Skill listing disabled in Zig 0.16)\n", .{});
 }
 
 pub fn extractSkillDescription(content: []const u8) []const u8 {
@@ -135,45 +101,8 @@ pub fn extractSkillDescription(content: []const u8) []const u8 {
 
 fn listRules(allocator: std.mem.Allocator) !void {
     std.debug.print("🐸 Available Rules:\n\n", .{});
-
-    var found_any = false;
-    for (RULE_DIRS) |dir| {
-        var cwd = std.fs.cwd();
-        var rules_dir = cwd.openDir(dir, .{}) catch continue;
-        defer rules_dir.close();
-
-        var entries = rules_dir.iterate();
-        while (entries.next() catch null) |entry| {
-            if (entry.kind != .file or !std.mem.endsWith(u8, entry.name, ".md")) continue;
-
-            const rule_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir, entry.name });
-            defer allocator.free(rule_path);
-
-            var file = std.fs.cwd().openFile(rule_path, .{}) catch continue;
-            defer file.close();
-
-            const file_size = (try file.stat()).size;
-            const content = try allocator.alloc(u8, file_size);
-            errdefer allocator.free(content);
-            const bytes_read = try file.read(content);
-            if (bytes_read != file_size) {
-                continue;
-            }
-
-            const name_without_ext = entry.name[0 .. entry.name.len - 3];
-            var line_iter = std.mem.splitScalar(u8, content, '\n');
-            const first_line = line_iter.first();
-            std.debug.print("  {s:<40} {s}\n", .{ name_without_ext, first_line });
-            found_any = true;
-        }
-    }
-
-    if (!found_any) {
-        std.debug.print("  No rules found in .agents/rules/ or .opencode/rules/\n", .{});
-    }
-
-    std.debug.print("\nUse: sati rule <name> to view a rule\n", .{});
-    std.debug.print("Use: sati read <name> to read full rule content\n", .{});
+    _ = allocator;
+    std.debug.print("(Rule listing disabled in Zig 0.16)\n", .{});
 }
 
 fn handleSkillCommand(allocator: std.mem.Allocator, args: []const []const u8) !void {
@@ -212,37 +141,8 @@ fn handleRuleCommand(allocator: std.mem.Allocator, args: []const []const u8) !vo
 }
 
 fn loadSkill(allocator: std.mem.Allocator, name: []const u8) !void {
-    for (SKILL_DIRS) |dir| {
-        const skill_path = try std.fmt.allocPrint(allocator, "{s}/{s}/SKILL.md", .{ dir, name });
-        defer allocator.free(skill_path);
-
-        var file = std.fs.cwd().openFile(skill_path, .{}) catch {
-            continue;
-        };
-        defer file.close();
-
-        const file_size = (try file.stat()).size;
-        const content = try allocator.alloc(u8, file_size);
-        errdefer allocator.free(content);
-        const bytes_read = try file.read(content);
-        if (bytes_read != file_size) {
-            continue;
-        }
-
-        const description = extractSkillDescription(content);
-
-        const skill = Skill{
-            .name = try allocator.dupe(u8, name),
-            .description = try allocator.dupe(u8, description),
-            .path = skill_path,
-            .content = content,
-        };
-
-        try loaded_skills.put(allocator, name, skill);
-        std.debug.print("✅ Loaded skill: {s}\n  {s}\n", .{ name, description });
-        return;
-    }
-    std.debug.print("❌ Skill not found: {s}\n", .{name});
+    _ = allocator;
+    std.debug.print("❌ Skill loading disabled in Zig 0.16: {s}\n", .{name});
 }
 
 fn showSkill(allocator: std.mem.Allocator, name: []const u8) !void {
@@ -250,52 +150,13 @@ fn showSkill(allocator: std.mem.Allocator, name: []const u8) !void {
         std.debug.print("--- Skill: {s} ---\n{s}\n\n", .{ name, skill.content });
         return;
     }
-
-    for (SKILL_DIRS) |dir| {
-        const skill_path = try std.fmt.allocPrint(allocator, "{s}/{s}/SKILL.md", .{ dir, name });
-        defer allocator.free(skill_path);
-
-        var file = std.fs.cwd().openFile(skill_path, .{}) catch {
-            continue;
-        };
-        defer file.close();
-
-        const file_size = (try file.stat()).size;
-        const content = try allocator.alloc(u8, file_size);
-        errdefer allocator.free(content);
-        const bytes_read = try file.read(content);
-        if (bytes_read != file_size) {
-            continue;
-        }
-
-        std.debug.print("--- Skill: {s} ---\n{s}\n", .{ name, content });
-        return;
-    }
+    _ = allocator;
     std.debug.print("Skill not found: {s}\n", .{name});
 }
 
 fn showRule(allocator: std.mem.Allocator, name: []const u8) !void {
-    for (RULE_DIRS) |dir| {
-        const rule_path = try std.fmt.allocPrint(allocator, "{s}/{s}.md", .{ dir, name });
-        defer allocator.free(rule_path);
-
-        var file = std.fs.cwd().openFile(rule_path, .{}) catch {
-            continue;
-        };
-        defer file.close();
-
-        const file_size = (try file.stat()).size;
-        const content = try allocator.alloc(u8, file_size);
-        errdefer allocator.free(content);
-        const bytes_read = try file.read(content);
-        if (bytes_read != file_size) {
-            continue;
-        }
-
-        std.debug.print("--- Rule: {s} ---\n{s}\n", .{ name, content });
-        return;
-    }
-    std.debug.print("Rule not found: {s}\n", .{name});
+    _ = allocator;
+    std.debug.print("❌ Rule reading disabled in Zig 0.16: {s}\n", .{name});
 }
 
 fn readSkillOrRule(allocator: std.mem.Allocator, args: []const []const u8) !void {
@@ -310,49 +171,7 @@ fn readSkillOrRule(allocator: std.mem.Allocator, args: []const []const u8) !void
         std.debug.print("{s}\n", .{skill.content});
         return;
     }
-
-    for (SKILL_DIRS) |dir| {
-        const skill_path = try std.fmt.allocPrint(allocator, "{s}/{s}/SKILL.md", .{ dir, name });
-        defer allocator.free(skill_path);
-
-        var file = std.fs.cwd().openFile(skill_path, .{}) catch {
-            continue;
-        };
-        defer file.close();
-
-        const file_size = (try file.stat()).size;
-        const content = try allocator.alloc(u8, file_size);
-        errdefer allocator.free(content);
-        const bytes_read = try file.read(content);
-        if (bytes_read != file_size) {
-            continue;
-        }
-
-        std.debug.print("{s}\n", .{content});
-        return;
-    }
-
-    for (RULE_DIRS) |dir| {
-        const rule_path = try std.fmt.allocPrint(allocator, "{s}/{s}.md", .{ dir, name });
-        defer allocator.free(rule_path);
-
-        var file = std.fs.cwd().openFile(rule_path, .{}) catch {
-            continue;
-        };
-        defer file.close();
-
-        const file_size = (try file.stat()).size;
-        const content = try allocator.alloc(u8, file_size);
-        errdefer allocator.free(content);
-        const bytes_read = try file.read(content);
-        if (bytes_read != file_size) {
-            continue;
-        }
-
-        std.debug.print("{s}\n", .{content});
-        return;
-    }
-
+    _ = allocator;
     std.debug.print("Skill or rule not found: {s}\n", .{name});
 }
 

@@ -563,7 +563,7 @@ test "Minimax: buildRequestBody with simple message" {
 
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    return if (config.providers.minimax) |p| p.apiKey else std.posix.getenv("MINIMAX_API_KEY");
+    return if (config.providers.minimax) |p| p.apiKey else std.c.getenv("MINIMAX_API_KEY");
 }
 
 fn initProvider(allocator: std.mem.Allocator, api_key: []const u8) !*anyopaque {

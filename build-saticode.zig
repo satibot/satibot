@@ -53,7 +53,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // Link system libraries
-    saticode_exe.linkLibC();
+    saticode_exe.root_module.link_libc = true;
 
     // Install executable
     b.installArtifact(saticode_exe);

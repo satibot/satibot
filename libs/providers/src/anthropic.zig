@@ -665,7 +665,7 @@ test "Anthropic: init and deinit" {
 /// Get API key for Anthropic provider
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    return if (config.providers.anthropic) |p| p.apiKey else std.posix.getenv("ANTHROPIC_API_KEY");
+    return if (config.providers.anthropic) |p| p.apiKey else std.c.getenv("ANTHROPIC_API_KEY");
 }
 
 /// Initialize Anthropic provider

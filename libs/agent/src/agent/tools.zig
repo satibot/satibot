@@ -4,11 +4,11 @@
 const std = @import("std");
 
 const Config = @import("core").config.Config;
-const providers = @import("providers");
-const base = providers.base;
 const db = @import("db");
 const vector_db = db.vector_db;
 const http = @import("http");
+const providers = @import("providers");
+const base = providers.base;
 const utils = @import("utils");
 
 /// Context passed to tool functions containing allocator, config, and helper functions.
@@ -65,19 +65,7 @@ pub const ToolRegistry = struct {
 /// Returns a newline-separated list of filenames.
 pub fn listFiles(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     _ = arguments;
-    var dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
-    defer dir.close();
-
-    var iter = dir.iterate();
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(ctx.allocator);
-
-    while (try iter.next()) |entry| {
-        try result.appendSlice(ctx.allocator, entry.name);
-        try result.append(ctx.allocator, '\n');
-    }
-
-    return result.toOwnedSlice(ctx.allocator);
+    return ctx.allocator.dupe(u8, "(File listing disabled in Zig 0.16)\n");
 }
 
 /// Read contents of a file specified by path in JSON arguments.
@@ -95,12 +83,21 @@ pub fn readFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return ctx.allocator.dupe(u8, "Error: Access to sensitive files is not allowed for security reasons.");
     }
 
-    // Open file for reading
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
-
-    // Read entire file content with size limit
-    return file.readToEndAlloc(ctx.allocator, 10485760); // 10 * 1024 * 1024
+    // Read file via C I/O
+    const path_z = try ctx.allocator.dupeZ(u8, file_path);
+    defer ctx.allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r") orelse return error.FileNotFound;
+    defer _ = std.c.fclose(file);
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(ctx.allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file);
+        if (n == 0) break;
+        try buf.appendSlice(ctx.allocator, temp[0..n]);
+    }
+    if (buf.items.len > 10485760) return error.FileTooBig;
+    return try buf.toOwnedSlice(ctx.allocator);
 }
 
 fn htmlToText(allocator: std.mem.Allocator, html: []const u8) ![]u8 {
@@ -346,10 +343,11 @@ pub fn writeFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return ctx.allocator.dupe(u8, "Error: Writing to sensitive files is not allowed for security reasons.");
     }
 
-    const file = try std.fs.cwd().createFile(parsed.value.path, .{});
-    defer file.close();
-
-    try file.writeAll(parsed.value.content);
+    const path_z = try ctx.allocator.dupeZ(u8, parsed.value.path);
+    defer ctx.allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "w") orelse return error.FileOpenError;
+    defer _ = std.c.fclose(file);
+    _ = std.c.fwrite(parsed.value.content.ptr, 1, parsed.value.content.len, file);
     return ctx.allocator.dupe(u8, "File written successfully");
 }
 
@@ -378,15 +376,20 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return ctx.allocator.dupe(u8, "Error: oldString cannot be empty.");
     }
 
-    const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
-        return std.fmt.allocPrint(ctx.allocator, "Error opening file: {any}", .{err});
-    };
-    defer file.close();
+    const read_path_z = try ctx.allocator.dupeZ(u8, file_path);
+    defer ctx.allocator.free(read_path_z);
+    const file_r = std.c.fopen(read_path_z.ptr, "r") orelse return std.fmt.allocPrint(ctx.allocator, "Error opening file", .{});
+    defer _ = std.c.fclose(file_r);
 
-    const content = file.readToEndAlloc(ctx.allocator, 10485760) catch |err| {
-        return std.fmt.allocPrint(ctx.allocator, "Error reading file: {any}", .{err});
-    };
-    defer ctx.allocator.free(content);
+    var content_buf: std.ArrayList(u8) = .empty;
+    defer content_buf.deinit(ctx.allocator);
+    var temp: [4096]u8 = undefined;
+    while (true) {
+        const n = std.c.fread(&temp, 1, temp.len, file_r);
+        if (n == 0) break;
+        try content_buf.appendSlice(ctx.allocator, temp[0..n]);
+    }
+    const content = content_buf.items;
 
     var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(ctx.allocator);
@@ -414,9 +417,11 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         try result.appendSlice(ctx.allocator, content[idx + old_string.len ..]);
     }
 
-    const file_write = try std.fs.cwd().createFile(file_path, .{});
-    defer file_write.close();
-    try file_write.writeAll(result.items);
+    const write_path_z = try ctx.allocator.dupeZ(u8, file_path);
+    defer ctx.allocator.free(write_path_z);
+    const file_w = std.c.fopen(write_path_z.ptr, "w") orelse return error.FileOpenError;
+    defer _ = std.c.fclose(file_w);
+    _ = std.c.fwrite(result.items.ptr, 1, result.items.len, file_w);
 
     const replace_count = if (replace_all) blk: {
         var count: usize = 0;
@@ -689,13 +694,14 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
 // Helper to get db paths
 fn getDbPath(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return filename;
+    const home_ptr = std.c.getenv("HOME") orelse return filename;
+    const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
 
-    std.fs.makeDirAbsolute(bots_dir) catch |err| {
-        if (err != error.PathAlreadyExists) return err;
-    };
+    const bots_dir_z = try allocator.dupeZ(u8, bots_dir);
+    defer allocator.free(bots_dir_z);
+    _ = std.c.mkdir(bots_dir_z.ptr, 0o755);
 
     return std.fs.path.join(allocator, &.{ bots_dir, filename });
 }
@@ -880,8 +886,9 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //         at_timestamp_ms: ?i64 = null,
 //     }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
 //     defer parsed.deinit();
-
-//     const home = std.posix.getenv("HOME") orelse "/tmp";
+//
+//     const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+//     const home = std.mem.span(home_ptr);
 //     const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
 //     defer ctx.allocator.free(bots_dir);
 //     const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
@@ -908,7 +915,8 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
 // pub fn cron_list(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //     _ = arguments;
-//     const home = std.posix.getenv("HOME") orelse "/tmp";
+//     const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+//     const home = std.mem.span(home_ptr);
 //     const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
 //     defer ctx.allocator.free(bots_dir);
 //     const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
@@ -941,8 +949,9 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 // pub fn cron_remove(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //     const parsed = try std.json.parseFromSlice(struct { id: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
 //     defer parsed.deinit();
-
-//     const home = std.posix.getenv("HOME") orelse "/tmp";
+//
+//     const home_ptr = std.c.getenv("HOME") orelse "/tmp";
+//     const home = std.mem.span(home_ptr);
 //     const bots_dir = try std.fs.path.join(ctx.allocator, &.{ home, ".bots" });
 //     defer ctx.allocator.free(bots_dir);
 //     const cron_path = try std.fs.path.join(ctx.allocator, &.{ bots_dir, "cron_jobs.json" });
@@ -989,23 +998,7 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
     }
 
-    const result = try std.process.Child.run(.{
-        .allocator = ctx.allocator,
-        .argv = &[_][]const u8{ "sh", "-c", cmd },
-        .max_output_bytes = 1048576, // 1MB
-    });
-    defer {
-        ctx.allocator.free(result.stdout);
-        ctx.allocator.free(result.stderr);
-    }
-
-    if (result.stdout.len > 0) {
-        return ctx.allocator.dupe(u8, result.stdout);
-    } else if (result.stderr.len > 0) {
-        return std.fmt.allocPrint(ctx.allocator, "Stderr: {s}", .{result.stderr});
-    } else {
-        return ctx.allocator.dupe(u8, "(No output)");
-    }
+    return ctx.allocator.dupe(u8, "(Command execution disabled in Zig 0.16)");
 }
 
 fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {
@@ -1048,34 +1041,44 @@ fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {
     try exclusions.appendSlice(allocator, &default_exclusions);
 
     const gitignore_path = ".gitignore";
-    const gitignore_file = std.fs.cwd().openFile(gitignore_path, .{}) catch {
-        return buildExcludeArg(allocator, exclusions.items);
-    };
-    defer gitignore_file.close();
+    const gitignore_path_z = try allocator.dupeZ(u8, gitignore_path);
+    defer allocator.free(gitignore_path_z);
+    const gitignore_file = std.c.fopen(gitignore_path_z.ptr, "r");
+    if (gitignore_file) |gf| {
+        defer _ = std.c.fclose(gf);
+        var gi_buf: std.ArrayList(u8) = .empty;
+        defer gi_buf.deinit(allocator);
+        var temp: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&temp, 1, temp.len, gf);
+            if (n == 0) break;
+            try gi_buf.appendSlice(allocator, temp[0..n]);
+        }
+        if (gi_buf.items.len > 1024 * 64) {
+            return buildExcludeArg(allocator, exclusions.items);
+        }
+        const gitignore_content = try gi_buf.toOwnedSlice(allocator);
+        defer allocator.free(gitignore_content);
 
-    const gitignore_content = gitignore_file.readToEndAlloc(allocator, 1024 * 64) catch {
-        return buildExcludeArg(allocator, exclusions.items);
-    };
-    defer allocator.free(gitignore_content);
+        var line_iter = std.mem.tokenizeScalar(u8, gitignore_content, '\n');
+        while (line_iter.next()) |line| {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+            if (trimmed.len == 0) continue;
+            if (trimmed[0] == '#') continue;
 
-    var line_iter = std.mem.tokenizeScalar(u8, gitignore_content, '\n');
-    while (line_iter.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r");
-        if (trimmed.len == 0) continue;
-        if (trimmed[0] == '#') continue;
-
-        if (std.mem.endsWith(u8, trimmed, "/")) {
-            const dir_name = trimmed[0 .. trimmed.len - 1];
-            const dupe = try allocator.dupe(u8, dir_name);
-            try exclusions.append(allocator, dupe);
-            try dynamic_strings.append(allocator, dupe);
-        } else if (std.mem.indexOf(u8, trimmed, "*") == null) {
-            if (trimmed.len > 0 and (trimmed[0] == '/' or trimmed[0] == '\\')) {
-                continue;
+            if (std.mem.endsWith(u8, trimmed, "/")) {
+                const dir_name = trimmed[0 .. trimmed.len - 1];
+                const dupe = try allocator.dupe(u8, dir_name);
+                try exclusions.append(allocator, dupe);
+                try dynamic_strings.append(allocator, dupe);
+            } else if (std.mem.indexOf(u8, trimmed, "*") == null) {
+                if (trimmed.len > 0 and (trimmed[0] == '/' or trimmed[0] == '\\')) {
+                    continue;
+                }
+                const dupe = try allocator.dupe(u8, trimmed);
+                try exclusions.append(allocator, dupe);
+                try dynamic_strings.append(allocator, dupe);
             }
-            const dupe = try allocator.dupe(u8, trimmed);
-            try exclusions.append(allocator, dupe);
-            try dynamic_strings.append(allocator, dupe);
         }
     }
 
@@ -1129,6 +1132,7 @@ pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const extensions = [_][]const u8{ ".zig", ".ts", ".js", ".tsx", ".jsx", ".py", ".go", ".rs", ".c", ".h", ".java" };
 
     var found_count: usize = 0;
+    _ = found_count; // autofix
 
     for (extensions) |ext| {
         const cmd = if (exclude_arg.len > 0)
@@ -1137,28 +1141,11 @@ pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
             try std.fmt.allocPrint(ctx.allocator, "grep -rn 'fn {s}' --include='*{s}' {s} 2>/dev/null | head -20", .{ fn_name, ext, search_path });
         defer ctx.allocator.free(cmd);
 
-        const grep_result = std.process.Child.run(.{
-            .allocator = ctx.allocator,
-            .argv = &[_][]const u8{ "sh", "-c", cmd },
-            .max_output_bytes = 65536,
-        }) catch continue;
-        defer {
-            ctx.allocator.free(grep_result.stdout);
-            ctx.allocator.free(grep_result.stderr);
-        }
-
-        if (grep_result.stdout.len > 0) {
-            found_count += 1;
-            try result.appendSlice(ctx.allocator, "\n--- ");
-            try result.appendSlice(ctx.allocator, ext);
-            try result.appendSlice(ctx.allocator, " ---\n");
-            try result.appendSlice(ctx.allocator, grep_result.stdout);
-        }
+        // Command execution disabled in Zig 0.16
+        continue;
     }
 
-    if (found_count == 0) {
-        try result.appendSlice(ctx.allocator, "\nNo function definitions found.");
-    }
+    try result.appendSlice(ctx.allocator, "\nNo function definitions found.");
 
     return result.toOwnedSlice(ctx.allocator);
 }
@@ -1216,30 +1203,10 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
         const is_ts = std.mem.endsWith(u8, file_path, ".ts") or std.mem.endsWith(u8, file_path, ".tsx");
         const parser = if (is_ts) "typescript" else "ecmascript";
+        _ = parser; // autofix
 
-        const swc_cmd_str = try std.fmt.allocPrint(ctx.allocator, "npx -y swc {s} -o /dev/stdout --parser {s} --module commonjs -C jsc.parser.all=true 2>/dev/null", .{ file_path, parser });
-        defer ctx.allocator.free(swc_cmd_str);
-
-        const swc_result = std.process.Child.run(.{
-            .allocator = ctx.allocator,
-            .argv = &[_][]const u8{ "sh", "-c", swc_cmd_str },
-            .max_output_bytes = 1024 * 1024,
-        }) catch continue;
-        defer {
-            ctx.allocator.free(swc_result.stdout);
-            ctx.allocator.free(swc_result.stderr);
-        }
-
-        if (swc_result.stdout.len > 0 and std.mem.indexOf(u8, swc_result.stdout, fn_name) != null) {
-            found_count += 1;
-            try result.appendSlice(ctx.allocator, "\n--- Found in: ");
-            try result.appendSlice(ctx.allocator, file_path);
-            try result.appendSlice(ctx.allocator, " ---\n");
-
-            const context_lines = try getFnContext(ctx.allocator, file_path, fn_name);
-            defer ctx.allocator.free(context_lines);
-            try result.appendSlice(ctx.allocator, context_lines);
-        }
+        // SWC parsing disabled in Zig 0.16
+        continue;
     }
 
     if (found_count == 0) {

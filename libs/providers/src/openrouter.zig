@@ -1030,7 +1030,7 @@ test "OpenRouter: ChatAsyncResult lifecycle" {
 /// Get API key for OpenRouter provider
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    return if (config.providers.openrouter) |p| p.apiKey else std.posix.getenv("OPENROUTER_API_KEY");
+    return if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY");
 }
 
 /// Initialize OpenRouter provider

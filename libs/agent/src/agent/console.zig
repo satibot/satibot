@@ -169,7 +169,8 @@ pub fn saveHistory(history: []const []const u8, path: []const u8) !void {
 }
 
 fn getHistoryPath(allocator: std.mem.Allocator) ![]const u8 {
-    const home = std.posix.getenv("HOME") orelse return error.HomeNotFound;
+    const home_ptr = std.c.getenv("HOME") orelse return error.HomeNotFound;
+    const home = std.mem.span(home_ptr);
     return std.fs.path.join(allocator, &.{ home, ".satibot_history" });
 }
 
