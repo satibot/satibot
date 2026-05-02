@@ -47,7 +47,7 @@ pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []co
     defer out.deinit();
     try std.json.Stringify.value(session, .{ .whitespace = .indent_2 }, &out.writer);
 
-    try file.writeAll(out.written());
+    try file.writeStreamingAll(io, out.written());
 }
 
 /// Load conversation messages from a session file.

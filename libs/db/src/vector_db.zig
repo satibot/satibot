@@ -101,13 +101,14 @@ pub const VectorStore = struct {
     }
 
     pub fn save(self: *VectorStore, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const file = try std.Io.Dir.createFileAbsolute(io, path, .{});
+        defer file.close(io);
 
-        var out = std.io.Writer.Allocating.init(self.allocator);
+        var out = std.Io.Writer.Allocating.init(self.allocator);
         defer out.deinit();
         try std.json.Stringify.value(self.entries.items, .{}, &out.writer);
-        try file.writeAll(out.written());
+        try file.writeStreamingAll(io, out.written());
     }
 
     pub fn load(self: *VectorStore, path: []const u8) !void {
@@ -125,7 +126,7 @@ pub const VectorStore = struct {
             if (n == 0) break;
             try buf.appendSlice(self.allocator, temp[0..n]);
         }
-        const content = try buf.toOwnedSlice();
+        const content = try buf.toOwnedSlice(self.allocator);
         defer self.allocator.free(content);
 
         // Handle empty file - nothing to load

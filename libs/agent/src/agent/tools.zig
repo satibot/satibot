@@ -757,10 +757,10 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const results = try store.search(resp.embeddings[0], parsed.value.top_k.?);
     defer store.freeSearchResults(results);
 
-    var result_text: std.ArrayList(u8) = std.ArrayList(u8).initCapacity(ctx.allocator, 1024) catch unreachable;
-    defer result_text.deinit(ctx.allocator);
+    var result_text: std.Io.Writer.Allocating = .init(ctx.allocator);
+    defer result_text.deinit();
 
-    const writer = result_text.writer(ctx.allocator);
+    const writer = &result_text.writer;
     try writer.print("Vector Search Results ({d} items):\n", .{results.len});
     for (results) |res| {
         try writer.print("- {s}\n", .{res.text});
@@ -768,7 +768,7 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     if (results.len == 0) return ctx.allocator.dupe(u8, "No similar vectors found.");
 
-    return result_text.toOwnedSlice(ctx.allocator);
+    return result_text.toOwnedSlice();
 }
 
 // pub fn graph_upsert_node(ctx: ToolContext, arguments: []const u8) ![]const u8 {
