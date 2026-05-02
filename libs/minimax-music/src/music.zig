@@ -14,6 +14,7 @@
 //! - Authentication: Bearer token in Authorization header
 
 const std = @import("std");
+
 const http = @import("http");
 
 pub const AudioSetting = struct {
@@ -170,9 +171,9 @@ pub const MusicClient = struct {
     }
 
     pub fn buildMusicRequestBody(self: *MusicClient, request: MusicGenerationRequest) ![]u8 {
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"model\": \"{s}\",", .{request.model});
@@ -199,13 +200,13 @@ pub const MusicClient = struct {
         }
         try writer.writeAll("}");
 
-        return json_buf.toOwnedSlice(self.allocator);
+        return aw.toOwnedSlice();
     }
 
     fn buildLyricsRequestBody(self: *MusicClient, request: LyricsGenerationRequest) ![]u8 {
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"mode\": \"{s}\",", .{request.mode});
@@ -213,7 +214,7 @@ pub const MusicClient = struct {
         try self.writeJsonString(writer, request.prompt);
         try writer.writeAll("}");
 
-        return json_buf.toOwnedSlice(self.allocator);
+        return aw.toOwnedSlice();
     }
 
     fn writeJsonString(_: *MusicClient, writer: anytype, text: []const u8) !void {

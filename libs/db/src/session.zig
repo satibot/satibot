@@ -21,7 +21,8 @@ pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []co
     const session_dir = try std.fs.path.join(allocator, &.{ home, ".bots", "sessions" });
     defer allocator.free(session_dir);
 
-    std.fs.makeDirAbsolute(session_dir) catch |err| {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    std.Io.Dir.createDirAbsolute(io, session_dir, .default_dir) catch |err| {
         if (err != error.PathAlreadyExists) return err;
     };
 
@@ -36,12 +37,13 @@ pub fn save(allocator: std.mem.Allocator, session_id: []const u8, messages: []co
 /// Serializes messages to JSON format with indentation.
 pub fn saveToPath(allocator: std.mem.Allocator, path: []const u8, messages: []const base.LlmMessage) !void {
     defer allocator.free(path);
-    const file = try std.fs.createFileAbsolute(path, .{});
-    defer file.close();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = try std.Io.Dir.createFileAbsolute(io, path, .{});
+    defer file.close(io);
 
     const session: Session = .{ .messages = @constCast(messages) };
 
-    var out = std.io.Writer.Allocating.init(allocator);
+    var out = std.Io.Writer.Allocating.init(allocator);
     defer out.deinit();
     try std.json.Stringify.value(session, .{ .whitespace = .indent_2 }, &out.writer);
 

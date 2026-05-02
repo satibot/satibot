@@ -37,10 +37,12 @@
 //! including both text content and thinking blocks for transparency.
 
 const std = @import("std");
-const http = @import("http");
-const base = @import("base.zig");
+
 const core = @import("core");
 const Config = core.config.Config;
+const http = @import("http");
+
+const base = @import("base.zig");
 
 const MessageResponse = struct {
     id: []const u8,
@@ -335,9 +337,9 @@ pub const MinimaxProvider = struct {
             }
         }
 
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"model\": \"{s}\",", .{model});
@@ -422,6 +424,8 @@ pub const MinimaxProvider = struct {
         try writer.writeAll("]");
         try writer.writeAll("}");
 
+        var json_buf = aw.toArrayList();
+        defer json_buf.deinit(self.allocator);
         return json_buf.toOwnedSlice(self.allocator);
     }
 
@@ -563,7 +567,8 @@ test "Minimax: buildRequestBody with simple message" {
 
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    return if (config.providers.minimax) |p| p.apiKey else std.c.getenv("MINIMAX_API_KEY");
+    const c_val = std.c.getenv("MINIMAX_API_KEY");
+    return if (config.providers.minimax) |p| p.apiKey else if (c_val) |v| std.mem.span(v) else null;
 }
 
 fn initProvider(allocator: std.mem.Allocator, api_key: []const u8) !*anyopaque {

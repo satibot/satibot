@@ -13,8 +13,8 @@ extern "c" fn nanosleep(req: *const std.c.timespec, rem: ?*std.c.timespec) c_int
 
 fn sleepSeconds(seconds: u64) void {
     const ts: std.c.timespec = .{
-        .tv_sec = @intCast(seconds),
-        .tv_nsec = 0,
+        .sec = @intCast(seconds),
+        .nsec = 0,
     };
     _ = nanosleep(&ts, null);
 }
@@ -236,7 +236,7 @@ pub fn executeWithRetry(
                 switch (err) {
                     OpenRouterError.ServiceUnavailable => {
                         std.debug.print("\n⚠️ Service unavailable (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
-                        std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                        sleepSeconds(backoff_seconds);
                         continue;
                     },
                     OpenRouterError.ModelNotSupported => {
@@ -249,7 +249,7 @@ pub fn executeWithRetry(
                     },
                     OpenRouterError.ApiRequestFailed => {
                         std.debug.print("\n❌ Error: API request failed (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ model, backoff_seconds, retry_count + 1, max_retries });
-                        std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                        sleepSeconds(backoff_seconds);
                         continue;
                     },
                 }
@@ -258,7 +258,7 @@ pub fn executeWithRetry(
             // Retry on network errors or temporary service issues
             if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                 std.debug.print("\n❌ Network error: {any} (Model: {s}). Retrying in {d}s... ({d}/{d})\n", .{ err, model, backoff_seconds, retry_count + 1, max_retries });
-                std.Thread.sleep(std.time.ns_per_s * backoff_seconds);
+                sleepSeconds(backoff_seconds);
                 continue;
             }
             return err;

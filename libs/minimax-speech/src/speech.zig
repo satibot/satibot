@@ -20,6 +20,7 @@
 //! - Authentication: Bearer token in Authorization header
 
 const std = @import("std");
+
 const http = @import("http");
 
 pub const SpeechModel = struct {
@@ -181,9 +182,9 @@ pub const SpeechClient = struct {
     }
 
     fn buildSpeechRequestBody(self: *SpeechClient, request: AsyncSpeechRequest) ![]u8 {
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"model\": \"{s}\",", .{request.model});
@@ -221,8 +222,7 @@ pub const SpeechClient = struct {
             try writer.writeAll(",\"voice_modify\": {");
             try writer.print("\"pitch\": {d},", .{modify.pitch});
             try writer.print("\"intensity\": {d},", .{modify.intensity});
-            try writer.print("\"timbre\": {d},", .{modify.timbre});
-            try writer.print("\"sound_effects\": \"{s}\"", .{modify.sound_effects});
+            try writer.print("\"timbre\": {d}", .{modify.timbre});
             try writer.writeAll("}");
         }
 
@@ -239,7 +239,7 @@ pub const SpeechClient = struct {
 
         try writer.writeAll("}");
 
-        return json_buf.toOwnedSlice(self.allocator);
+        return aw.toOwnedSlice();
     }
 
     fn writeJsonString(_: *SpeechClient, writer: anytype, text: []const u8) !void {

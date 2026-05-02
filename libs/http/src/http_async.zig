@@ -1,5 +1,10 @@
 const std = @import("std");
+
 const tls = @import("tls");
+
+fn getIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
 
 /// Async HTTP client module for making non-blocking HTTPS requests.
 /// Integrates with the event loop for efficient I/O operations.
@@ -21,6 +26,7 @@ pub const AsyncResponse = struct {
 pub const AsyncClient = struct {
     allocator: std.mem.Allocator,
     root_ca: tls.config.cert.Bundle,
+    io: std.Io,
 
     /// Initialize async client.
     pub fn init(allocator: std.mem.Allocator) !AsyncClient {
@@ -28,6 +34,7 @@ pub const AsyncClient = struct {
         return .{
             .allocator = allocator,
             .root_ca = root_ca,
+            .io = getIo(),
         };
     }
 
@@ -49,7 +56,8 @@ pub const AsyncClient = struct {
         allocator: std.mem.Allocator,
 
         // Internal state
-        tcp_stream: ?std.net.Stream = null,
+        io: std.Io,
+        tcp_stream: ?std.Io.net.Stream = null,
         tls_state: ?*TlsState = null,
         request_sent: bool = false,
         response_headers_received: bool = false,
@@ -60,8 +68,8 @@ pub const AsyncClient = struct {
         const TlsState = struct {
             input_buf: [tls.input_buffer_len]u8,
             output_buf: [tls.output_buffer_len]u8,
-            net_reader: std.net.Stream.Reader,
-            net_writer: std.net.Stream.Writer,
+            net_reader: std.Io.net.Stream.Reader,
+            net_writer: std.Io.net.Stream.Writer,
             conn: tls.Connection,
         };
     };
@@ -95,6 +103,7 @@ pub const AsyncClient = struct {
             .body = try allocator.dupe(u8, body),
             .callback = callback,
             .allocator = allocator,
+            .io = self.io,
             .response_body = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable,
         };
 
@@ -114,7 +123,7 @@ pub const AsyncClient = struct {
                 .err_msg = try std.fmt.allocPrint(allocator, "Request failed: {any}", .{err}),
             };
             callback(error_result);
-            cleanupRequest(request);
+            cleanupRequest(self.io, request);
         };
     }
 
@@ -126,7 +135,8 @@ pub const AsyncClient = struct {
         const port: u16 = uri.port orelse if (std.mem.eql(u8, uri.scheme, "https")) 443 else 80;
 
         // Connect
-        request.tcp_stream = try std.net.tcpConnectToHost(request.allocator, host, port);
+        const address = try std.Io.net.IpAddress.resolve(self.io, host, port);
+        request.tcp_stream = try address.connect(self.io, .{ .mode = .stream });
 
         const is_https = std.mem.eql(u8, uri.scheme, "https");
 
@@ -148,7 +158,7 @@ pub const AsyncClient = struct {
         };
 
         request.callback(result);
-        cleanupRequest(request);
+        cleanupRequest(self.io, request);
     }
 
     /// Upgrade connection to TLS
@@ -156,10 +166,10 @@ pub const AsyncClient = struct {
         const state = try request.allocator.create(AsyncRequest.TlsState);
         errdefer request.allocator.destroy(state);
 
-        state.net_reader = request.tcp_stream.?.reader(&state.input_buf);
-        state.net_writer = request.tcp_stream.?.writer(&state.output_buf);
+        state.net_reader = request.tcp_stream.?.reader(self.io, &state.input_buf);
+        state.net_writer = request.tcp_stream.?.writer(self.io, &state.output_buf);
 
-        const input = state.net_reader.interface();
+        const input = &state.net_reader.interface;
         const output = &state.net_writer.interface;
 
         state.conn = try tls.client(input, output, .{
@@ -174,7 +184,7 @@ pub const AsyncClient = struct {
     fn sendRequest(request: *AsyncRequest, uri: std.Uri) !void {
         var buffer = std.ArrayList(u8).initCapacity(request.allocator, 4096) catch unreachable;
         defer buffer.deinit(request.allocator);
-        const w = buffer.writer(request.allocator);
+        const w = buffer.writer();
 
         const path = if (uri.path.percent_encoded.len == 0) "/" else uri.path.percent_encoded;
         try w.print("{s} {s}", .{ @tagName(request.method), path });
@@ -197,7 +207,7 @@ pub const AsyncClient = struct {
             try state.conn.writeAll(buffer.items);
         } else {
             var out_buf: [4096]u8 = undefined;
-            var writer = request.tcp_stream.?.writer(&out_buf);
+            var writer = request.tcp_stream.?.writer(request.io, &out_buf);
             try writer.interface.writeAll(buffer.items);
         }
 
@@ -272,8 +282,8 @@ pub const AsyncClient = struct {
             return state.conn.read(buf);
         } else {
             var in_buf: [4096]u8 = undefined;
-            var reader_struct = request.tcp_stream.?.reader(&in_buf);
-            const rdr = reader_struct.interface();
+            var reader_struct = request.tcp_stream.?.reader(request.io, &in_buf);
+            const rdr = &reader_struct.interface;
             var bufs = [1][]u8{buf};
             return rdr.readVec(&bufs);
         }
@@ -346,7 +356,7 @@ pub const AsyncClient = struct {
     }
 
     /// Clean up request resources
-    fn cleanupRequest(request: *AsyncRequest) void {
+    fn cleanupRequest(io: std.Io, request: *AsyncRequest) void {
         // Free allocated strings
         request.allocator.free(request.id);
         request.allocator.free(request.url);
@@ -362,7 +372,7 @@ pub const AsyncClient = struct {
             request.allocator.destroy(state);
         }
         if (request.tcp_stream) |stream| {
-            stream.close();
+            stream.close(io);
         }
 
         // Free the request structure

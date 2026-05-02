@@ -1,11 +1,13 @@
 const std = @import("std");
-const http = @import("http");
-const http_async = @import("http").http_async;
-const base = @import("base.zig");
+
 const core = @import("core");
 const Config = core.config.Config;
+const http = @import("http");
+const http_async = @import("http").http_async;
 const utils = @import("utils");
 const XevEventLoop = utils.xev_event_loop.XevEventLoop;
+
+const base = @import("base.zig");
 
 /// Custom error types for better retry handling
 pub const OpenRouterError = error{
@@ -515,9 +517,9 @@ pub const ChatAsyncResult = struct {
 /// Builds the JSON request body for chat completions.
 /// Pure function: depends only on inputs, no side effects.
 pub fn buildChatRequestBody(allocator: std.mem.Allocator, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
-    var json_buf: std.ArrayList(u8) = .empty;
-    defer json_buf.deinit(allocator);
-    const writer = json_buf.writer(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    const writer = &aw.writer;
 
     try writer.writeAll("{");
     try writer.print("\"model\": \"{s}\"", .{model});
@@ -546,7 +548,8 @@ pub fn buildChatRequestBody(allocator: std.mem.Allocator, messages: []const base
         }
     }
     try writer.writeAll("}");
-    return json_buf.toOwnedSlice(allocator);
+
+    return aw.toOwnedSlice();
 }
 
 /// Helper to write escaped JSON strings.
@@ -1030,7 +1033,7 @@ test "OpenRouter: ChatAsyncResult lifecycle" {
 /// Get API key for OpenRouter provider
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    return if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY");
+    return if (config.providers.openrouter) |p| p.apiKey else if (std.c.getenv("OPENROUTER_API_KEY")) |ptr| std.mem.span(ptr) else null;
 }
 
 /// Initialize OpenRouter provider

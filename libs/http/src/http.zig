@@ -2,6 +2,10 @@ const std = @import("std");
 
 const tls = @import("tls");
 
+fn getIo() std.Io {
+    return std.Io.Threaded.global_single_threaded.io();
+}
+
 /// HTTP client module for making HTTPS requests with TLS support.
 /// Provides a simple interface for POST/GET requests and streaming responses.
 /// Connection timeout settings for HTTP operations.
@@ -36,6 +40,7 @@ pub const Client = struct {
     allocator: std.mem.Allocator,
     settings: ConnectionSettings,
     root_ca: tls.config.cert.Bundle,
+    io: std.Io,
 
     /// Initialize client with default connection settings.
     pub fn init(allocator: std.mem.Allocator) !Client {
@@ -50,6 +55,7 @@ pub const Client = struct {
             .allocator = allocator,
             .settings = settings,
             .root_ca = root_ca,
+            .io = getIo(),
         };
     }
 
@@ -107,12 +113,13 @@ pub const Client = struct {
         const host = uri.host.?.percent_encoded;
         const port: u16 = uri.port orelse if (std.mem.eql(u8, uri.scheme, "https")) 443 else 80;
 
-        var tcp = try std.net.tcpConnectToHost(self.allocator, host, port);
-        errdefer tcp.close();
+        const address = try std.Io.net.IpAddress.resolve(self.io, host, port);
+        var tcp = try address.connect(self.io, .{ .mode = .stream });
+        errdefer tcp.close(self.io);
 
         const is_https = std.mem.eql(u8, uri.scheme, "https");
 
-        var req = try Request.initWithTcp(self.allocator, tcp, is_https, uri);
+        var req = try Request.initWithTcp(self.allocator, self.io, tcp, is_https, uri);
         errdefer req.deinit();
 
         if (is_https) {
@@ -127,7 +134,8 @@ pub const Client = struct {
 
 pub const Request = struct {
     allocator: std.mem.Allocator,
-    tcp: std.net.Stream,
+    io: std.Io,
+    tcp: std.Io.net.Stream,
     is_https: bool,
     uri: std.Uri,
 
@@ -137,8 +145,8 @@ pub const Request = struct {
     const TlsState = struct {
         input_buf: [tls.input_buffer_len]u8,
         output_buf: [tls.output_buffer_len]u8,
-        net_reader: std.net.Stream.Reader,
-        net_writer: std.net.Stream.Writer,
+        net_reader: std.Io.net.Stream.Reader,
+        net_writer: std.Io.net.Stream.Writer,
         conn: tls.Connection,
     };
 
@@ -161,9 +169,10 @@ pub const Request = struct {
         }
     };
 
-    pub fn initWithTcp(allocator: std.mem.Allocator, tcp: std.net.Stream, is_https: bool, uri: std.Uri) !Request {
+    pub fn initWithTcp(allocator: std.mem.Allocator, io: std.Io, tcp: std.Io.net.Stream, is_https: bool, uri: std.Uri) !Request {
         return .{
             .allocator = allocator,
+            .io = io,
             .tcp = tcp,
             .is_https = is_https,
             .uri = uri,
@@ -177,7 +186,7 @@ pub const Request = struct {
             };
             self.allocator.destroy(state);
         }
-        self.tcp.close();
+        self.tcp.close(self.io);
         self.* = undefined;
     }
 
@@ -185,10 +194,10 @@ pub const Request = struct {
         const state = try self.allocator.create(TlsState);
         errdefer self.allocator.destroy(state);
 
-        state.net_reader = self.tcp.reader(&state.input_buf);
-        state.net_writer = self.tcp.writer(&state.output_buf);
+        state.net_reader = self.tcp.reader(self.io, &state.input_buf);
+        state.net_writer = self.tcp.writer(self.io, &state.output_buf);
 
-        const input = state.net_reader.interface();
+        const input = &state.net_reader.interface;
         const output = &state.net_writer.interface;
 
         state.conn = try tls.client(input, output, .{
@@ -202,7 +211,7 @@ pub const Request = struct {
     pub fn send(self: *Request, method: std.http.Method, headers: []const std.http.Header, body: []const u8) !void {
         var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
-        const w = buffer.writer(self.allocator);
+        const w = buffer.writer();
 
         const path = if (self.uri.path.percent_encoded.len == 0) "/" else self.uri.path.percent_encoded;
         try w.print("{s} {s}", .{ @tagName(method), path });
@@ -225,8 +234,8 @@ pub const Request = struct {
             try state.conn.writeAll(buffer.items);
         } else {
             var out_buf: [4096]u8 = undefined;
-            var writer = self.tcp.writer(&out_buf);
-            try writer.interface.writeAll(buffer.items);
+            var net_writer = self.tcp.writer(self.io, &out_buf);
+            try net_writer.interface.writeAll(buffer.items);
         }
     }
 

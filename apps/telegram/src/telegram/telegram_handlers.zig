@@ -1,13 +1,14 @@
 /// Telegram-specific handlers for the generic event loop
 const std = @import("std");
-const core = @import("core");
+
 const agent = @import("agent");
+const messages = agent.messages;
+const core = @import("core");
+pub const Config = core.config.Config;
+const constants = core.constants;
+const http = @import("http");
 const utils = @import("utils");
 const xev_event_loop = utils.xev_event_loop;
-const messages = agent.messages;
-pub const Config = core.config.Config;
-const http = @import("http");
-const constants = core.constants;
 
 /// Session history cache - simple HashMap for performance
 pub const SessionCache = struct {
@@ -44,7 +45,8 @@ pub const SessionCache = struct {
     }
 
     pub fn getOrCreateSession(self: *SessionCache, session_id: []const u8) !*messages.SessionHistory {
-        const now = std.time.timestamp();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const now = std.Io.Clock.now(.real, io).toSeconds();
 
         if (self.sessions.getPtr(session_id)) |history| {
             // Update last used timestamp
@@ -66,7 +68,8 @@ pub const SessionCache = struct {
     }
 
     pub fn cleanup(self: *SessionCache) void {
-        const now = std.time.timestamp();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const now = std.Io.Clock.now(.real, io).toSeconds();
         const max_idle_seconds = @divFloor(self.max_idle_time_ms, 1000);
 
         var keys_to_remove = std.ArrayList([]const u8).initCapacity(self.allocator, 0) catch unreachable;

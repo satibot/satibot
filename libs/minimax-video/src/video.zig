@@ -20,6 +20,7 @@
 //! - Authentication: Bearer token in Authorization header
 
 const std = @import("std");
+
 const http = @import("http");
 
 pub const VideoGenerationRequest = struct {
@@ -222,9 +223,9 @@ pub const VideoClient = struct {
     }
 
     fn buildVideoRequestBody(self: *VideoClient, request: VideoGenerationRequest) ![]u8 {
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"model\": \"{s}\",", .{request.model});
@@ -261,13 +262,13 @@ pub const VideoClient = struct {
 
         try writer.writeAll("}");
 
-        return json_buf.toOwnedSlice(self.allocator);
+        return aw.toOwnedSlice();
     }
 
     fn buildTemplateRequestBody(self: *VideoClient, request: TemplateGenerationRequest) ![]u8 {
-        var json_buf: std.ArrayList(u8) = .empty;
-        defer json_buf.deinit(self.allocator);
-        const writer = json_buf.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const writer = &aw.writer;
 
         try writer.writeAll("{");
         try writer.print("\"template_id\": \"{s}\",", .{request.template_id});
@@ -294,7 +295,7 @@ pub const VideoClient = struct {
 
         try writer.writeAll("}");
 
-        return json_buf.toOwnedSlice(self.allocator);
+        return aw.toOwnedSlice();
     }
 
     fn writeJsonString(_: *VideoClient, writer: anytype, text: []const u8) !void {

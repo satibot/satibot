@@ -9,11 +9,6 @@ const timeval = extern struct {
 };
 extern "c" fn gettimeofday(tv: *timeval, tz: ?*anyopaque) c_int;
 
-const timespec = extern struct {
-    tv_sec: c_long,
-    tv_nsec: c_long,
-};
-
 fn currentTimeMs() i64 {
     var tv: timeval = undefined;
     _ = gettimeofday(&tv, null);
@@ -21,8 +16,11 @@ fn currentTimeMs() i64 {
 }
 
 fn sleepMs(ms: u64) void {
-    var req = timespec{ .tv_sec = @intCast(ms / 1000), .tv_nsec = @intCast((ms % 1000) * 1_000_000) };
-    var rem: timespec = undefined;
+    var req: std.c.timespec = .{
+        .sec = @intCast(ms / 1000),
+        .nsec = @intCast((ms % 1000) * 1_000_000),
+    };
+    var rem: std.c.timespec = undefined;
     _ = std.c.nanosleep(&req, &rem);
 }
 
@@ -334,7 +332,7 @@ pub const XevEventLoop = struct {
         while (self.event_queue.peek()) |event| {
             if (event.expires <= now) {
                 mutexLock(&self.event_mutex);
-                const due_event = self.event_queue.remove();
+                const due_event = self.event_queue.pop().?;
                 self.event_mutex.unlock();
 
                 if (self.event_handler) |handler| {

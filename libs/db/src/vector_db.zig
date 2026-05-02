@@ -111,19 +111,19 @@ pub const VectorStore = struct {
     }
 
     pub fn load(self: *VectorStore, path: []const u8) !void {
-        const path_z = std.cstr.toCstr(self.allocator, path) catch return;
+        const path_z = self.allocator.dupeZ(u8, path) catch return;
         defer self.allocator.free(path_z);
         const fp = std.c.fopen(path_z, "r");
         if (fp == null) return;
-        defer _ = std.c.fclose(fp);
+        defer _ = std.c.fclose(fp.?);
 
-        var buf = std.ArrayList(u8).init(self.allocator);
-        defer buf.deinit();
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.allocator);
         var temp: [4096]u8 = undefined;
         while (true) {
-            const n = std.c.fread(&temp, 1, temp.len, fp);
+            const n = std.c.fread(&temp, 1, temp.len, fp.?);
             if (n == 0) break;
-            try buf.appendSlice(temp[0..n]);
+            try buf.appendSlice(self.allocator, temp[0..n]);
         }
         const content = try buf.toOwnedSlice();
         defer self.allocator.free(content);

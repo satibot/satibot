@@ -1,14 +1,47 @@
-const std = @import("std");
+//! MiniMax API Provider Implementation
+//!
+//! This module provides a implementation of the MiniMax API for SatiBot.
+//! MiniMax offers language models with capabilities including:
+//! - Text generation and completion
+//! - Tool/function calling support
+//! - Streaming responses with thinking blocks
+//! - Embeddings generation
+//!
+//! ## Features
+//! - Synchronous and streaming chat completions
+//! - Full tool calling support with proper JSON schema handling
+//! - Thinking block processing for enhanced reasoning transparency
+//! - Memory-efficient streaming with chunked callbacks
+//! - Comprehensive error handling with detailed error messages
+//!
+//! ## API Endpoints
+//! - Base URL: https://api.minimax.io/anthropic
+//! - Messages endpoint: /messages
+//! - Authentication: x-api-key header
+//!
+//! ## Supported Models
+//! - MiniMax-M2.5: General purpose text model
+//! - Additional models can be specified by name
+//!
+//! ## Usage
+//! ```zig
+//! var provider = try MinimaxProvider.init(allocator, "your-api-key");
+//! defer provider.deinit();
+//!
+//! const response = try provider.chat(messages, "MiniMax-M2.5", null);
+//! defer response.deinit();
+//! ```
+//!
+//! ## Streaming
+//! The provider supports Server-Sent Events (SSE) for streaming responses,
+//! including both text content and thinking blocks for transparency.
 
+const std = @import("std");
+const http = @import("http");
+const base = @import("base.zig");
 const core = @import("core");
 const Config = core.config.Config;
-const http = @import("http");
 
-const base = @import("base.zig");
-
-/// Anthropic Claude API provider implementation.
-/// Supports both regular and streaming chat completions with tool calling.
-/// Response structure from Anthropic Messages API.
 const MessageResponse = struct {
     id: []const u8,
     type: []const u8,
@@ -17,46 +50,39 @@ const MessageResponse = struct {
     stop_reason: ?[]const u8 = null,
 };
 
-/// Content block in Anthropic response (text or tool_use).
 const ContentBlock = struct {
     type: []const u8,
     text: ?[]const u8 = null,
-    // For tool_use blocks
+    thinking: ?[]const u8 = null,
     id: ?[]const u8 = null,
     name: ?[]const u8 = null,
     input: ?std.json.Value = null,
 };
 
-/// Request message structure for Anthropic API.
-const AnthropicMessage = struct {
+const MinimaxMessage = struct {
     role: []const u8,
-    content: AnthropicContent,
+    content: MinimaxContent,
 };
 
-/// Content can be simple text or array of content blocks (for tool results).
-const AnthropicContent = union(enum) {
+const MinimaxContent = union(enum) {
     text: []const u8,
-    blocks: []const AnthropicContentBlock,
+    blocks: []const MinimaxContentBlock,
 };
 
-/// Content block for tool results in Anthropic format.
-const AnthropicContentBlock = struct {
+const MinimaxContentBlock = struct {
     type: []const u8,
     text: ?[]const u8 = null,
     tool_use_id: ?[]const u8 = null,
     content: ?[]const u8 = null,
 };
 
-/// Provider for Anthropic's Claude API.
-/// Handles chat completions and streaming responses.
-pub const AnthropicProvider = struct {
+pub const MinimaxProvider = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
     api_key: []const u8,
-    api_base: []const u8 = "https://api.anthropic.com/v1",
+    api_base: []const u8 = "https://api.minimax.io/anthropic",
 
-    /// Initialize provider with API key.
-    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !AnthropicProvider {
+    pub fn init(allocator: std.mem.Allocator, api_key: []const u8) !MinimaxProvider {
         return .{
             .allocator = allocator,
             .client = try http.Client.init(allocator),
@@ -64,22 +90,20 @@ pub const AnthropicProvider = struct {
         };
     }
 
-    pub fn deinit(self: *AnthropicProvider) void {
+    pub fn deinit(self: *MinimaxProvider) void {
         self.client.deinit();
         self.* = undefined;
     }
 
-    pub fn chat(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LlmResponse {
+    pub fn chat(self: *MinimaxProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
-        // Convert messages to Anthropic format and build request body
         const body = try self.buildRequestBody(messages, model, tools, false);
         defer self.allocator.free(body);
 
         const headers = &[_]std.http.Header{
             .{ .name = "x-api-key", .value = self.api_key },
-            .{ .name = "anthropic-version", .value = "2023-06-01" },
             .{ .name = "Content-Type", .value = "application/json" },
         };
 
@@ -97,9 +121,9 @@ pub const AnthropicProvider = struct {
                 defer parsed_err.deinit();
                 const nice_msg = try self.allocator.dupe(u8, parsed_err.value.@"error".message);
                 defer self.allocator.free(nice_msg);
-                std.debug.print("[Anthropic] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), nice_msg });
+                std.debug.print("[Minimax] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), nice_msg });
             } else |_| {
-                std.debug.print("[Anthropic] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), display_err });
+                std.debug.print("[Minimax] API request failed with status {d}: {s}\n", .{ @intFromEnum(response.status), display_err });
             }
             return error.ApiRequestFailed;
         }
@@ -107,7 +131,7 @@ pub const AnthropicProvider = struct {
         return self.parseResponse(response.body);
     }
 
-    pub fn chatStream(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LlmResponse {
+    pub fn chatStream(self: *MinimaxProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, callback: base.ChunkCallback, cb_ctx: ?*anyopaque) !base.LlmResponse {
         const url = try std.fmt.allocPrint(self.allocator, "{s}/messages", .{self.api_base});
         defer self.allocator.free(url);
 
@@ -116,7 +140,6 @@ pub const AnthropicProvider = struct {
 
         const headers = &[_]std.http.Header{
             .{ .name = "x-api-key", .value = self.api_key },
-            .{ .name = "anthropic-version", .value = "2023-06-01" },
             .{ .name = "Content-Type", .value = "application/json" },
         };
 
@@ -124,7 +147,6 @@ pub const AnthropicProvider = struct {
         defer req.deinit();
 
         var head_buf: [4096]u8 = undefined;
-        // TODO
         var response = try req.receiveHead(&head_buf);
 
         if (response.head.status != .ok) {
@@ -151,10 +173,10 @@ pub const AnthropicProvider = struct {
                 display_err = p.value.@"error".message;
             }
 
-            const final_msg = try std.fmt.allocPrint(self.allocator, "Anthropic API request failed with status {d}: {s}\n", .{ @intFromEnum(response.head.status), display_err });
+            const final_msg = try std.fmt.allocPrint(self.allocator, "Minimax API request failed with status {d}: {s}\n", .{ @intFromEnum(response.head.status), display_err });
             defer self.allocator.free(final_msg);
 
-            std.debug.print("[Anthropic] {s}", .{final_msg});
+            std.debug.print("[Minimax] {s}", .{final_msg});
             callback(cb_ctx, final_msg);
             return error.ApiRequestFailed;
         }
@@ -162,13 +184,15 @@ pub const AnthropicProvider = struct {
         var full_content: std.ArrayList(u8) = .empty;
         errdefer full_content.deinit(self.allocator);
 
+        var thinking_content: std.ArrayList(u8) = .empty;
+        errdefer thinking_content.deinit(self.allocator);
+
         var response_body_buf: [8192]u8 = undefined;
         var reader = response.reader(&response_body_buf);
 
         var buffer: std.ArrayList(u8) = .empty;
         defer buffer.deinit(self.allocator);
 
-        // Track tool calls from content_block_start/delta events
         var tool_calls: std.ArrayList(base.ToolCall) = .empty;
         errdefer {
             for (tool_calls.items) |call| {
@@ -179,6 +203,8 @@ pub const AnthropicProvider = struct {
             }
             tool_calls.deinit(self.allocator);
         }
+
+        var current_tool_call_index: ?usize = null;
 
         while (true) {
             var read_buf: [4096]u8 = undefined;
@@ -197,11 +223,11 @@ pub const AnthropicProvider = struct {
                 if (trimmed.len > 0 and std.mem.startsWith(u8, trimmed, "data: ")) {
                     const data = trimmed[6..];
 
-                    // Anthropic streaming events
                     const StreamEvent = struct {
                         type: []const u8,
                         delta: ?struct {
                             type: ?[]const u8 = null,
+                            thinking: ?[]const u8 = null,
                             text: ?[]const u8 = null,
                             partial_json: ?[]const u8 = null,
                         } = null,
@@ -224,14 +250,27 @@ pub const AnthropicProvider = struct {
 
                     if (std.mem.eql(u8, event.type, "content_block_delta")) {
                         if (event.delta) |delta| {
+                            if (delta.thinking) |thinking| {
+                                try thinking_content.appendSlice(self.allocator, thinking);
+                                callback(cb_ctx, thinking);
+                            }
                             if (delta.text) |text| {
                                 try full_content.appendSlice(self.allocator, text);
                                 callback(cb_ctx, text);
+                            }
+                            if (delta.partial_json) |partial| {
+                                if (current_tool_call_index) |idx| {
+                                    const existing = tool_calls.items[idx];
+                                    const new_args = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ existing.function.arguments, partial });
+                                    self.allocator.free(existing.function.arguments);
+                                    tool_calls.items[idx].function.arguments = new_args;
+                                }
                             }
                         }
                     } else if (std.mem.eql(u8, event.type, "content_block_start")) {
                         if (event.content_block) |block| {
                             if (std.mem.eql(u8, block.type, "tool_use")) {
+                                current_tool_call_index = tool_calls.items.len;
                                 try tool_calls.append(self.allocator, .{
                                     .id = try self.allocator.dupe(u8, block.id orelse ""),
                                     .type = "function",
@@ -242,9 +281,9 @@ pub const AnthropicProvider = struct {
                                 });
                             }
                         }
-                    } else if (std.mem.eql(u8, event.type, "message_stop")) {
-                        // End of message
-                    }
+                    } else if (std.mem.eql(u8, event.type, "content_block_stop")) {
+                        current_tool_call_index = null;
+                    } else if (std.mem.eql(u8, event.type, "message_stop")) {}
                 }
                 try buffer.replaceRange(self.allocator, 0, newline_pos + 1, &.{});
             }
@@ -259,18 +298,12 @@ pub const AnthropicProvider = struct {
         };
     }
 
-    fn buildRequestBody(self: *AnthropicProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
-        // Anthropic uses a different message format
-        // - system message goes in "system" field
-        // - messages array contains only user/assistant turns
-        // - tool results are sent as user messages with tool_result content blocks
-
+    fn buildRequestBody(self: *MinimaxProvider, messages: []const base.LlmMessage, model: []const u8, tools: ?[]const base.ToolDefinition, stream: bool) ![]u8 {
         var system_prompt: ?[]const u8 = null;
-        var anthropic_messages: std.ArrayList(AnthropicMessage) = .empty;
-        defer anthropic_messages.deinit(self.allocator);
+        var minimax_messages: std.ArrayList(MinimaxMessage) = .empty;
+        defer minimax_messages.deinit(self.allocator);
 
-        // We need to allocate content blocks for tool_result messages
-        var content_blocks_storage: std.ArrayList([]const AnthropicContentBlock) = .empty;
+        var content_blocks_storage: std.ArrayList([]const MinimaxContentBlock) = .empty;
         defer {
             for (content_blocks_storage.items) |blocks| {
                 self.allocator.free(blocks);
@@ -282,8 +315,7 @@ pub const AnthropicProvider = struct {
             if (std.mem.eql(u8, msg.role, "system")) {
                 system_prompt = msg.content;
             } else if (std.mem.eql(u8, msg.role, "tool")) {
-                // Tool results in Anthropic are sent as user messages with tool_result content blocks
-                const blocks = try self.allocator.alloc(AnthropicContentBlock, 1);
+                const blocks = try self.allocator.alloc(MinimaxContentBlock, 1);
                 blocks[0] = .{
                     .type = "tool_result",
                     .tool_use_id = msg.tool_call_id,
@@ -291,27 +323,107 @@ pub const AnthropicProvider = struct {
                 };
                 try content_blocks_storage.append(self.allocator, blocks);
 
-                try anthropic_messages.append(self.allocator, .{
+                try minimax_messages.append(self.allocator, .{
                     .role = "user",
                     .content = .{ .blocks = blocks },
                 });
             } else {
-                try anthropic_messages.append(self.allocator, .{
+                try minimax_messages.append(self.allocator, .{
                     .role = msg.role,
                     .content = .{ .text = msg.content orelse "" },
                 });
             }
         }
+    }    var content_blocks_storage: std.ArrayList([]const MinimaxContentBlock) = .empty;
+    defer {
+        for (content_blocks_storage.items) |blocks| {
+            self.allocator.free(blocks);
+        }
+        content_blocks_storage.deinit(self.allocator);
+    }
 
-        // Build the request using a custom approach since we need dynamic struct
-        var aw: std.Io.Writer.Allocating = .init(self.allocator);
-        defer aw.deinit();
-        const writer = &aw.writer;
+    for (messages) |msg| {
+        if (std.mem.eql(u8, msg.role, "system")) {
+            system_prompt = msg.content;
+        } else if (std.mem.eql(u8, msg.role, "tool")) {
+            const blocks = try self.allocator.alloc(MinimaxContentBlock, 1);
+            blocks[0] = .{
+                .type = "tool_result",
+                .tool_use_id = msg.tool_call_id,
+                .content = msg.content,
+            };
+            try content_blocks_storage.append(self.allocator, blocks);
 
+            try minimax_messages.append(self.allocator, .{
+                .role = "user",
+                .content = .{ .blocks = blocks },
+            });
+        } else {
+            try minimax_messages.append(self.allocator, .{
+                .role = msg.role,
+                .content = .{ .text = msg.content orelse "" },
+            });
+        }
+    }
+
+    var aw: std.Io.Writer.Allocating = .init(self.allocator);
+    defer aw.deinit();
+    const writer = &aw.writer;
+
+    try writer.writeAll("{");
+    try writer.print("\"model\": \"{s}\",", .{model});
+    try writer.writeAll("\"max_tokens\": 4096,");
+
+    if (stream) {
+        try writer.writeAll("\"stream\": true,");
+    }
+
+    if (system_prompt) |sys| {
+        try writer.print("\"system\": \"{s}\",", .{sys});
+    }
+
+    if (tools) |t_list| {
+        if (t_list.len > 0) {
+            try writer.writeAll("\"tools\": [");
+            for (t_list, 0..) |t, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.writeAll("{");
+                try writer.print("\"name\": \"{s}\",", .{t.name});
+                try writer.print("\"description\": \"{s}\",", .{t.description});
+                try writer.writeAll("\"input_schema\": ");
+                try writer.writeAll(t.parameters);
+                try writer.writeAll("}");
+            }
+            try writer.writeAll("],");
+        }
+    }
+
+    try writer.writeAll("\"messages\": [");
+    for (minimax_messages.items, 0..) |msg, i| {
+        if (i > 0) try writer.writeAll(",");
         try writer.writeAll("{");
-        try writer.print("\"model\": \"{s}\",", .{model});
-        try writer.writeAll("\"max_tokens\": 4096,");
+        try writer.print("\"role\": \"{s}\",", .{msg.role});
+        try writer.writeAll("\"content\": ");
 
+        switch (msg.content) {
+            .text => |t| {
+                try writer.writeAll("\"");
+                for (t) |c| {
+                    switch (c) {
+                        '"' => try writer.writeAll("\\\""),
+                        '\\' => try writer.writeAll("\\\\"),
+                        '\n' => try writer.writeAll("\\n"),
+                        '\r' => try writer.writeAll("\\r"),
+                        '\t' => try writer.writeAll("\\t"),
+                        else => try writer.writeByte(c),
+                    }
+                }
+                try writer.writeAll("\"");
+            },
+            .blocks => |blocks| {
+                try writer.writeAll("[");
+                for (blocks, 0..) |block, j| {
+                    if (j > 0) try writer.writeAll(",");
         if (stream) {
             try writer.writeAll("\"stream\": true,");
         }
@@ -329,7 +441,7 @@ pub const AnthropicProvider = struct {
                     try writer.print("\"name\": \"{s}\",", .{t.name});
                     try writer.print("\"description\": \"{s}\",", .{t.description});
                     try writer.writeAll("\"input_schema\": ");
-                    try writer.writeAll(t.parameters); // Anthropic expects schema as object, but our Tool.parameters is JSON
+                    try writer.writeAll(t.parameters);
                     try writer.writeAll("}");
                 }
                 try writer.writeAll("],");
@@ -337,7 +449,7 @@ pub const AnthropicProvider = struct {
         }
 
         try writer.writeAll("\"messages\": [");
-        for (anthropic_messages.items, 0..) |msg, i| {
+        for (minimax_messages.items, 0..) |msg, i| {
             if (i > 0) try writer.writeAll(",");
             try writer.writeAll("{");
             try writer.print("\"role\": \"{s}\",", .{msg.role});
@@ -345,7 +457,6 @@ pub const AnthropicProvider = struct {
 
             switch (msg.content) {
                 .text => |t| {
-                    // Escape the text for JSON
                     try writer.writeAll("\"");
                     for (t) |c| {
                         switch (c) {
@@ -393,11 +504,11 @@ pub const AnthropicProvider = struct {
         try writer.writeAll("}");
 
         var json_buf = aw.toArrayList();
-        defer json_buf.deinit(self.allocator);
-        return json_buf.toOwnedSlice(self.allocator);
+    defer json_buf.deinit(self.allocator);
+    return json_buf.toOwnedSlice(self.allocator);
     }
 
-    fn parseResponse(self: *AnthropicProvider, body: []const u8) !base.LlmResponse {
+    fn parseResponse(self: *MinimaxProvider, body: []const u8) !base.LlmResponse {
         const parsed = try std.json.parseFromSlice(MessageResponse, self.allocator, body, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
@@ -420,6 +531,10 @@ pub const AnthropicProvider = struct {
         for (msg.content) |block| {
             if (std.mem.eql(u8, block.type, "text")) {
                 if (block.text) |t| {
+                    try text_content.appendSlice(self.allocator, t);
+                }
+            } else if (std.mem.eql(u8, block.type, "thinking")) {
+                if (block.thinking) |t| {
                     try text_content.appendSlice(self.allocator, t);
                 }
             } else if (std.mem.eql(u8, block.type, "tool_use")) {
@@ -450,9 +565,9 @@ pub const AnthropicProvider = struct {
     }
 };
 
-test "Anthropic: parseResponse" {
+test "Minimax: parseResponse" {
     const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
+    var provider = try MinimaxProvider.init(allocator, "test-key");
     defer provider.deinit();
 
     const response_json =
@@ -477,9 +592,9 @@ test "Anthropic: parseResponse" {
     try std.testing.expectEqualStrings("test_tool", response.tool_calls.?[0].function.name);
 }
 
-test "Anthropic: parseResponse with text only" {
+test "Minimax: parseResponse with thinking" {
     const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
+    var provider = try MinimaxProvider.init(allocator, "test-key");
     defer provider.deinit();
 
     const response_json =
@@ -488,7 +603,8 @@ test "Anthropic: parseResponse with text only" {
         \\  "type": "message",
         \\  "role": "assistant",
         \\  "content": [
-        \\    { "type": "text", "text": "Just a simple text response." }
+        \\    { "type": "thinking", "thinking": "Let me think about this..." },
+        \\    { "type": "text", "text": "Hello!" }
         \\  ]
         \\}
     ;
@@ -496,199 +612,57 @@ test "Anthropic: parseResponse with text only" {
     var response = try provider.parseResponse(response_json);
     defer response.deinit();
 
-    try std.testing.expectEqualStrings("Just a simple text response.", response.content.?);
-    try std.testing.expect(response.tool_calls == null);
+    try std.testing.expect(response.content != null);
+    try std.testing.expect(std.mem.indexOf(u8, response.content.?, "Let me think") != null);
 }
 
-test "Anthropic: parseResponse with multiple tool calls" {
+test "Minimax: init and deinit" {
     const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
+    var provider = try MinimaxProvider.init(allocator, "my-api-key");
     defer provider.deinit();
 
-    const response_json =
-        \\{
-        \\  "id": "msg_789",
-        \\  "type": "message",
-        \\  "role": "assistant",
-        \\  "content": [
-        \\    { "type": "text", "text": "I'll use multiple tools." },
-        \\    { "type": "tool_use", "id": "tool_1", "name": "tool_a", "input": {"x": 1} },
-        \\    { "type": "tool_use", "id": "tool_2", "name": "tool_b", "input": {"y": 2} }
-        \\  ]
-        \\}
-    ;
-
-    var response = try provider.parseResponse(response_json);
-    defer response.deinit();
-
-    try std.testing.expectEqualStrings("I'll use multiple tools.", response.content.?);
-    try std.testing.expect(response.tool_calls != null);
-    try std.testing.expectEqual(@as(usize, 2), response.tool_calls.?.len);
-    try std.testing.expectEqualStrings("tool_1", response.tool_calls.?[0].id);
-    try std.testing.expectEqualStrings("tool_a", response.tool_calls.?[0].function.name);
-    try std.testing.expectEqualStrings("tool_2", response.tool_calls.?[1].id);
-    try std.testing.expectEqualStrings("tool_b", response.tool_calls.?[1].function.name);
+    try std.testing.expectEqual(allocator, provider.allocator);
+    try std.testing.expectEqualStrings("my-api-key", provider.api_key);
+    try std.testing.expectEqualStrings("https://api.minimax.io/anthropic", provider.api_base);
 }
 
-test "Anthropic: parseResponse with empty content" {
+test "Minimax: buildRequestBody with simple message" {
     const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
-    defer provider.deinit();
-
-    const response_json =
-        \\{
-        \\  "id": "msg_empty",
-        \\  "type": "message",
-        \\  "role": "assistant",
-        \\  "content": []
-        \\}
-    ;
-
-    var response = try provider.parseResponse(response_json);
-    defer response.deinit();
-
-    try std.testing.expect(response.content == null);
-    try std.testing.expect(response.tool_calls == null);
-}
-
-test "Anthropic: buildRequestBody with simple message" {
-    const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
+    var provider = try MinimaxProvider.init(allocator, "test-key");
     defer provider.deinit();
 
     const messages = &[_]base.LlmMessage{
         .{ .role = "user", .content = "Hello!" },
     };
 
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, false);
+    const body = try provider.buildRequestBody(messages, "MiniMax-M2.5", null, false);
     defer allocator.free(body);
 
-    // Verify body contains expected JSON structure
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"claude-3-opus-4-5-20251101\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "\"model\": \"MiniMax-M2.5\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"max_tokens\": 4096") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"user\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, body, "Hello!") != null);
 }
 
-test "Anthropic: buildRequestBody with system message" {
-    const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
-    defer provider.deinit();
-
-    const messages = &[_]base.LlmMessage{
-        .{ .role = "system", .content = "You are a helpful assistant." },
-        .{ .role = "user", .content = "Hi!" },
-    };
-
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, false);
-    defer allocator.free(body);
-
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"system\": \"You are a helpful assistant.\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"user\"") != null);
-    // System message should not appear in the messages array
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"role\": \"system\"") == null);
-}
-
-test "Anthropic: buildRequestBody with streaming enabled" {
-    const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "test-key");
-    defer provider.deinit();
-
-    const messages = &[_]base.LlmMessage{
-        .{ .role = "user", .content = "Hello!" },
-    };
-
-    const body = try provider.buildRequestBody(messages, "claude-3-opus-4-5-20251101", null, true);
-    defer allocator.free(body);
-
-    try std.testing.expect(std.mem.indexOf(u8, body, "\"stream\": true") != null);
-}
-
-test "Anthropic: struct definitions" {
-    // Test ContentBlock
-    const block: ContentBlock = .{
-        .type = "text",
-        .text = "Hello",
-    };
-    try std.testing.expectEqualStrings("text", block.type);
-    try std.testing.expectEqualStrings("Hello", block.text.?);
-
-    // Test MessageResponse
-    const content_blocks = &[_]ContentBlock{
-        .{ .type = "text", .text = "Response text" },
-    };
-    const response: MessageResponse = .{
-        .id = "msg_123",
-        .type = "message",
-        .role = "assistant",
-        .content = content_blocks,
-        .stop_reason = "end_turn",
-    };
-    try std.testing.expectEqualStrings("msg_123", response.id);
-    try std.testing.expectEqualStrings("message", response.type);
-    try std.testing.expectEqualStrings("assistant", response.role);
-    try std.testing.expectEqualStrings("end_turn", response.stop_reason.?);
-}
-
-test "Anthropic: AnthropicMessage union" {
-    // Test text variant
-    const text_msg: AnthropicMessage = .{
-        .role = "user",
-        .content = .{ .text = "Hello" },
-    };
-    try std.testing.expectEqualStrings("user", text_msg.role);
-    switch (text_msg.content) {
-        .text => |t| try std.testing.expectEqualStrings("Hello", t),
-        .blocks => try std.testing.expect(false), // Should not be blocks
-    }
-
-    // Test blocks variant
-    const blocks = &[_]AnthropicContentBlock{
-        .{ .type = "tool_result", .tool_use_id = "call_1", .content = "Result" },
-    };
-    const block_msg: AnthropicMessage = .{
-        .role = "user",
-        .content = .{ .blocks = blocks },
-    };
-    switch (block_msg.content) {
-        .text => try std.testing.expect(false), // Should not be text
-        .blocks => |b| try std.testing.expectEqual(@as(usize, 1), b.len),
-    }
-}
-
-test "Anthropic: init and deinit" {
-    const allocator = std.testing.allocator;
-    var provider = try AnthropicProvider.init(allocator, "my-api-key");
-    defer provider.deinit();
-
-    try std.testing.expectEqual(allocator, provider.allocator);
-    try std.testing.expectEqualStrings("my-api-key", provider.api_key);
-    try std.testing.expectEqualStrings("https://api.anthropic.com/v1", provider.api_base);
-}
-
-/// Get API key for Anthropic provider
 fn getApiKey(ctx: *anyopaque, config: Config) ?[]const u8 {
     _ = ctx;
-    const c_val = std.c.getenv("ANTHROPIC_API_KEY");
-    return if (config.providers.anthropic) |p| p.apiKey else if (c_val) |v| std.mem.span(v) else null;
+    const c_val = std.c.getenv("MINIMAX_API_KEY");
+    return if (config.providers.minimax) |p| p.apiKey else if (c_val) |v| std.mem.span(v) else null;
 }
 
-/// Initialize Anthropic provider
 fn initProvider(allocator: std.mem.Allocator, api_key: []const u8) !*anyopaque {
-    const provider = try allocator.create(AnthropicProvider);
-    provider.* = try AnthropicProvider.init(allocator, api_key);
+    const provider = try allocator.create(MinimaxProvider);
+    provider.* = try MinimaxProvider.init(allocator, api_key);
     return provider;
 }
 
-/// Deinitialize Anthropic provider
 fn deinitProvider(provider: *anyopaque) void {
-    const anthropic_provider: *AnthropicProvider = @ptrCast(@alignCast(provider));
-    const allocator = anthropic_provider.allocator;
-    anthropic_provider.deinit();
-    allocator.destroy(anthropic_provider);
+    const minimax_provider: *MinimaxProvider = @ptrCast(@alignCast(provider));
+    const allocator = minimax_provider.allocator;
+    minimax_provider.deinit();
+    allocator.destroy(minimax_provider);
 }
 
-/// Chat stream implementation for Anthropic provider
 fn chatStream(
     provider: *anyopaque,
     messages: []const base.LlmMessage,
@@ -697,16 +671,14 @@ fn chatStream(
     chunk_callback: base.ChunkCallback,
     callback_ctx: ?*anyopaque,
 ) !base.LlmResponse {
-    const anthropic_provider: *AnthropicProvider = @ptrCast(@alignCast(provider));
-    return anthropic_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
+    const minimax_provider: *MinimaxProvider = @ptrCast(@alignCast(provider));
+    return minimax_provider.chatStream(messages, model, tools, chunk_callback, callback_ctx);
 }
 
-/// Get provider name
 fn getProviderName() []const u8 {
-    return "Anthropic";
+    return "Minimax";
 }
 
-/// Create a ProviderInterface for Anthropic
 pub fn createInterface() base.ProviderInterface {
     return .{
         .ctx = undefined,
