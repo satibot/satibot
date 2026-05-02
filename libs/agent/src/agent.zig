@@ -299,7 +299,7 @@ pub const Agent = struct {
                 if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                     std.debug.print("\n(Embedding Network error: {any}. Retrying... {d}/{d})\n", .{ err, retry_count + 1, max_retries });
                     const io = std.Io.Threaded.global_single_threaded.io();
-                    std.Io.sleep(io, .{ .seconds = 1 }, .real) catch {};
+                    std.Io.sleep(io, .{ .nanoseconds = std.time.ns_per_s }, .real) catch {};
                     continue;
                 }
                 return err;
