@@ -114,13 +114,14 @@ fn freeHistory(allocator: std.mem.Allocator, history: [][]const u8) void {
 }
 
 fn saveHistory(history: []const []const u8, path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = try std.Io.Dir.createFileAbsolute(io, path, .{});
+    defer file.close(io);
 
     const start = if (history.len > MAX_HISTORY_LINES) history.len - MAX_HISTORY_LINES else 0;
     for (history[start..]) |entry| {
-        file.writeAll(entry) catch return;
-        file.writeAll("\n") catch return;
+        file.writeStreamingAll(io, entry) catch return;
+        file.writeStreamingAll(io, "\n") catch return;
     }
 }
 

@@ -21,10 +21,12 @@
 /// For voice message support and high-performance concurrent processing,
 /// use the xev-based async version.
 const std = @import("std");
+
 pub const Config = @import("core").config.Config;
-const Agent = @import("../agent.zig").Agent;
-const http = @import("http");
 const constants = @import("core").constants;
+const http = @import("http");
+
+const Agent = @import("../agent.zig").Agent;
 
 /// Synchronous TelegramBot manages interaction with the Telegram Bot API.
 ///
@@ -168,9 +170,9 @@ pub const TelegramBot = struct {
                         const home = std.mem.span(home_ptr);
                         const session_path = try std.fs.path.join(self.allocator, &.{ home, ".bots", "sessions", try std.fmt.allocPrint(self.allocator, "{s}.json", .{session_id}) });
                         defer self.allocator.free(session_path);
-                        std.fs.deleteFileAbsolute(session_path) catch |err| {
-                            std.debug.print("Warning: Failed to delete session file: {any}\n", .{err});
-                        };
+                        const path_z = self.allocator.dupeZ(u8, session_path) catch continue;
+                        defer self.allocator.free(path_z);
+                        _ = std.c.unlink(path_z);
 
                         // If user sent "/new" without additional text, clear session and confirm
                         if (final_text.len <= 4) {

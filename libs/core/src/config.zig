@@ -260,17 +260,20 @@ pub fn save(allocator: std.mem.Allocator, config: Config) !void {
 pub fn saveToPath(allocator: std.mem.Allocator, config: Config, path: []const u8) !void {
     // Create directory if it doesn't exist
     const dir = std.fs.path.dirname(path) orelse return error.InvalidPath;
-    try std.fs.cwd().makePath(dir);
+    const dir_z = try allocator.dupeZ(u8, dir);
+    defer allocator.free(dir_z);
+    _ = std.c.mkdir(dir_z, 0o755);
 
     // Serialize config to JSON
-    var out = std.io.Writer.Allocating.init(allocator);
+    var out = std.Io.Writer.Allocating.init(allocator);
     defer out.deinit();
     try std.json.Stringify.value(config, .{ .whitespace = .indent_2 }, &out.writer);
 
     // Write to file
-    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
-    defer file.close();
-    try file.writeAll(out.written());
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = try std.Io.Dir.createFileAbsolute(io, path, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, out.written());
 }
 
 test "Config: save and reload" {

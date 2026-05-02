@@ -298,7 +298,8 @@ pub const Agent = struct {
             return provider.embeddings(.{ .input = input, .model = emb_model }) catch |err| {
                 if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                     std.debug.print("\n(Embedding Network error: {any}. Retrying... {d}/{d})\n", .{ err, retry_count + 1, max_retries });
-                    std.Thread.sleep(std.time.ns_per_s * 1);
+                    const io = std.Io.Threaded.global_single_threaded.io();
+                    std.Io.sleep(io, .{ .seconds = 1 }, .real) catch {};
                     continue;
                 }
                 return err;

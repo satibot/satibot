@@ -209,9 +209,9 @@ pub const Request = struct {
     }
 
     pub fn send(self: *Request, method: std.http.Method, headers: []const std.http.Header, body: []const u8) !void {
-        var buffer = std.ArrayList(u8).empty;
-        defer buffer.deinit(self.allocator);
-        const w = buffer.writer();
+        var aw: std.Io.Writer.Allocating = .init(self.allocator);
+        defer aw.deinit();
+        const w = &aw.writer;
 
         const path = if (self.uri.path.percent_encoded.len == 0) "/" else self.uri.path.percent_encoded;
         try w.print("{s} {s}", .{ @tagName(method), path });
@@ -230,12 +230,15 @@ pub const Request = struct {
         try w.writeAll("\r\n");
         try w.writeAll(body);
 
+        const buffer = try aw.toOwnedSlice();
+        defer self.allocator.free(buffer);
+
         if (self.tls_state) |state| {
-            try state.conn.writeAll(buffer.items);
+            try state.conn.writeAll(buffer);
         } else {
             var out_buf: [4096]u8 = undefined;
             var net_writer = self.tcp.writer(self.io, &out_buf);
-            try net_writer.interface.writeAll(buffer.items);
+            try net_writer.interface.writeAll(buffer);
         }
     }
 
@@ -318,7 +321,10 @@ pub const Request = struct {
         if (self.tls_state) |state| {
             return state.conn.read(buf);
         } else {
-            return self.tcp.read(buf);
+            var temp: [4096]u8 = undefined;
+            var rdr = self.tcp.reader(self.io, temp[0..]);
+            var data: [1][]u8 = .{buf};
+            return rdr.interface.readVec(&data);
         }
     }
 

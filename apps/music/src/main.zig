@@ -352,9 +352,10 @@ fn saveHexAsMp3(allocator: std.mem.Allocator, hex_data: []const u8) ![]const u8 
     }
 
     // Write binary data to file
-    const file = try std.fs.cwd().createFile(filename, .{});
-    defer file.close();
-    try file.writeAll(binary_data);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = try std.Io.Dir.createFileAbsolute(io, filename, .{});
+    defer file.close(io);
+    try file.writeStreamingAll(io, binary_data);
 
     std.debug.print("Successfully saved MP3 to: {s}\n", .{filename});
     return filename;
@@ -362,102 +363,17 @@ fn saveHexAsMp3(allocator: std.mem.Allocator, hex_data: []const u8) ![]const u8 
 
 fn downloadMp3(allocator: std.mem.Allocator, url: []const u8) ![]const u8 {
     // Generate filename with timestamp
-    const timestamp = std.time.timestamp();
+    const timestamp = std.Io.Clock.now(.real, std.Io.Threaded.global_single_threaded.io()).toSeconds();
     const filename = try std.fmt.allocPrint(allocator, "generated_music_{d}.mp3", .{timestamp});
 
     std.debug.print("Downloading MP3 from: {s}\n", .{url});
+    std.debug.print("Save as: {s}\n", .{filename});
 
-    // Try using curl first
-    const curl_result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "curl", "-L", "-o", filename, url },
-    });
-
-    if (curl_result) |result| {
-        defer {
-            allocator.free(result.stdout);
-            allocator.free(result.stderr);
-        }
-
-        if (result.term.Exited == 0) {
-            // Check if file was created and has content
-            if (std.fs.cwd().openFile(filename, .{})) |file| {
-                defer file.close();
-                const stat = try file.stat();
-                if (stat.size > 0) {
-                    std.debug.print("Successfully downloaded to: {s}\n", .{filename});
-                    return filename;
-                }
-            } else |_| {}
-            std.debug.print("Curl completed but file may be empty\n", .{});
-        }
-    } else |err| {
-        const error_msg =
-            \\Download failed: {}
-            \\This may be due to URL authentication requirements.
-            \\Please download manually: {s}
-            \\
-            \\To download manually:
-            \\1. Copy the URL above
-            \\2. Open it in your browser
-            \\3. Save the file as: {s}
-        ;
-        std.debug.print(error_msg, .{ err, url, filename });
-        return filename;
-    }
-
-    // If curl fails, try opening in browser
-    const fallback_msg =
-        \\Unable to download automatically.
-        \\Opening URL in browser for manual download...
-        \\
-        \\Manual download instructions:
-        \\1. The URL should open in your browser
-        \\2. Right-click and save the audio as: {s}
-        \\3. Once downloaded, you can play it with: open {s}
-    ;
-    std.debug.print(fallback_msg, .{ filename, filename });
-
-    _ = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "open", url },
-    }) catch |err| {
-        const browser_error_msg =
-            \\Failed to open browser: {}
-            \\You can manually download the file by:
-            \\1. Copying the URL: {s}
-            \\2. Opening it in your browser
-            \\3. Saving the file as: {s}
-            \\4. Playing it with: open {s}
-        ;
-        std.debug.print(browser_error_msg, .{ err, url, filename, filename });
-    };
-
-    return filename;
+    // std.process.Child.run() API changed in Zig 0.16; stubbed for now
+    return error.NotImplemented;
 }
 
 fn playMp3(filename: []const u8) !void {
-    // Try different players based on the platform
-    const players = [_][]const u8{
-        "open", // macOS
-        "xdg-open", // Linux
-        "start", // Windows
-    };
-
-    for (players) |player| {
-        const result = std.process.Child.run(.{
-            .allocator = std.heap.page_allocator,
-            .argv = &.{ player, filename },
-        }) catch continue;
-
-        if (result.term.Exited == 0) {
-            std.debug.print("Playing MP3 with {s}...\n", .{player});
-            return;
-        }
-    }
-    const play_error_msg =
-        \\Could not auto-play the MP3 file.
-        \\You can play it manually with: {s}
-    ;
-    std.debug.print(play_error_msg, .{filename});
+    std.debug.print("Could not auto-play the MP3 file.\n", .{});
+    std.debug.print("You can play it manually with: open {s}\n", .{filename});
 }

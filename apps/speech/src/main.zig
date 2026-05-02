@@ -385,40 +385,10 @@ fn downloadAudio(
     };
     defer if (output_file == null) allocator.free(filename);
 
-    const curl_result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &[_][]const u8{ "curl", "-L", "-o", filename, url },
-    });
-
-    if (curl_result) |result| {
-        defer {
-            allocator.free(result.stdout);
-            allocator.free(result.stderr);
-        }
-
-        if (result.term.Exited == 0) {
-            if (std.fs.cwd().openFile(filename, .{})) |file| {
-                defer file.close();
-                const stat = file.stat() catch undefined;
-                if (stat.size > 0) {
-                    std.debug.print("Successfully downloaded ({d} bytes) to: {s}\n", .{ stat.size, filename });
-                    return;
-                }
-            } else |_| {}
-            std.debug.print("Curl completed but file may be empty\n", .{});
-        }
-    } else |err| {
-        std.debug.print("Download failed: {}\n", .{err});
-        std.debug.print("Please download manually from: {s}\n", .{url});
-        return;
-    }
-
-    std.debug.print("Opening URL in browser for manual download...\n", .{});
-    _ = std.process.Child.run(.{
-        .allocator = std.heap.page_allocator,
-        .argv = &.{ "open", url },
-    }) catch |err| {
-        std.debug.print("Failed to open browser: {}\n", .{err});
-        std.debug.print("Manual download URL: {s}\n", .{url});
-    };
+    // std.process.Child.run() API changed in Zig 0.16; stubbed for now
+    // const curl_result = std.process.Child.run(.{
+    //     .allocator = allocator,
+    //     .argv = &[_][]const u8{ "curl", "-L", "-o", filename, url },
+    // });
+    return error.NotImplemented;
 }
