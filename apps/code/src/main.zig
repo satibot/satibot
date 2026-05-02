@@ -5,9 +5,6 @@ const agent = @import("agent");
 
 const config = @import("config.zig");
 
-extern "c" var stdin: *anyopaque;
-extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
-
 fn loadAgentConfig(allocator: std.mem.Allocator) ![]const u8 {
     _ = allocator;
     return "";
@@ -118,12 +115,22 @@ pub fn main(init: std.process.Init.Minimal) !void {
         std.debug.print("\nUser > ", .{});
 
         var read_buf: [4096:0]u8 = undefined;
-        const ptr = fgets(&read_buf, @intCast(read_buf.len), stdin);
-        if (ptr == null) break; // EOF
-        var n: usize = 0;
-        while (n < read_buf.len and read_buf[n] != 0) n += 1;
+        var i: usize = 0;
+        while (i < read_buf.len - 1) {
+            var byte: [1]u8 = undefined;
+            const rd = std.posix.read(0, &byte) catch |err| {
+                std.debug.print("Error reading stdin: {any}\n", .{err});
+                break;
+            };
+            if (rd == 0) break; // EOF
+            if (byte[0] == '\n') break;
+            read_buf[i] = byte[0];
+            i += 1;
+        }
+        read_buf[i] = 0;
+        if (i == 0) break; // EOF with no data
 
-        const trimmed = std.mem.trim(u8, read_buf[0..n], " \t\r\n");
+        const trimmed = std.mem.trim(u8, read_buf[0..i], " \t\r\n");
         if (trimmed.len == 0) continue;
         if (std.mem.eql(u8, trimmed, "exit") or std.mem.eql(u8, trimmed, "quit")) break;
 

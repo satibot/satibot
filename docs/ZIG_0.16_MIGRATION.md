@@ -17,29 +17,35 @@ This document summarizes the breaking changes encountered when migrating the Sat
 
 | Old API | Replacement | Notes |
 |---|---|---|
-| `std.fs.cwd()` | C stdio (`std.c.fopen`, `std.c.fread`) or direct paths | File system iteration APIs removed |
-| `std.fs.openFileAbsolute()` | C stdio wrappers | Use `fopen`/`fread`/`fclose` |
-| `std.fs.File.stdin()` | `extern "c" var stdin` + `fgets` | Standard input reading |
-| `std.fs.makeDirAbsolute()` | `std.c.mkdir()` | Directory creation |
+| `std.fs.cwd()` | `std.c.fopen` / `std.c.fread` / `std.c.fclose` | File system iteration APIs removed |
+| `std.fs.openFileAbsolute()` | `std.c.fopen` + `std.c.fread` | File reading via C stdio |
+| `std.fs.File.stdin()` | `std.posix.read(0, &buf)` | Standard input reading (fd 0) |
+| `std.fs.makeDirAbsolute()` | `std.c.mkdir(path_z.ptr, 0o755)` | Directory creation |
 | `std.process.argsAlloc()` / `argsFree()` | `init.args.toSlice(allocator)` | Entry point argument parsing |
 | `std.process.getEnvVarOwned()` | `std.c.getenv()` + `std.mem.span()` | Environment variable reading |
-| `std.process.Child.run()` | Stub/disable | Process spawning API changed significantly |
+| `std.process.Child.init(args, allocator)` | `std.process.spawn(io, .{ .argv = args })` | Process spawning requires `Io` handle |
+| `child.spawnAndWait()` | `child.wait(io)` | Wait for child process |
+| `Child.Term.Exited` | `Child.Term.exited` | Enum tags are lowercase |
 | `std.crypto.random.bytes()` | `std.Random.DefaultPrng` | Non-cryptographic random generation |
-| `std.time.timestamp()` | C `time()` via `extern "c" fn time(...)` | Wall clock timestamps |
-| `std.time.milliTimestamp()` | `gettimeofday()` wrapper | Millisecond precision timestamps |
-| `std.time.nanoTimestamp()` | `gettimeofday()` wrapper | Nanosecond precision timestamps |
-| `std.posix.nanosleep()` | Custom `extern "c" fn nanosleep(...)` | Sleep functionality |
-| `std.posix.timespec` | Custom `extern struct timespec` | Time specification struct |
-| `std.posix.timeval` | Custom `extern struct timeval` | Time value struct |
-| `std.posix.gettimeofday()` | `std.c.gettimeofday()` | High-resolution time |
+| `std.time.timestamp()` | `std.c.gettimeofday()` + `tv.sec` | Wall clock timestamps |
+| `std.time.milliTimestamp()` | `std.c.gettimeofday()` + calculation | Millisecond precision timestamps |
+| `std.time.nanoTimestamp()` | `std.c.gettimeofday()` + calculation | Nanosecond precision timestamps |
+| `std.Thread.sleep(nanos)` | `std.c.nanosleep(&req, &rem)` | Thread sleep |
+| `std.posix.nanosleep()` | `std.c.nanosleep()` | Sleep functionality (still available under `std.c`) |
+| `std.posix.timespec` | `std.c.timespec` | Time specification struct (still available under `std.c`) |
+| `std.posix.timeval` | `std.c.timeval` | Time value struct (still available under `std.c`) |
+| `std.posix.gettimeofday()` | `std.c.gettimeofday()` | High-resolution time (still available under `std.c`) |
 | `std.posix.getenv()` | `std.c.getenv()` + `std.mem.span()` | Environment variable reading |
 | `std.posix.setenv()` / `unsetenv()` | `extern "c" fn setenv/unsetenv` declarations | Environment variable setting in tests |
 | `std.Thread.Mutex` | `std.atomic.Mutex` | Synchronization primitive (use `.unlocked`) |
 | `std.Thread.Condition` | Busy-wait loop with `sleepMs` | Signaling primitive |
-| `std.Thread.sleep()` | `std.c.nanosleep()` or custom wrapper | Thread sleep |
+| `std.Thread.sleep()` | `std.c.nanosleep(&req, &rem)` | Thread sleep |
 | `std.net.Stream` | Removed - network APIs changed | HTTP/TLS stack affected |
 | `std.ArrayList.writer()` | Removed - use manual buffer management | JSON serialization affected |
-| `std.ArrayListUnmanaged.init()` | `.empty` initialization pattern | Empty initialization |
+| `std.ArrayList(T).init(allocator)` | `var list: std.ArrayList(T) = .empty;` | Empty initialization |
+| `list.deinit()` | `list.deinit(allocator)` | Deinit now requires allocator |
+| `list.appendSlice(slice)` | `list.appendSlice(allocator, slice)` | Append now requires allocator |
+| `list.toOwnedSlice()` | `list.toOwnedSlice(allocator)` | toOwnedSlice now requires allocator |
 | `std.PriorityQueue.init()` | `.initContext()` | Priority queue creation |
 | `std.PriorityQueue.add()` | `.push()` | Priority queue insertion |
 | `std.PriorityQueue.remove()` | `.pop()` | Priority queue removal |
@@ -66,10 +72,10 @@ Signal handler parameter type changed:
 
 ```zig
 // Before
-fn handleSignal(sig: c_int) void
+fn handleSignal(sig: i32) callconv(.c) void
 
 // After
-fn handleSignal(sig: std.posix.SIG) void
+fn handleSignal(sig: std.posix.SIG) callconv(.c) void
 ```
 
 #### Entry Point Signature
@@ -112,12 +118,56 @@ defer _ = gpa.deinit();
 .task_mutex = .unlocked,
 ```
 
+#### Process Spawning
+
+```zig
+// Before
+var child = std.process.Child.init(argv, allocator);
+child.stdout_behavior = .Inherit;
+const term = try child.spawnAndWait();
+
+// After
+const io = std.Io.Threaded.global_single_threaded.io();
+var child = try std.process.spawn(io, .{
+    .argv = argv,
+    .stdout = .inherit,
+    .stderr = .inherit,
+});
+const term = try child.wait(io);
+
+switch (term) {
+    .exited => |code| { ... },  // lowercase!
+    else => {},
+}
+```
+
+#### `std.Io` Duration
+
+```zig
+// Before
+std.Io.sleep(io, .{ .seconds = 5 }, .real) catch {};
+
+// After
+std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
+```
+
+#### Entry Point Argument Type
+
+```zig
+// Before
+fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void
+
+// After
+fn runAgent(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
+```
+
 ## APIs That Still Work
 
 The following APIs were not affected by Zig 0.16 changes and continue to work:
 - `std.fs.path.join()` - path construction
 - `std.fs.deleteFileAbsolute()` - file deletion
 - `std.json.parseFromSlice()` - JSON parsing
+- `std.c.fopen()` / `std.c.fread()` / `std.c.fwrite()` / `std.c.fclose()` - C stdio
 
 ## Dependency Fixes
 
@@ -163,21 +213,29 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 fn getCurrentTimeMs() i64 {
     var tv: std.c.timeval = undefined;
     _ = std.c.gettimeofday(&tv, null);
-    return @as(i64, tv.tv_sec) * 1000 + @divTrunc(@as(i64, tv.tv_usec), 1000);
+    return @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
 }
 ```
 
+Note: In Zig 0.16, `std.c.timeval` fields are `sec` and `usec` (no `tv_` prefix).
+
 ### Stdin Reading Pattern
 ```zig
-extern "c" var stdin: *anyopaque;
-extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
-
-var read_buf: [4096:0]u8 = undefined;
-const ptr = fgets(&read_buf, @intCast(read_buf.len), stdin);
-if (ptr == null) return; // EOF
+var buf: [1024:0]u8 = undefined;
 var n: usize = 0;
-while (n < read_buf.len and read_buf[n] != 0) n += 1;
-const input = std.mem.trim(u8, read_buf[0..n], " \t\r\n");
+while (n < buf.len - 1) {
+    var byte: [1]u8 = undefined;
+    const rd = std.posix.read(0, &byte) catch |err| {
+        std.debug.print("Error reading stdin: {any}\n", .{err});
+        break;
+    };
+    if (rd == 0) break; // EOF
+    if (byte[0] == '\n') break;
+    buf[n] = byte[0];
+    n += 1;
+}
+buf[n] = 0;
+const input = std.mem.trim(u8, buf[0..n], " \t\r\n");
 ```
 
 ### Condition Variable Replacement
@@ -197,9 +255,8 @@ mutexLock(&self.task_mutex);
 
 The following areas still need attention for full Zig 0.16 compatibility:
 1. Network Stack - `std.net.Stream` removal requires reimplementing HTTP/TLS networking (TLS currently returns empty bundle)
-2. Process Spawning - `std.process.Child.run()` is stubbed out; needs full reimplementation
-3. File System Iteration - `std.fs.cwd().openDir()` with iteration is disabled; skill/rule listing and file walking stubbed out
-4. TLS Certificate Loading - `Bundle.rescan()` requires `io` and `now` parameters from new I/O model
+2. File System Iteration - `std.fs.cwd().openDir()` with iteration is disabled; skill/rule listing and file walking stubbed out
+3. TLS Certificate Loading - `Bundle.rescan()` requires `io` and `now` parameters from new I/O model
 
 ## Testing
 

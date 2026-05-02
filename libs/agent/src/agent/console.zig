@@ -14,11 +14,13 @@
 ///     Agent --> |Reply| Console[Print to Console]
 /// ```
 const std = @import("std");
+
 pub const Config = @import("core").config.Config;
 const config_load = @import("core").config.load;
-const Agent = @import("../agent.zig").Agent;
 const xev_event_loop = @import("utils").xev_event_loop;
 const XevEventLoop = xev_event_loop.XevEventLoop;
+
+const Agent = @import("../agent.zig").Agent;
 
 const MAX_HISTORY_LINES: usize = 500;
 
@@ -52,17 +54,23 @@ fn showLoadingSpinner() void {
     if (!loading_active.load(.seq_cst)) return;
 
     const spin_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-    const start_time = std.time.nanoTimestamp();
+    var start_tv: std.c.timeval = undefined;
+    _ = std.c.gettimeofday(&start_tv, null);
+    const start_time = @as(i128, start_tv.sec) * 1_000_000_000 + @as(i128, start_tv.usec) * 1_000;
     var frame: usize = 0;
 
     while (loading_active.load(.seq_cst) and !shutdown_requested.load(.seq_cst)) {
-        const current_time = std.time.nanoTimestamp();
+        var current_tv: std.c.timeval = undefined;
+        _ = std.c.gettimeofday(&current_tv, null);
+        const current_time = @as(i128, current_tv.sec) * 1_000_000_000 + @as(i128, current_tv.usec) * 1_000;
         const elapsed_ms = @as(u64, @intCast(@divTrunc(current_time - start_time, 1_000_000)));
         frame = @as(usize, @intCast(@divTrunc(elapsed_ms, 100))) % spin_chars.len;
 
         // Carriage return to overwrite current line
         std.debug.print("\r🤔 Thinking {c}...", .{spin_chars[frame]});
-        std.posix.nanosleep(0, 100_000_000); // 100ms
+        const req: std.c.timespec = .{ .sec = 0, .nsec = 100_000_000 };
+        var rem: std.c.timespec = undefined;
+        _ = std.c.nanosleep(&req, &rem);
     }
 
     // Clear the loading line when done
@@ -89,11 +97,11 @@ fn stopLoadingAnimation() void {
 }
 
 pub fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
-        error.FileNotFound => return try allocator.alloc([]const u8, 0),
-        else => return err,
-    };
-    defer file.close();
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "r");
+    if (file == null) return allocator.alloc([]const u8, 0);
+    defer _ = std.c.fclose(file.?);
 
     var lines: std.ArrayList([]const u8) = .empty;
     errdefer {
@@ -106,7 +114,7 @@ pub fn loadHistory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
     defer carry.deinit(allocator);
 
     while (true) {
-        const n = file.read(&read_buf) catch break;
+        const n = std.c.fread(&read_buf, 1, read_buf.len, file.?);
         if (n == 0) break;
         const data = read_buf[0..n];
 
@@ -158,13 +166,15 @@ pub fn freeHistory(allocator: std.mem.Allocator, history: [][]const u8) void {
 }
 
 pub fn saveHistory(history: []const []const u8, path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    const path_z = try std.heap.page_allocator.dupeZ(u8, path);
+    defer std.heap.page_allocator.free(path_z);
+    const file = std.c.fopen(path_z.ptr, "w") orelse return error.FileNotFound;
+    defer _ = std.c.fclose(file);
 
     const start = if (history.len > MAX_HISTORY_LINES) history.len - MAX_HISTORY_LINES else 0;
     for (history[start..]) |entry| {
-        file.writeAll(entry) catch return;
-        file.writeAll("\n") catch return;
+        _ = std.c.fwrite(entry.ptr, 1, entry.len, file);
+        _ = std.c.fwrite("\n", 1, 1, file);
     }
 }
 
@@ -175,7 +185,7 @@ fn getHistoryPath(allocator: std.mem.Allocator) ![]const u8 {
 }
 
 /// Signal handler for SIGINT (Ctrl+C) and SIGTERM
-fn signalHandler(sig: i32) callconv(.c) void {
+fn signalHandler(sig: std.posix.SIG) callconv(.c) void {
     _ = sig;
 
     // Only print shutdown message once
@@ -330,11 +340,10 @@ pub const MockBot = struct {
 
     /// Read from console and add task to loop
     pub fn tick(self: *MockBot) !void {
-        const stdin = std.fs.File.stdin();
         var buf: [1024]u8 = undefined;
 
         std.debug.print("\nUser > ", .{});
-        const n = stdin.read(&buf) catch |err| {
+        const n = std.posix.read(0, &buf) catch |err| {
             // Handle interrupted input (e.g., from Ctrl+C signal)
             if (err == error.InputOutput or err == error.BrokenPipe) {
                 // Signal was received, check if we should shutdown

@@ -546,18 +546,24 @@ fn runWeb(allocator: std.mem.Allocator, args: []const []const u8) !void {
         try cmd_args.append(allocator, arg);
     }
 
-    var child = std.process.Child.init(cmd_args.items, allocator);
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
-    child.stderr_behavior = .Inherit;
-
-    const term = child.spawnAndWait() catch |err| {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var child = std.process.spawn(io, .{
+        .argv = cmd_args.items,
+        .stdin = .inherit,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    }) catch |err| {
         std.debug.print("Failed to run web CLI: {}\n", .{err});
         return;
     };
 
+    const term = child.wait(io) catch |err| {
+        std.debug.print("Failed to wait for web CLI: {}\n", .{err});
+        return;
+    };
+
     switch (term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
                 std.debug.print("Web CLI exited with code: {}\n", .{code});
             }

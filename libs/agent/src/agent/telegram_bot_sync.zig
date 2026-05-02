@@ -204,7 +204,9 @@ pub const TelegramBot = struct {
                             done_flag: *bool,
                         ) void {
                             while (!done_flag.*) {
-                                std.Thread.sleep(std.time.ns_per_s * 5);
+                                const req1: std.c.timespec = .{ .sec = 5, .nsec = 0 };
+                                var rem1: std.c.timespec = undefined;
+                                _ = std.c.nanosleep(&req1, &rem1);
                                 if (done_flag.*) break;
                                 bot.sendChatAction(token, chat_id) catch |err| {
                                     std.debug.print("Failed to send typing action: {any}\n", .{err});
@@ -410,7 +412,9 @@ pub fn run(allocator: std.mem.Allocator, config: Config, rag_enabled: bool) !voi
         // crashing completely on transient errors.
         bot.tick() catch |err| {
             std.debug.print("Error in Telegram bot tick: {any}\nRetrying in 5 seconds...\n", .{err});
-            std.Thread.sleep(std.time.ns_per_s * 5);
+            const req2: std.c.timespec = .{ .sec = 5, .nsec = 0 };
+            var rem2: std.c.timespec = undefined;
+            _ = std.c.nanosleep(&req2, &rem2);
         };
     }
 }

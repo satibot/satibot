@@ -1,9 +1,10 @@
 const std = @import("std");
-const agent = @import("agent");
-const providers = @import("providers");
-// Import build options from agent module
-const build_options = agent.build_opts;
 
+const agent = @import("agent");
+const build_options = agent.build_opts;
+const providers = @import("providers");
+
+// Import build options from agent module
 /// Main entry point for sati application
 /// Handles command line arguments and dispatches to appropriate handlers
 pub fn main(init: std.process.Init.Minimal) !void {
@@ -492,7 +493,7 @@ fn showCommandHelp(command: []const u8) !void {
 ///   -s session_id    Use specific session ID (default: "default")
 ///   --no-rag         Disable RAG (Retrieval-Augmented Generation)
 ///   openrouter       Validate OpenRouter configuration before running
-fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runAgent(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Load configuration from ~/.bots/config.json
     const parsed_config = try agent.config.load(allocator);
     defer parsed_config.deinit();
@@ -532,12 +533,11 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         defer agent_instance.deinit();
 
         // Read from stdin for interactive mode
-        const stdin = std.fs.File.stdin();
         var buf: [4096]u8 = undefined;
 
         while (true) {
             std.debug.print("\n> ", .{});
-            const n = try stdin.read(&buf);
+            const n = try std.posix.read(0, &buf);
             if (n == 0) break;
 
             const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
@@ -586,9 +586,12 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
     const config = parsed_config.value;
 
     // Get API key from config or environment
-    const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
-        std.debug.print("Error: OpenRouter API key not configured. Set OPENROUTER_API_KEY env var or update config.json.\n", .{});
-        return;
+    const api_key = if (config.providers.openrouter) |p| p.apiKey else blk: {
+        const env = std.c.getenv("OPENROUTER_API_KEY") orelse {
+            std.debug.print("Error: OpenRouter API key not configured. Set OPENROUTER_API_KEY env var or update config.json.\n", .{});
+            return;
+        };
+        break :blk std.mem.span(env);
     };
 
     // Initialize OpenRouter provider
@@ -610,7 +613,7 @@ fn runTestLlm(allocator: std.mem.Allocator) !void {
 
 /// Run console-based Console bot
 /// Provides interactive console chat using the same agent logic as other platforms
-fn runConsole(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runConsole(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Load configuration
     const parsed_config = try agent.config.load(allocator);
     defer parsed_config.deinit();
@@ -638,7 +641,7 @@ fn runConsole(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
 /// Run synchronous console-based Console bot (no event loop)
 /// Provides interactive console chat using direct Agent calls
-fn runConsoleSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runConsoleSync(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     const parsed_config = try agent.config.load(allocator);
     defer parsed_config.deinit();
     const config = parsed_config.value;
@@ -659,7 +662,7 @@ fn runConsoleSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
 /// Run Telegram bot server
 /// Listens for Telegram messages and responds using the AI agent
-fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runTelegramBot(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Load configuration
     const parsed_config = try agent.config.load(allocator);
     defer parsed_config.deinit();
@@ -692,7 +695,7 @@ fn runTelegramBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 /// Run synchronous Telegram bot server
 /// Listens for Telegram messages and responds using the AI agent
 /// Processes messages one at a time (simplified, reliable version)
-fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runTelegramBotSync(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Load configuration
     const parsed_config = try agent.config.load(allocator);
     defer parsed_config.deinit();
@@ -724,7 +727,7 @@ fn runTelegramBotSync(allocator: std.mem.Allocator, args: [][:0]u8) !void {
 
 /// Run WhatsApp bot server
 /// Listens for WhatsApp messages via Meta API and responds using the AI agent
-fn runWhatsAppBot(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runWhatsAppBot(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Check if WhatsApp is enabled in build
     if (!build_options.include_whatsapp) {
         std.debug.print("Error: WhatsApp support is disabled in this build.\n", .{});
@@ -779,7 +782,7 @@ fn runGateway(allocator: std.mem.Allocator) !void {
 
 /// Manage vector database operations
 /// Provides commands to list, search, add entries and show statistics
-fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
+fn runVectorDb(allocator: std.mem.Allocator, args: []const [:0]const u8) !void {
     // Show usage if no subcommand provided
     if (args.len < 3) {
         const out =
@@ -856,9 +859,12 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         if (std.mem.eql(u8, emb_model, "local")) {
             resp = try agent.local_embeddings.LocalEmbedder.generate(allocator, &.{query});
         } else {
-            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
-                std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
-                return error.NoApiKey;
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else blk: {
+                const env = std.c.getenv("OPENROUTER_API_KEY") orelse {
+                    std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
+                    return error.NoApiKey;
+                };
+                break :blk std.mem.span(env);
             };
             var provider = try agent.openrouter.OpenRouterProvider.init(allocator, api_key);
             defer provider.deinit();
@@ -913,9 +919,12 @@ fn runVectorDb(allocator: std.mem.Allocator, args: [][:0]u8) !void {
         if (std.mem.eql(u8, emb_model, "local")) {
             resp = try agent.local_embeddings.LocalEmbedder.generate(allocator, &.{text});
         } else {
-            const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
-                std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
-                return error.NoApiKey;
+            const api_key = if (config.providers.openrouter) |p| p.apiKey else blk: {
+                const env = std.c.getenv("OPENROUTER_API_KEY") orelse {
+                    std.debug.print("Error: Embedding API key not configured. Set 'embeddingModel': 'local' in config.json for offline mode.\n", .{});
+                    return error.NoApiKey;
+                };
+                break :blk std.mem.span(env);
             };
             var provider = try agent.openrouter.OpenRouterProvider.init(allocator, api_key);
             defer provider.deinit();
@@ -1007,18 +1016,23 @@ fn validateConfig(config: agent.config.Config) !void {
 /// Self-upgrade function
 /// Performs git pull to fetch latest changes and rebuilds the project
 fn runUpgrade(allocator: std.mem.Allocator) !void {
+    _ = allocator; // autofix
     std.debug.print("Checking for updates...\n", .{});
+
+    const io = std.Io.Threaded.global_single_threaded.io();
 
     // 1. git pull - fetch latest changes
     const git_argv = &[_][]const u8{ "git", "pull" };
-    var git_proc = std.process.Child.init(git_argv, allocator);
-    git_proc.stdout_behavior = .Inherit;
-    git_proc.stderr_behavior = .Inherit;
+    var git_proc = try std.process.spawn(io, .{
+        .argv = git_argv,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    });
 
-    const term = try git_proc.spawnAndWait();
+    const term = try git_proc.wait(io);
 
     switch (term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
                 std.debug.print("Error: git pull failed with code {d}\n", .{code});
                 return error.GitPullFailed;
@@ -1034,13 +1048,15 @@ fn runUpgrade(allocator: std.mem.Allocator) !void {
 
     // 2. zig build -Doptimize=ReleaseSafe - rebuild project
     const build_argv = &[_][]const u8{ "zig", "build", "-Doptimize=ReleaseSafe" };
-    var build_proc = std.process.Child.init(build_argv, allocator);
-    build_proc.stdout_behavior = .Inherit;
-    build_proc.stderr_behavior = .Inherit;
+    var build_proc = try std.process.spawn(io, .{
+        .argv = build_argv,
+        .stdout = .inherit,
+        .stderr = .inherit,
+    });
 
-    const build_term = try build_proc.spawnAndWait();
+    const build_term = try build_proc.wait(io);
     switch (build_term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
                 std.debug.print("Error: build failed with code {d}\n", .{code});
                 return error.BuildFailed;
@@ -1140,58 +1156,53 @@ fn autoCreateTelegramConfig(allocator: std.mem.Allocator) !void {
     const home = std.mem.span(home_ptr);
     const bots_dir = try std.fs.path.join(allocator, &.{ home, ".bots" });
     defer allocator.free(bots_dir);
+    const bots_dir_z = try allocator.dupeZ(u8, bots_dir);
+    defer allocator.free(bots_dir_z);
 
     // Create ~/.bots directory if needed
-    std.fs.makeDirAbsolute(bots_dir) catch |err| {
-        if (err != error.PathAlreadyExists) return err;
-    };
+    _ = std.c.mkdir(bots_dir_z.ptr, 0o755);
 
     const config_path = try std.fs.path.join(allocator, &.{ bots_dir, "config.json" });
     defer allocator.free(config_path);
+    const config_path_z = try allocator.dupeZ(u8, config_path);
+    defer allocator.free(config_path_z);
 
     // Check if config already exists
-    var config_exists = true;
-    std.fs.accessAbsolute(config_path, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            config_exists = false;
-        } else {
-            return err;
-        }
-    };
-
-    if (!config_exists) {
-        // Create default Telegram configuration
-        const file = try std.fs.createFileAbsolute(config_path, .{});
-        defer file.close();
-        const default_json =
-            \\{
-            \\  "agents": {
-            \\    "defaults": {
-            \\      "model": "anthropic/claude-3-5-sonnet-20241022"
-            \\    }
-            \\  },
-            \\  "providers": {
-            \\    "openrouter": {
-            \\      "apiKey": "sk-or-v1-..."
-            \\    }
-            \\  },
-            \\  "tools": {
-            \\    "web": {
-            \\      "search": {
-            \\        "apiKey": "BSA..."
-            \\      }
-            \\    },
-            \\    "telegram": {
-            \\      "botToken": "YOUR_BOT_TOKEN_HERE",
-            \\      "chatId": "YOUR_CHAT_ID_HERE"
-            \\    }
-            \\  }
-            \\}
-        ;
-        try file.writeAll(default_json);
-
-        std.debug.print("✅ Created Telegram config at {s}\n📋 Please edit the file and add your Telegram credentials:\n   1. botToken - Get this from @BotFather\n   2. chatId - Get this from @userinfobot\n", .{config_path});
-    } else {
-        std.debug.print("⚠️ Config already exists at {s}\n", .{config_path});
+    if (std.c.fopen(config_path_z.ptr, "r")) |f| {
+        _ = std.c.fclose(f);
+        std.debug.print("Config already exists at {s}\n", .{config_path});
+        return;
     }
+
+    // Create default Telegram configuration
+    const file = std.c.fopen(config_path_z.ptr, "w") orelse return error.FileNotFound;
+    defer _ = std.c.fclose(file);
+    const default_json =
+        \\{
+        \\  "agents": {
+        \\    "defaults": {
+        \\      "model": "anthropic/claude-3-5-sonnet-20241022"
+        \\    }
+        \\  },
+        \\  "providers": {
+        \\    "openrouter": {
+        \\      "apiKey": "sk-or-v1-..."
+        \\    }
+        \\  },
+        \\  "tools": {
+        \\    "web": {
+        \\      "search": {
+        \\        "apiKey": "BSA..."
+        \\      }
+        \\    },
+        \\    "telegram": {
+        \\      "botToken": "YOUR_BOT_TOKEN_HERE",
+        \\      "chatId": "YOUR_CHAT_ID_HERE"
+        \\    }
+        \\  }
+        \\}
+    ;
+    _ = std.c.fwrite(default_json.ptr, 1, default_json.len, file);
+
+    std.debug.print("✅ Created Telegram config at {s}\n📋 Please edit the file and add your Telegram credentials:\n   1. botToken - Get this from @BotFather\n   2. chatId - Get this from @userinfobot\n", .{config_path});
 }

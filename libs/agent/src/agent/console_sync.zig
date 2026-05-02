@@ -186,7 +186,7 @@ fn processMessage(allocator: std.mem.Allocator, config: Config, rag_enabled: boo
     defer spinner_thread.join();
 
     // Small delay to ensure spinner starts before agent begins processing
-    var req = timespec{ .tv_sec = 0, .tv_nsec = 50_000_000 };
+    const req: timespec = .{ .tv_sec = 0, .tv_nsec = 50_000_000 };
     var rem: timespec = undefined;
     _ = nanosleep(&req, &rem); // 50ms
     std.Thread.yield() catch |err| std.debug.print("Warning: Thread yield failed: {any}\n", .{err}); // Yield to ensure spinner thread runs
@@ -237,7 +237,7 @@ fn spinnerThread() void {
     while (spinner_active.load(.seq_cst)) {
         // Print spinner with carriage return to stay on same line
         std.debug.print("\r⚡ Thinking {c} ", .{SPINNER_FRAMES[frame_idx]});
-        var req2 = timespec{ .tv_sec = 0, .tv_nsec = SPINNER_DELAY_MS * 1_000_000 }; // Convert ms to ns
+        const req2: timespec = .{ .tv_sec = 0, .tv_nsec = SPINNER_DELAY_MS * 1_000_000 }; // Convert ms to ns
         var rem2: timespec = undefined;
         _ = nanosleep(&req2, &rem2);
 
@@ -261,21 +261,32 @@ pub const ConsoleSyncBot = struct {
         };
     }
 
-    extern "c" var stdin: *anyopaque;
-    extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
-
     pub fn tick(self: *ConsoleSyncBot) !void {
         var buf: [1024:0]u8 = undefined;
 
         std.debug.print("\nUser > ", .{});
-        const ptr = fgets(&buf, @intCast(buf.len), stdin);
-        if (ptr == null) {
-            // EOF received (Ctrl+D), trigger shutdown
-            shutdown_requested.store(true, .seq_cst);
-            return;
-        }
+
         var n: usize = 0;
-        while (n < buf.len and buf[n] != 0) n += 1;
+        while (n < buf.len - 1) {
+            var byte: [1]u8 = undefined;
+            const rd = std.posix.read(0, &byte) catch |err| {
+                std.debug.print("Error reading stdin: {any}\n", .{err});
+                shutdown_requested.store(true, .seq_cst);
+                return;
+            };
+            if (rd == 0) {
+                if (n == 0) {
+                    // EOF with no data
+                    shutdown_requested.store(true, .seq_cst);
+                    return;
+                }
+                break;
+            }
+            if (byte[0] == '\n') break;
+            buf[n] = byte[0];
+            n += 1;
+        }
+        buf[n] = 0;
 
         const trimmed = std.mem.trim(u8, buf[0..n], " \t\r\n");
         if (trimmed.len == 0) return;

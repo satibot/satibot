@@ -2,7 +2,9 @@
 //! Jobs can be scheduled to run at specific times or at regular intervals.
 //! Jobs are persisted to disk and survive application restarts.
 const std = @import("std");
+
 pub const Config = @import("core").config.Config;
+
 const Agent = @import("../agent.zig").Agent;
 
 /// Schedule types: one-time "at" a specific time, or recurring "every" N milliseconds.
@@ -80,16 +82,24 @@ pub const CronStore = struct {
     }
 
     pub fn load(self: *CronStore, path: []const u8) !void {
-        const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-            if (err == error.FileNotFound) return;
-            return err;
-        };
-        defer file.close();
+        const path_z = try self.allocator.dupeZ(u8, path);
+        defer self.allocator.free(path_z);
+        const file = std.c.fopen(path_z.ptr, "r");
+        if (file == null) return; // FileNotFound
+        defer _ = std.c.fclose(file.?);
 
-        const content = try file.readToEndAlloc(self.allocator, 10485760); // 10 * 1024 * 1024
-        defer self.allocator.free(content);
+        var content: std.ArrayList(u8) = .empty;
+        defer content.deinit(self.allocator);
+        var buf: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&buf, 1, buf.len, file.?);
+            if (n == 0) break;
+            try content.appendSlice(self.allocator, buf[0..n]);
+        }
+        const content_slice = try content.toOwnedSlice(self.allocator);
+        defer self.allocator.free(content_slice);
 
-        const parsed = try std.json.parseFromSlice(struct { jobs: []CronJob }, self.allocator, content, .{ .ignore_unknown_fields = true });
+        const parsed = try std.json.parseFromSlice(struct { jobs: []CronJob }, self.allocator, content_slice, .{ .ignore_unknown_fields = true });
         defer parsed.deinit();
 
         for (parsed.value.jobs) |job| {
@@ -160,7 +170,9 @@ pub const CronStore = struct {
     }
 
     pub fn tick(self: *CronStore, config: Config) !void {
-        const now = std.time.milliTimestamp();
+        var tv: std.c.timeval = undefined;
+        _ = std.c.gettimeofday(&tv, null);
+        const now = @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
         for (self.jobs.items) |*job| {
             if (!job.enabled) continue;
             if (job.state.next_run_at_ms) |next_run| {
@@ -174,7 +186,9 @@ pub const CronStore = struct {
     fn runJob(self: *CronStore, job: *CronJob, config: Config) !void {
         std.debug.print("⏳ Running cron job: {s} ({s})\n", .{ job.name, job.id });
 
-        const now = std.time.milliTimestamp();
+        var tv: std.c.timeval = undefined;
+        _ = std.c.gettimeofday(&tv, null);
+        const now = @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
         job.state.last_run_at_ms = now;
 
         // Create a new agent session for this job

@@ -1,10 +1,12 @@
 /// Gateway module that orchestrates all bot services.
 /// Runs the main event loop managing cron jobs and heartbeat checks.
 const std = @import("std");
+
 pub const Config = @import("core").config.Config;
+
+const Agent = @import("../agent.zig").Agent;
 const CronStore = @import("cron.zig").CronStore;
 const HeartbeatService = @import("heartbeat.zig").HeartbeatService;
-const Agent = @import("../agent.zig").Agent;
 
 /// Main gateway struct containing all bot services.
 /// Coordinates between cron jobs and heartbeat monitoring.
@@ -55,7 +57,9 @@ pub const Gateway = struct {
             };
 
             // Sleep a bit to avoid CPU pegging
-            std.Thread.sleep(std.time.ns_per_s * 1);
+            const req: std.c.timespec = .{ .sec = 1, .nsec = 0 };
+            var rem: std.c.timespec = undefined;
+            _ = std.c.nanosleep(&req, &rem);
         }
     }
 };
