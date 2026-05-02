@@ -54,23 +54,18 @@ fn showLoadingSpinner() void {
     if (!loading_active.load(.seq_cst)) return;
 
     const spin_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-    var start_tv: std.c.timeval = undefined;
-    _ = std.c.gettimeofday(&start_tv, null);
-    const start_time = @as(i128, start_tv.sec) * 1_000_000_000 + @as(i128, start_tv.usec) * 1_000;
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const start_time = std.Io.Clock.real.now(io).toNanoseconds();
     var frame: usize = 0;
 
     while (loading_active.load(.seq_cst) and !shutdown_requested.load(.seq_cst)) {
-        var current_tv: std.c.timeval = undefined;
-        _ = std.c.gettimeofday(&current_tv, null);
-        const current_time = @as(i128, current_tv.sec) * 1_000_000_000 + @as(i128, current_tv.usec) * 1_000;
-        const elapsed_ms = @as(u64, @intCast(@divTrunc(current_time - start_time, 1_000_000)));
+        const current_time = std.Io.Clock.real.now(io).toNanoseconds();
+        const elapsed_ms: u64 = @intCast(@divTrunc(current_time - start_time, 1_000_000));
         frame = @as(usize, @intCast(@divTrunc(elapsed_ms, 100))) % spin_chars.len;
 
         // Carriage return to overwrite current line
         std.debug.print("\r🤔 Thinking {c}...", .{spin_chars[frame]});
-        const req: std.c.timespec = .{ .sec = 0, .nsec = 100_000_000 };
-        var rem: std.c.timespec = undefined;
-        _ = std.c.nanosleep(&req, &rem);
+        std.Io.sleep(io, std.Io.Duration.fromMilliseconds(100), .real) catch {};
     }
 
     // Clear the loading line when done

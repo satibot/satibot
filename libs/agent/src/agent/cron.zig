@@ -177,9 +177,7 @@ pub const CronStore = struct {
     }
 
     pub fn tick(self: *CronStore, config: Config) !void {
-        var tv: std.c.timeval = undefined;
-        _ = std.c.gettimeofday(&tv, null);
-        const now = @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
+        const now = nowMs();
         for (self.jobs.items) |*job| {
             if (!job.enabled) continue;
             if (job.state.next_run_at_ms) |next_run| {
@@ -193,9 +191,7 @@ pub const CronStore = struct {
     fn runJob(self: *CronStore, job: *CronJob, config: Config) !void {
         std.debug.print("⏳ Running cron job: {s} ({s})\n", .{ job.name, job.id });
 
-        var tv: std.c.timeval = undefined;
-        _ = std.c.gettimeofday(&tv, null);
-        const now = @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
+        const now = nowMs();
         job.state.last_run_at_ms = now;
 
         // Create a new agent session for this job

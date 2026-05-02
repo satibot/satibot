@@ -57,9 +57,8 @@ pub const Gateway = struct {
             };
 
             // Sleep a bit to avoid CPU pegging
-            const req: std.c.timespec = .{ .sec = 1, .nsec = 0 };
-            var rem: std.c.timespec = undefined;
-            _ = std.c.nanosleep(&req, &rem);
+            const io = std.Io.Threaded.global_single_threaded.io();
+            std.Io.sleep(io, std.Io.Duration.fromSeconds(1), .real) catch {};
         }
     }
 };

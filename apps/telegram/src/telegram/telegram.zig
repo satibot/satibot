@@ -289,7 +289,7 @@ pub const TelegramBot = struct {
 
             // Small delay to prevent excessive polling
             const io = std.Io.Threaded.global_single_threaded.io();
-            std.Io.sleep(io, .{ .nanoseconds = 100 * std.time.ns_per_ms }, .real) catch {};
+            std.Io.sleep(io, std.Io.Duration.fromMilliseconds(100), .real) catch {};
         }
 
         std.debug.print("\n🌙 Event loop stopped. Goodbye!\n", .{});

@@ -19,9 +19,8 @@ const Observer = observability.Observer;
 const ObserverEvent = observability.ObserverEvent;
 
 fn getCurrentTimeMs() i64 {
-    var tv: std.c.timeval = undefined;
-    _ = std.c.gettimeofday(&tv, null);
-    return @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    return std.Io.Clock.real.now(io).toMilliseconds();
 }
 
 /// Helper function to print streaming response chunks to stdout.
@@ -299,7 +298,7 @@ pub const Agent = struct {
                 if (err == error.ReadFailed or err == error.HttpConnectionClosing or err == error.ConnectionResetByPeer) {
                     std.debug.print("\n(Embedding Network error: {any}. Retrying... {d}/{d})\n", .{ err, retry_count + 1, max_retries });
                     const io = std.Io.Threaded.global_single_threaded.io();
-                    std.Io.sleep(io, .{ .nanoseconds = std.time.ns_per_s }, .real) catch {};
+                    std.Io.sleep(io, std.Io.Duration.fromSeconds(1), .real) catch {};
                     continue;
                 }
                 return err;

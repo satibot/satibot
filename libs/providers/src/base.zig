@@ -9,14 +9,9 @@ pub const Config = core.config.Config;
 const openrouter = @import("openrouter.zig");
 const OpenRouterError = openrouter.OpenRouterError;
 
-extern "c" fn nanosleep(req: *const std.c.timespec, rem: ?*std.c.timespec) c_int;
-
 fn sleepSeconds(seconds: u64) void {
-    const ts: std.c.timespec = .{
-        .sec = @intCast(seconds),
-        .nsec = 0,
-    };
-    _ = nanosleep(&ts, null);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(seconds)), .real) catch {};
 }
 /// Callback function for streaming response chunks.
 /// Takes a context pointer and the chunk content.
