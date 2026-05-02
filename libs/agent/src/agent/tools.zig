@@ -1131,7 +1131,7 @@ pub fn findFn(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 
     const extensions = [_][]const u8{ ".zig", ".ts", ".js", ".tsx", ".jsx", ".py", ".go", ".rs", ".c", ".h", ".java" };
 
-    var found_count: usize = 0;
+    const found_count: usize = 0;
     _ = found_count; // autofix
 
     for (extensions) |ext| {
@@ -1196,7 +1196,7 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         return result.toOwnedSlice(ctx.allocator);
     }
 
-    var found_count: usize = 0;
+    const found_count: usize = 0;
     var line_iter = std.mem.tokenizeScalar(u8, grep_result.stdout, '\n');
     while (line_iter.next()) |file_path| {
         if (file_path.len == 0) continue;

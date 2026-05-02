@@ -19,9 +19,9 @@ const Observer = observability.Observer;
 const ObserverEvent = observability.ObserverEvent;
 
 fn getCurrentTimeMs() i64 {
-    var tv: std.posix.timeval = undefined;
+    var tv: std.c.timeval = undefined;
     _ = std.c.gettimeofday(&tv, null);
-    return @as(i64, tv.tv_sec) * 1000 + @divTrunc(@as(i64, tv.tv_usec), 1000);
+    return @as(i64, tv.sec) * 1000 + @divTrunc(@as(i64, tv.usec), 1000);
 }
 
 /// Helper function to print streaming response chunks to stdout.
@@ -283,7 +283,10 @@ pub const Agent = struct {
             return local_embeddings.LocalEmbedder.generate(allocator, input);
         }
 
-        const api_key = if (config.providers.openrouter) |p| p.apiKey else std.c.getenv("OPENROUTER_API_KEY") orelse {
+        const api_key = if (config.providers.openrouter) |p| p.apiKey else blk: {
+            const c_val = std.c.getenv("OPENROUTER_API_KEY");
+            break :blk if (c_val) |v| std.mem.span(v) else null;
+        } orelse {
             return error.NoApiKey;
         };
         var provider = try openrouter.OpenRouterProvider.init(allocator, api_key);

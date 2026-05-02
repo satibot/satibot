@@ -2,11 +2,22 @@
 /// Defines common message formats, tool call structures, and response types
 /// used across all LLM provider implementations (Anthropic, OpenRouter, Groq).
 const std = @import("std");
+
 const core = @import("core");
 pub const Config = core.config.Config;
+
 const openrouter = @import("openrouter.zig");
 const OpenRouterError = openrouter.OpenRouterError;
 
+extern "c" fn nanosleep(req: *const std.c.timespec, rem: ?*std.c.timespec) c_int;
+
+fn sleepSeconds(seconds: u64) void {
+    const ts: std.c.timespec = .{
+        .tv_sec = @intCast(seconds),
+        .tv_nsec = 0,
+    };
+    _ = nanosleep(&ts, null);
+}
 /// Callback function for streaming response chunks.
 /// Takes a context pointer and the chunk content.
 pub const ChunkCallback = *const fn (ctx: ?*anyopaque, chunk: []const u8) void;

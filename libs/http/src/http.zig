@@ -45,7 +45,6 @@ pub const Client = struct {
     /// Initialize client with custom connection settings.
     /// Loads root CA certificates from system trust store.
     pub fn initWithSettings(allocator: std.mem.Allocator, settings: ConnectionSettings) !Client {
-        _ = allocator;
         const root_ca = tls.config.cert.Bundle.empty;
         return .{
             .allocator = allocator,
