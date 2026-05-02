@@ -182,9 +182,9 @@ pub const AsyncClient = struct {
 
     /// Send HTTP request
     fn sendRequest(request: *AsyncRequest, uri: std.Uri) !void {
-        var buffer = std.ArrayList(u8).initCapacity(request.allocator, 4096) catch unreachable;
-        defer buffer.deinit(request.allocator);
-        const w = buffer.writer();
+        var out = std.Io.Writer.Allocating.initCapacity(request.allocator, 4096) catch unreachable;
+        defer out.deinit();
+        const w = &out.writer;
 
         const path = if (uri.path.percent_encoded.len == 0) "/" else uri.path.percent_encoded;
         try w.print("{s} {s}", .{ @tagName(request.method), path });
@@ -202,6 +202,9 @@ pub const AsyncClient = struct {
         }
         try w.writeAll("\r\n");
         try w.writeAll(request.body);
+
+        var buffer = out.toArrayList();
+        defer buffer.deinit(request.allocator);
 
         if (request.tls_state) |state| {
             try state.conn.writeAll(buffer.items);

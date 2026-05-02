@@ -131,7 +131,7 @@ test "Session: save and load" {
         .{ .role = "user", .content = "hello" },
         .{ .role = "assistant", .content = "hi" },
     };
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
     const path = try std.fs.path.join(allocator, &.{ tmp_path, "test_session.json" });
     defer allocator.free(path);
@@ -186,7 +186,7 @@ test "Session: save and load with tool calls" {
         },
     };
 
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
     const path = try std.fs.path.join(allocator, &.{ tmp_path, "test_session_tools.json" });
     defer allocator.free(path);
@@ -245,7 +245,7 @@ test "Session: save and load empty messages" {
     defer tmp.cleanup();
 
     const messages = &[_]base.LlmMessage{};
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
     const path = try std.fs.path.join(allocator, &.{ tmp_path, "empty_session.json" });
     defer allocator.free(path);

@@ -1211,22 +1211,28 @@ pub fn findFnSwc(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 }
 
 fn getFnContext(allocator: std.mem.Allocator, file_path: []const u8, fn_name: []const u8) ![]const u8 {
-    const file = std.fs.cwd().openFile(file_path, .{}) catch return allocator.dupe(u8, "(Could not read file)");
-    defer file.close();
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = std.Io.Dir.cwd().openFile(io, file_path, .{}) catch return allocator.dupe(u8, "(Could not read file)");
+    defer file.close(io);
 
-    const content = file.readToEndAlloc(allocator, 1048576) catch return allocator.dupe(u8, "(Could not read file content)");
+    var reader_buf: [4096]u8 = undefined;
+    var reader = file.reader(io, &reader_buf);
+    const content = reader.interface.allocRemaining(allocator, .unlimited) catch return allocator.dupe(u8, "(Could not read file content)");
     defer allocator.free(content);
 
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
 
     var line_iter = std.mem.tokenizeScalar(u8, content, '\n');
     var line_num: usize = 0;
     while (line_iter.next()) |line| : (line_num += 1) {
         if (std.mem.indexOf(u8, line, fn_name) != null) {
-            try result.writer(allocator).print("  {d}: {s}\n", .{ line_num + 1, line });
+            try out.writer.print("  {d}: {s}\n", .{ line_num + 1, line });
         }
     }
+
+    var result = out.toArrayList();
+    defer result.deinit(allocator);
 
     if (result.items.len == 0) {
         return allocator.dupe(u8, "(Function not found in source)");
@@ -1575,10 +1581,10 @@ test "Tools: readFile success" {
     // Create a test file in the temporary directory
     const test_content = "Hello, World!\nThis is a test file.\nWith multiple lines.";
     const test_file_path = "test_read.txt";
-    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = test_content });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = test_file_path, .data = test_content });
 
     // Get the absolute path to the test file
-    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    const abs_path = try tmp.dir.realPathFileAlloc(std.testing.io, test_file_path, allocator);
     defer allocator.free(abs_path);
 
     const ctx: ToolContext = .{
@@ -1643,10 +1649,10 @@ test "Tools: readFile empty file" {
 
     // Create an empty test file
     const test_file_path = "empty_test.txt";
-    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = "" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = test_file_path, .data = "" });
 
     // Get the absolute path to the test file
-    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    const abs_path = try tmp.dir.realPathFileAlloc(std.testing.io, test_file_path, allocator);
     defer allocator.free(abs_path);
 
     const ctx: ToolContext = .{
@@ -1760,10 +1766,10 @@ test "Tools: readFile security allows safe files" {
     // Create a safe test file
     const test_content = "This is a safe file content.";
     const test_file_path = "safe_file.txt";
-    try tmp.dir.writeFile(.{ .sub_path = test_file_path, .data = test_content });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = test_file_path, .data = test_content });
 
     // Get the absolute path to the test file
-    const abs_path = try tmp.dir.realpathAlloc(allocator, test_file_path);
+    const abs_path = try tmp.dir.realPathFileAlloc(std.testing.io, test_file_path, allocator);
     defer allocator.free(abs_path);
 
     const ctx: ToolContext = .{
@@ -1865,9 +1871,9 @@ test "Tools: readFile with absolute and relative paths" {
     // Create test files
     const test_content = "Test content for path handling.";
     const safe_file = "safe_config.txt";
-    try tmp.dir.writeFile(.{ .sub_path = safe_file, .data = test_content });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = safe_file, .data = test_content });
 
-    const abs_path = try tmp.dir.realpathAlloc(allocator, safe_file);
+    const abs_path = try tmp.dir.realPathFileAlloc(std.testing.io, safe_file, allocator);
     defer allocator.free(abs_path);
 
     const ctx: ToolContext = .{
@@ -2093,9 +2099,9 @@ test "Tools: getFnContext with valid TypeScript file" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{ .sub_path = "test.ts", .data = test_code });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "test.ts", .data = test_code });
 
-    const abs_path = try tmp.dir.realpathAlloc(allocator, "test.ts");
+    const abs_path = try tmp.dir.realPathFileAlloc(std.testing.io, "test.ts", allocator);
     defer allocator.free(abs_path);
 
     const result = try getFnContext(allocator, abs_path, "hello");
@@ -2201,9 +2207,9 @@ test "Tools: findFn with excluded patterns" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.makeDir("node_modules");
-    try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.js", .data = "function main() {}" });
-    try tmp.dir.writeFile(.{ .sub_path = "main.zig", .data = "pub fn main() void {}" });
+    try tmp.dir.createDir(std.testing.io, "node_modules", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "node_modules/test.js", .data = "function main() {}" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "main.zig", .data = "pub fn main() void {}" });
 
     const result = try findFn(ctx, "{\"name\": \"main\", \"path\": \".\"}");
     defer allocator.free(result);
@@ -2228,9 +2234,9 @@ test "Tools: findFnSwc excludes node_modules" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.makeDir("node_modules");
-    try tmp.dir.writeFile(.{ .sub_path = "node_modules/test.ts", .data = "export function hello() {}" });
-    try tmp.dir.writeFile(.{ .sub_path = "main.ts", .data = "export function hello() {}" });
+    try tmp.dir.createDir(std.testing.io, "node_modules", .default_dir);
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "node_modules/test.ts", .data = "export function hello() {}" });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "main.ts", .data = "export function hello() {}" });
 
     const result = try findFnSwc(ctx, "{\"name\": \"hello\", \"path\": \".\"}");
     defer allocator.free(result);

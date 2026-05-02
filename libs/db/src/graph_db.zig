@@ -19,7 +19,7 @@ pub const Edge = struct {
 pub const Graph = struct {
     allocator: std.mem.Allocator,
     nodes: std.StringHashMap(Node),
-    edges: std.ArrayListUnmanaged(Edge) = .{},
+    edges: std.ArrayListUnmanaged(Edge) = .empty,
 
     /// Initialize an empty graph.
     pub fn init(allocator: std.mem.Allocator) Graph {
@@ -68,7 +68,7 @@ pub const Graph = struct {
 
     /// Query the graph for relations starting from the given node.
     pub fn query(self: *Graph, start_node: []const u8) ![]const u8 {
-        var out = std.io.Writer.Allocating.init(self.allocator);
+        var out: std.Io.Writer.Allocating = .init(self.allocator);
         errdefer out.deinit();
 
         try out.writer.print("Graph context for node: {s}\n", .{start_node});
@@ -92,8 +92,9 @@ pub const Graph = struct {
     }
 
     pub fn save(self: *Graph, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
 
         const export_data: struct {
             nodes: []Node,
@@ -111,17 +112,20 @@ pub const Graph = struct {
             i += 1;
         }
 
-        var out = std.io.Writer.Allocating.init(self.allocator);
+        var out: std.Io.Writer.Allocating = .init(self.allocator);
         defer out.deinit();
         try std.json.Stringify.value(export_data, .{}, &out.writer);
-        try file.writeAll(out.written());
+        try file.writeStreamingAll(io, out.written());
     }
 
     pub fn load(self: *Graph, path: []const u8) !void {
-        const file = std.fs.cwd().openFile(path, .{}) catch return;
-        defer file.close();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return;
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(self.allocator, 104857600); // 100 * 1024 * 1024
+        var reader_buf: [4096]u8 = undefined;
+        var reader = file.reader(io, &reader_buf);
+        const content = try reader.interface.allocRemaining(self.allocator, .unlimited);
         defer self.allocator.free(content);
 
         const ImportData = struct {
@@ -183,7 +187,7 @@ test "Graph: save and load" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
     const file_path = try std.fs.path.join(allocator, &.{ tmp_path, "graph_test.json" });
     defer allocator.free(file_path);

@@ -148,9 +148,9 @@ test "Config: loading from file" {
         \\  }
         \\}
     ;
-    try tmp.dir.writeFile(.{ .sub_path = "config.json", .data = config_json });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.json", .data = config_json });
 
-    const path = try tmp.dir.realpathAlloc(allocator, "config.json");
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "config.json", allocator);
     defer allocator.free(path);
 
     const parsed = try loadFromPath(allocator, path);
@@ -300,8 +300,8 @@ test "Config: save and reload" {
     };
 
     // Create config file first
-    try tmp.dir.writeFile(.{ .sub_path = "config.json", .data = "{}" });
-    const path = try tmp.dir.realpathAlloc(allocator, "config.json");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.json", .data = "{}" });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "config.json", allocator);
     defer allocator.free(path);
 
     // Save config
@@ -382,8 +382,8 @@ test "Config save and load roundtrip with openrouter model" {
     defer tmp.cleanup();
 
     // Create config file first
-    try tmp.dir.writeFile(.{ .sub_path = "config.json", .data = "{}" });
-    const path = try tmp.dir.realpathAlloc(allocator, "config.json");
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = "config.json", .data = "{}" });
+    const path = try tmp.dir.realPathFileAlloc(std.testing.io, "config.json", allocator);
     defer allocator.free(path);
 
     const original_config: Config = .{

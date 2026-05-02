@@ -1514,14 +1514,17 @@ test "Chat memory: Large message memory impact" {
     defer ctx.deinit();
 
     // Create a large message (simulating a long conversation or code)
-    var large_content = std.ArrayList(u8).initCapacity(allocator, 1024) catch unreachable;
-    defer large_content.deinit(allocator);
+    var large_out: std.Io.Writer.Allocating = .init(allocator);
+    defer large_out.deinit();
 
-    try large_content.appendSlice(allocator, "This is a large message containing multiple lines.\n");
+    try large_out.writer.writeAll("This is a large message containing multiple lines.\n");
     for (0..1000) |i| {
-        try large_content.appendSlice(allocator, "Line ");
-        try large_content.writer(allocator).print("{d}: This is some sample content to increase memory usage.\n", .{i});
+        try large_out.writer.writeAll("Line ");
+        try large_out.writer.print("{d}: This is some sample content to increase memory usage.\n", .{i});
     }
+
+    var large_content = large_out.toArrayList();
+    defer large_content.deinit(allocator);
 
     const initial_memory = calculateContextMemoryUsage(&ctx);
 

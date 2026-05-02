@@ -7,6 +7,12 @@ pub const Config = @import("core").config.Config;
 
 const Agent = @import("../agent.zig").Agent;
 
+/// Get current time in milliseconds using the Io interface.
+fn nowMs() i64 {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    return std.Io.Clock.real.now(io).toMilliseconds();
+}
+
 /// Schedule types: one-time "at" a specific time, or recurring "every" N milliseconds.
 pub const CronScheduleKind = enum {
     at,
@@ -108,13 +114,14 @@ pub const CronStore = struct {
     }
 
     pub fn save(self: *CronStore, path: []const u8) !void {
-        const file = try std.fs.createFileAbsolute(path, .{});
-        defer file.close();
+        const io = std.Io.Threaded.global_single_threaded.io();
+        const file = try std.Io.Dir.createFileAbsolute(io, path, .{});
+        defer file.close(io);
 
-        var out = std.io.Writer.Allocating.init(self.allocator);
+        var out: std.Io.Writer.Allocating = .init(self.allocator);
         defer out.deinit();
         try std.json.Stringify.value(.{ .jobs = self.jobs.items }, .{ .whitespace = .indent_2 }, &out.writer);
-        try file.writeAll(out.written());
+        try file.writeStreamingAll(io, out.written());
     }
 
     fn cloneJob(allocator: std.mem.Allocator, job: CronJob) !CronJob {
@@ -141,8 +148,8 @@ pub const CronStore = struct {
     }
 
     pub fn addJob(self: *CronStore, name: []const u8, schedule: CronSchedule, message: []const u8) ![]const u8 {
-        const id = try std.fmt.allocPrint(self.allocator, "{d}", .{std.time.milliTimestamp()});
-        const now = std.time.milliTimestamp();
+        const id = try std.fmt.allocPrint(self.allocator, "{d}", .{nowMs()});
+        const now = nowMs();
 
         var next_run: ?i64 = null;
         if (schedule.kind == .every) {
@@ -240,7 +247,7 @@ test "CronStore: init, add, save, and load" {
     try std.testing.expect(id.len > 0);
     try std.testing.expectEqual(@as(usize, 1), store.jobs.items.len);
 
-    const tmp_path = try tmp.dir.realpathAlloc(allocator, ".");
+    const tmp_path = try tmp.dir.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(tmp_path);
     const cron_path = try std.fs.path.join(allocator, &.{ tmp_path, "cron_jobs.json" });
     defer allocator.free(cron_path);
@@ -324,11 +331,11 @@ test "CronStore: multiple jobs" {
     const id1 = try store.addJob("job1", .{ .kind = .every, .every_ms = 1000 }, "msg1");
 
     // Small delay to ensure different timestamps (1 millisecond)
-    std.Thread.sleep(1000000); // 1ms in nanoseconds
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch {};
 
     const id2 = try store.addJob("job2", .{ .kind = .every, .every_ms = 2000 }, "msg2");
 
-    std.Thread.sleep(1000000);
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch {};
 
     const id3 = try store.addJob("job3", .{ .kind = .at, .at_ms = 9999999999 }, "msg3");
 

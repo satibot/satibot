@@ -111,14 +111,14 @@ test "BotDefinition: load existing files" {
     };
 
     // Get current working directory
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
+    const cwd = std.Io.Dir.cwd();
+    const cwd_path = try cwd.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(cwd_path);
 
     // Create test files
     for (test_files) |file| {
-        try cwd.writeFile(.{ .sub_path = file.name, .data = file.content });
-        defer cwd.deleteFile(file.name) catch {};
+        try cwd.writeFile(std.testing.io, .{ .sub_path = file.name, .data = file.content });
+        defer cwd.deleteFile(std.testing.io, file.name) catch {};
 
         // Create absolute path for loadFile
         const abs_path = try std.fs.path.join(allocator, &.{ cwd_path, file.name });
@@ -139,14 +139,14 @@ test "BotDefinition: load partial files (only SOUL and USER)" {
     const soul_content = "Partial soul content";
     const user_content = "Partial user content";
 
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
+    const cwd = std.Io.Dir.cwd();
+    const cwd_path = try cwd.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(cwd_path);
 
-    try cwd.writeFile(.{ .sub_path = "partial_soul.md", .data = soul_content });
-    defer cwd.deleteFile("partial_soul.md") catch {};
-    try cwd.writeFile(.{ .sub_path = "partial_user.md", .data = user_content });
-    defer cwd.deleteFile("partial_user.md") catch {};
+    try cwd.writeFile(std.testing.io, .{ .sub_path = "partial_soul.md", .data = soul_content });
+    defer cwd.deleteFile(std.testing.io, "partial_soul.md") catch {};
+    try cwd.writeFile(std.testing.io, .{ .sub_path = "partial_user.md", .data = user_content });
+    defer cwd.deleteFile(std.testing.io, "partial_user.md") catch {};
 
     // Test loadFile for existing files with absolute paths
     const soul_abs_path = try std.fs.path.join(allocator, &.{ cwd_path, "partial_soul.md" });
@@ -173,13 +173,13 @@ test "BotDefinition: load partial files (only SOUL and USER)" {
 test "BotDefinition: load empty files" {
     const allocator = std.testing.allocator;
 
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
+    const cwd = std.Io.Dir.cwd();
+    const cwd_path = try cwd.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(cwd_path);
 
     // Create empty file in current directory
-    try cwd.writeFile(.{ .sub_path = "empty_test.md", .data = "" });
-    defer cwd.deleteFile("empty_test.md") catch {};
+    try cwd.writeFile(std.testing.io, .{ .sub_path = "empty_test.md", .data = "" });
+    defer cwd.deleteFile(std.testing.io, "empty_test.md") catch {};
 
     const abs_path = try std.fs.path.join(allocator, &.{ cwd_path, "empty_test.md" });
     defer allocator.free(abs_path);
@@ -238,12 +238,12 @@ test "BotDefinition: loadFile with valid file" {
     const allocator = std.testing.allocator;
 
     const test_content = "Test file content\nWith multiple lines";
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
+    const cwd = std.Io.Dir.cwd();
+    const cwd_path = try cwd.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(cwd_path);
 
-    try cwd.writeFile(.{ .sub_path = "valid_test.md", .data = test_content });
-    defer cwd.deleteFile("valid_test.md") catch {};
+    try cwd.writeFile(std.testing.io, .{ .sub_path = "valid_test.md", .data = test_content });
+    defer cwd.deleteFile(std.testing.io, "valid_test.md") catch {};
 
     const abs_path = try std.fs.path.join(allocator, &.{ cwd_path, "valid_test.md" });
     defer allocator.free(abs_path);
@@ -259,12 +259,12 @@ test "BotDefinition: loadFile with valid file" {
 test "BotDefinition: loadFile with empty file" {
     const allocator = std.testing.allocator;
 
-    const cwd = std.fs.cwd();
-    const cwd_path = try cwd.realpathAlloc(allocator, ".");
+    const cwd = std.Io.Dir.cwd();
+    const cwd_path = try cwd.realPathFileAlloc(std.testing.io, ".", allocator);
     defer allocator.free(cwd_path);
 
-    try cwd.writeFile(.{ .sub_path = "empty_file_test.md", .data = "" });
-    defer cwd.deleteFile("empty_file_test.md") catch {};
+    try cwd.writeFile(std.testing.io, .{ .sub_path = "empty_file_test.md", .data = "" });
+    defer cwd.deleteFile(std.testing.io, "empty_file_test.md") catch {};
 
     const abs_path = try std.fs.path.join(allocator, &.{ cwd_path, "empty_file_test.md" });
     defer allocator.free(abs_path);

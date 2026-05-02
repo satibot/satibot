@@ -11,6 +11,46 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `exe.linkLibC()` | `exe.root_module.link_libc = true` |
 | `exe.linkSystemLibrary("sqlite3")` | `exe.root_module.linkSystemLibrary("sqlite3", .{})` |
 
+## Language Changes
+
+### Entry Points (Juicy Main)
+
+The main function signature has changed to accept an `std.process.Init` parameter. The full `Init` provides an allocator, `io`, arena, and `environ_map`:
+
+```zig
+// Before
+pub fn main() !void
+
+// After - full Init
+pub fn main(init: std.process.Init) !void {
+    const gpa = init.gpa;
+    const io = init.io;
+    const arena = init.arena;
+    const environ_map = init.environ_map;
+    // ...
+}
+
+// After - Minimal variant (only args and environ)
+pub fn main(init: std.process.Init.Minimal) !void {
+    const args = try init.args.toSlice(allocator);
+}
+```
+
+### `@Type` Builtin Replaced
+
+`@Type` is deprecated and replaced with individual type-creating builtins:
+
+| Old | Replacement |
+|---|---|
+| `@Type(.{ .int = ... })` | `@Int(.unsigned, 10)` |
+| `@Type(.{ .enum_literal })` | `@EnumLiteral()` |
+| `@Type(.{ .pointer = ... })` | `@Pointer(...)` |
+| `@Type(.{ .array = ... })` | `@Array(...)` |
+| `@Type(.{ .struct = ... })` | `@Struct(...)` |
+| `@Type(.{ .tuple = ... })` | `@Tuple(...)` |
+| `@Type(.{ .union = ... })` | `@Union(...)` |
+| `@Type(.{ .error_set = ... })` | `@ErrorSet(...)` |
+
 ## Standard Library API Changes
 
 ### Removed APIs
@@ -26,7 +66,7 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.process.Child.init(args, allocator)` | `std.process.spawn(io, .{ .argv = args })` | Process spawning requires `Io` handle |
 | `child.spawnAndWait()` | `child.wait(io)` | Wait for child process |
 | `Child.Term.Exited` | `Child.Term.exited` | Enum tags are lowercase |
-| `std.crypto.random.bytes()` | `std.Random.DefaultPrng` | Non-cryptographic random generation |
+| `std.crypto.random.bytes()` | `io.random()` or `std.Random.DefaultPrng` | Non-cryptographic random generation |
 | `std.time.timestamp()` | `std.c.gettimeofday()` + `tv.sec` | Wall clock timestamps |
 | `std.time.milliTimestamp()` | `std.c.gettimeofday()` + calculation | Millisecond precision timestamps |
 | `std.time.nanoTimestamp()` | `std.c.gettimeofday()` + calculation | Nanosecond precision timestamps |
@@ -37,9 +77,12 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.posix.gettimeofday()` | `std.c.gettimeofday()` | High-resolution time (still available under `std.c`) |
 | `std.posix.getenv()` | `std.c.getenv()` + `std.mem.span()` | Environment variable reading |
 | `std.posix.setenv()` / `unsetenv()` | `extern "c" fn setenv/unsetenv` declarations | Environment variable setting in tests |
-| `std.Thread.Mutex` | `std.atomic.Mutex` | Synchronization primitive (use `.unlocked`) |
-| `std.Thread.Condition` | Busy-wait loop with `sleepMs` | Signaling primitive |
-| `std.Thread.sleep()` | `std.c.nanosleep(&req, &rem)` | Thread sleep |
+| `std.Thread.Mutex` | `std.Io.Mutex` | Synchronization primitive |
+| `std.Thread.Condition` | `std.Io.Condition` | Signaling primitive |
+| `std.Thread.ResetEvent` | `std.Io.Event` | Event primitive |
+| `std.Thread.WaitGroup` | `std.Io.Group` | Task grouping primitive |
+| `std.Thread.Pool` | `std.Io.async` / `std.Io.Group.async` | Thread pool removed |
+| `std.Thread.sleep()` | `std.Io.sleep(io, duration)` or `std.c.nanosleep` | Thread sleep |
 | `std.net.Stream` | Removed - network APIs changed | HTTP/TLS stack affected |
 | `std.ArrayList.writer()` | Removed - use manual buffer management | JSON serialization affected |
 | `std.ArrayList(T).init(allocator)` | `var list: std.ArrayList(T) = .empty;` | Empty initialization |
@@ -52,6 +95,12 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.cstr.toCstr()` | `allocator.dupeZ()` | String conversion |
 | `std.heap.PageAlloc` | `std.heap.DebugAllocator(.{})` | Page allocator API |
 | `pub fn main() !void` | `pub fn main(init: std.process.Init.Minimal) !void` | Entry point signature |
+| `std.io` namespace | `std.Io` | I/O namespace renamed (PascalCase) |
+| `std.io.fixedBufferStream` (read) | `var reader: std.Io.Reader = .fixed(data);` | Fixed buffer reader |
+| `std.io.fixedBufferStream` (write) | `var writer: std.Io.Writer = .fixed(buffer);` | Fixed buffer writer |
+| `std.Io.GenericReader` | `std.Io.Reader` | Generic reader removed |
+| `std.Io.AnyReader` | `std.Io.Reader` | AnyReader removed |
+| `{D}` duration format | `{f}` with `std.Io.Duration` | Duration format specifier |
 
 ### Type Mismatch Fixes
 
@@ -108,15 +157,17 @@ defer _ = gpa.deinit();
 ```
 
 #### Mutex Initialization
-`std.Thread.Mutex` replaced with `std.atomic.Mutex`:
+`std.Thread.Mutex` replaced with `std.Io.Mutex`:
 
 ```zig
 // Before
-.task_mutex = .{},
+var mutex = std.Thread.Mutex.init();
 
 // After
-.task_mutex = .unlocked,
+var mutex = std.Io.Mutex.init();
 ```
+
+Note: `std.Io.Mutex` must be used when coordinating with `std.Io` based concurrency. Mixing `std.atomic.Mutex` with `std.Io` primitives is incorrect.
 
 #### Process Spawning
 
@@ -151,6 +202,8 @@ std.Io.sleep(io, .{ .seconds = 5 }, .real) catch {};
 std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
 ```
 
+Note: `std.Io.Duration.fromMillis` and `std.Io.Duration.fromNanos` are also available.
+
 #### Entry Point Argument Type
 
 ```zig
@@ -159,6 +212,42 @@ fn runAgent(allocator: std.mem.Allocator, args: [][:0]u8) !void
 
 // After
 fn runAgent(allocator: std.mem.Allocator, args: []const [:0]const u8) !void
+```
+
+#### Duration Formatting
+
+```zig
+// Before
+writer.print("Duration: {D}", .{ns});
+
+// After
+writer.print("Duration: {f}", .{std.Io.Duration{ .nanoseconds = ns }});
+```
+
+#### Environment Variable Error Renames
+
+| Old | New |
+|---|---|
+| `error.EnvironmentVariableNotFound` | `error.EnvironmentVariableMissing` |
+| `error.CwdNotFound` | `error.CurrentPathMissing` |
+| `error.FileTooBig` | `error.StreamTooLong` |
+
+#### `std.Io` Reader/Writer Patterns
+
+```zig
+// Before - FixedBufferStream
+var fbs = std.io.fixedBufferStream(data);
+const reader = fbs.reader();
+
+// After
+var reader: std.Io.Reader = .fixed(data);
+
+// Before - FixedBufferStream (write)
+var fbs = std.io.fixedBufferStream(buffer);
+const writer = fbs.writer();
+
+// After
+var writer: std.Io.Writer = .fixed(buffer);
 ```
 
 ## APIs That Still Work
@@ -181,7 +270,7 @@ The following APIs were not affected by Zig 0.16 changes and continue to work:
 - `std.net.Stream` no longer available - network stack requires significant rework
 
 ### Provider Libraries (`libs/providers`)
-- `std.posix.getenv()` → `std.c.getenv()` applied across Anthropic, Minimax, OpenRouter, and OpenRouter Sync providers
+- `std.posix.getenv()` -> `std.c.getenv()` applied across Anthropic, Minimax, OpenRouter, and OpenRouter Sync providers
 
 ## C Interop Patterns
 
@@ -208,6 +297,8 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 ```
 
+Note: The canonical Zig 0.16 approach is `std.Io.Dir.cwd().readFileAlloc(io, file_name, allocator, .limited(max_size))`. The C interop pattern above is a workaround when `std.Io` migration is not yet complete.
+
 ### Time Helper Pattern
 ```zig
 fn getCurrentTimeMs() i64 {
@@ -217,7 +308,7 @@ fn getCurrentTimeMs() i64 {
 }
 ```
 
-Note: In Zig 0.16, `std.c.timeval` fields are `sec` and `usec` (no `tv_` prefix).
+Note: In Zig 0.16, `std.c.timeval` fields are `sec` and `usec` (no `tv_` prefix). The canonical approach is `std.Io.Timestamp.now(io)`.
 
 ### Stdin Reading Pattern
 ```zig
@@ -239,16 +330,20 @@ const input = std.mem.trim(u8, buf[0..n], " \t\r\n");
 ```
 
 ### Condition Variable Replacement
-`std.Thread.Condition` removed; use busy-wait with mutex unlock/relock:
+`std.Thread.Condition` removed; use `std.Io.Condition` for I/O based concurrency, or a busy-wait as a workaround:
 
 ```zig
 // Before
 self.task_condition.wait(&self.task_mutex);
 
-// After
+// After (workaround)
 self.task_mutex.unlock();
 sleepMs(1);
 mutexLock(&self.task_mutex);
+
+// After (canonical with std.Io)
+var cond = std.Io.Condition.init();
+// ... use with std.Io.Mutex
 ```
 
 ## Remaining Work
@@ -257,6 +352,7 @@ The following areas still need attention for full Zig 0.16 compatibility:
 1. Network Stack - `std.net.Stream` removal requires reimplementing HTTP/TLS networking (TLS currently returns empty bundle)
 2. File System Iteration - `std.fs.cwd().openDir()` with iteration is disabled; skill/rule listing and file walking stubbed out
 3. TLS Certificate Loading - `Bundle.rescan()` requires `io` and `now` parameters from new I/O model
+4. Full `std.Io` Migration - Many APIs in the codebase still use C interop workarounds instead of the canonical `std.Io` interfaces (`std.Io.Dir`, `std.Io.Reader`, `std.Io.Writer`, etc.)
 
 ## Testing
 
@@ -267,8 +363,8 @@ zig build
 
 Individual targets:
 ```bash
-zig build console # Async console app
+zig build console      # Async console app
 zig build console-sync # Sync console app
-zig build telegram # Telegram bot
-zig build agent # Interactive agent CLI
+zig build telegram     # Telegram bot
+zig build agent        # Interactive agent CLI
 ```

@@ -422,8 +422,8 @@ test "ConsoleSyncBot shutdown flag can be set" {
 }
 
 test "ConsoleSyncBot spinner uses stderr for unbuffered output" {
-    const stderr = std.fs.File.stderr();
-    const stdin = std.fs.File.stdin();
+    const stderr = std.Io.File.stderr();
+    const stdin = std.Io.File.stdin();
     try std.testing.expect(stderr.handle != stdin.handle);
 }
 
@@ -444,9 +444,9 @@ test "ConsoleSyncBot spinner thread can be controlled via atomic" {
 }
 
 test "ConsoleSyncBot: Spinner writes to stderr for immediate display" {
-    const stderr = std.fs.File.stderr();
+    const stderr = std.Io.File.stderr();
     var buf: [256]u8 = undefined;
-    const writer = stderr.writer(&buf);
+    const writer = stderr.writer(std.Io.Threaded.global_single_threaded.io(), &buf);
     _ = writer;
 }
 

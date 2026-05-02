@@ -504,7 +504,7 @@ test "TelegramBot typing thread coordination" {
         ) void {
             var counter: usize = 0;
             while (!done_flag.* and counter < 3) {
-                std.Thread.sleep(std.time.ns_per_ms * 10); // Short sleep for testing
+                std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), std.Io.Duration.fromMilliseconds(10), .real) catch {}; // Short sleep for testing
                 counter += 1;
                 // sendChatAction will fail with fake token but thread should continue
                 bot_instance.sendChatAction(token, chat_id) catch |err| {
@@ -516,7 +516,7 @@ test "TelegramBot typing thread coordination" {
     }.run, .{ &bot, "fake-token", "123456", &typing_done });
 
     // Let thread run for a bit
-    std.Thread.sleep(std.time.ns_per_ms * 50);
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(50), .real) catch {};
 
     // Signal thread to stop
     typing_done = true;
