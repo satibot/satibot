@@ -4,6 +4,13 @@ This document summarizes the breaking changes encountered when migrating the Sat
 
 ## Build System
 
+### Executable Linking
+
+| Old API | Replacement |
+|---|---|
+| `exe.linkLibC()` | `exe.root_module.link_libc = true` |
+| `exe.linkSystemLibrary("sqlite3")` | `exe.root_module.linkSystemLibrary("sqlite3", .{})` |
+
 ## Standard Library API Changes
 
 ### Removed APIs
@@ -14,6 +21,7 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.fs.openFileAbsolute()` | C stdio wrappers | Use `fopen`/`fread`/`fclose` |
 | `std.fs.File.stdin()` | `extern "c" var stdin` + `fgets` | Standard input reading |
 | `std.fs.makeDirAbsolute()` | `std.c.mkdir()` | Directory creation |
+| `std.process.argsAlloc()` / `argsFree()` | `init.args.toSlice(allocator)` | Entry point argument parsing |
 | `std.process.getEnvVarOwned()` | `std.c.getenv()` + `std.mem.span()` | Environment variable reading |
 | `std.process.Child.run()` | Stub/disable | Process spawning API changed significantly |
 | `std.crypto.random.bytes()` | `std.Random.DefaultPrng` | Non-cryptographic random generation |
@@ -24,8 +32,10 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.posix.timespec` | Custom `extern struct timespec` | Time specification struct |
 | `std.posix.timeval` | Custom `extern struct timeval` | Time value struct |
 | `std.posix.gettimeofday()` | `std.c.gettimeofday()` | High-resolution time |
-| `std.Thread.Mutex` | `std.atomic.Mutex` | Synchronization primitive |
-| `std.Thread.Condition` | Custom condition variable or busy-wait | Signaling primitive |
+| `std.posix.getenv()` | `std.c.getenv()` + `std.mem.span()` | Environment variable reading |
+| `std.posix.setenv()` / `unsetenv()` | `extern "c" fn setenv/unsetenv` declarations | Environment variable setting in tests |
+| `std.Thread.Mutex` | `std.atomic.Mutex` | Synchronization primitive (use `.unlocked`) |
+| `std.Thread.Condition` | Busy-wait loop with `sleepMs` | Signaling primitive |
 | `std.Thread.sleep()` | `std.c.nanosleep()` or custom wrapper | Thread sleep |
 | `std.net.Stream` | Removed - network APIs changed | HTTP/TLS stack affected |
 | `std.ArrayList.writer()` | Removed - use manual buffer management | JSON serialization affected |
@@ -33,7 +43,9 @@ This document summarizes the breaking changes encountered when migrating the Sat
 | `std.PriorityQueue.init()` | `.initContext()` | Priority queue creation |
 | `std.PriorityQueue.add()` | `.push()` | Priority queue insertion |
 | `std.PriorityQueue.remove()` | `.pop()` | Priority queue removal |
-| `std.cstr.toCstr()` | Removed - use manual null-termination | String conversion |
+| `std.cstr.toCstr()` | `allocator.dupeZ()` | String conversion |
+| `std.heap.PageAlloc` | `std.heap.DebugAllocator(.{})` | Page allocator API |
+| `pub fn main() !void` | `pub fn main(init: std.process.Init.Minimal) !void` | Entry point signature |
 
 ### Type Mismatch Fixes
 
@@ -60,6 +72,53 @@ fn handleSignal(sig: c_int) void
 fn handleSignal(sig: std.posix.SIG) void
 ```
 
+#### Entry Point Signature
+Main function signature changed for argument access:
+
+```zig
+// Before
+pub fn main() !void {
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+}
+
+// After
+pub fn main(init: std.process.Init.Minimal) !void {
+    const args = try init.args.toSlice(allocator);
+}
+```
+
+#### Page Allocator
+`std.heap.PageAlloc` replaced with `std.heap.DebugAllocator`:
+
+```zig
+// Before
+var gpa = std.heap.PageAlloc.init(.{});
+defer gpa.deinit();
+
+// After
+var gpa: std.heap.DebugAllocator(.{}) = .init;
+defer _ = gpa.deinit();
+```
+
+#### Mutex Initialization
+`std.Thread.Mutex` replaced with `std.atomic.Mutex`:
+
+```zig
+// Before
+.task_mutex = .{},
+
+// After
+.task_mutex = .unlocked,
+```
+
+## APIs That Still Work
+
+The following APIs were not affected by Zig 0.16 changes and continue to work:
+- `std.fs.path.join()` - path construction
+- `std.fs.deleteFileAbsolute()` - file deletion
+- `std.json.parseFromSlice()` - JSON parsing
+
 ## Dependency Fixes
 
 ### TLS Package (`zig-pkg/tls-...`)
@@ -71,13 +130,8 @@ fn handleSignal(sig: std.posix.SIG) void
 - TLS certificate loading stubbed out (returns empty bundle)
 - `std.net.Stream` no longer available - network stack requires significant rework
 
-### Minimax Music (`libs/minimax-music`)
-- `ArrayList.writer()` removed - JSON buffer building needs manual implementation
-
 ### Provider Libraries (`libs/providers`)
-- `ArrayList.writer()` removed across Anthropic, Minimax, and OpenRouter providers
-- `std.Thread.sleep()` removed - replaced with custom nanosleep wrapper
-- `std.c.getenv()` return type fixes applied consistently
+- `std.posix.getenv()` → `std.c.getenv()` applied across Anthropic, Minimax, OpenRouter, and OpenRouter Sync providers
 
 ## C Interop Patterns
 
@@ -92,15 +146,15 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     defer allocator.free(path_z);
     const fp = std.c.fopen(path_z.ptr, "r") orelse return error.FileNotFound;
     defer _ = std.c.fclose(fp);
-    var buf = std.ArrayList(u8).init(allocator);
-    defer buf.deinit();
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(allocator);
     var temp: [4096]u8 = undefined;
     while (true) {
         const n = std.c.fread(&temp, 1, temp.len, fp);
         if (n == 0) break;
-        try buf.appendSlice(temp[0..n]);
+        try buf.appendSlice(allocator, temp[0..n]);
     }
-    return buf.toOwnedSlice();
+    return buf.toOwnedSlice(allocator);
 }
 ```
 
@@ -113,24 +167,39 @@ fn getCurrentTimeMs() i64 {
 }
 ```
 
-### Sleep Helper Pattern
+### Stdin Reading Pattern
 ```zig
-extern "c" fn nanosleep(req: *const timespec, rem: *timespec) c_int;
+extern "c" var stdin: *anyopaque;
+extern "c" fn fgets(buf: [*]u8, size: c_int, stream: *anyopaque) ?[*]u8;
 
-pub const timespec = extern struct {
-    tv_sec: std.os.time_t,
-    tv_nsec: std.os.suseconds_t,
-};
+var read_buf: [4096:0]u8 = undefined;
+const ptr = fgets(&read_buf, @intCast(read_buf.len), stdin);
+if (ptr == null) return; // EOF
+var n: usize = 0;
+while (n < read_buf.len and read_buf[n] != 0) n += 1;
+const input = std.mem.trim(u8, read_buf[0..n], " \t\r\n");
+```
+
+### Condition Variable Replacement
+`std.Thread.Condition` removed; use busy-wait with mutex unlock/relock:
+
+```zig
+// Before
+self.task_condition.wait(&self.task_mutex);
+
+// After
+self.task_mutex.unlock();
+sleepMs(1);
+mutexLock(&self.task_mutex);
 ```
 
 ## Remaining Work
 
 The following areas still need attention for full Zig 0.16 compatibility:
-1. Network Stack - `std.net.Stream` removal requires reimplementing HTTP/TLS networking
-2. JSON Serialization - `ArrayList.writer()` removal requires manual buffer management across providers
-3. Process Spawning - `std.process.Child.run()` API changed significantly; currently stubbed out
-4. Build Scripts - Dependency `build.zig` files (e.g., `zap`) may need `getEnvVarOwned` fixes
-5. TLS Certificate Loading - `Bundle.rescan()` requires `io` and `now` parameters from new I/O model
+1. Network Stack - `std.net.Stream` removal requires reimplementing HTTP/TLS networking (TLS currently returns empty bundle)
+2. Process Spawning - `std.process.Child.run()` is stubbed out; needs full reimplementation
+3. File System Iteration - `std.fs.cwd().openDir()` with iteration is disabled; skill/rule listing and file walking stubbed out
+4. TLS Certificate Loading - `Bundle.rescan()` requires `io` and `now` parameters from new I/O model
 
 ## Testing
 
