@@ -62,6 +62,8 @@ const std = @import("std");
 
 const http = @import("http");
 
+const log = std.log.scoped(.search);
+
 pub fn main(init: std.process.Init.Minimal) !void {
     var gpa: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
     defer gpa.deinit();
@@ -83,7 +85,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     if (api_key == null) {
         const config_path = "config.json";
-        const content = readFileAlloc(allocator, config_path) catch return;
+        const content = readFileAlloc(allocator, config_path) catch |err| {
+            log.err("Failed to read config file '{s}': {any}", .{ config_path, err });
+            return;
+        };
         if (content) |buf| {
             defer allocator.free(buf);
             const parsed = std.json.parseFromSlice(
@@ -91,17 +96,19 @@ pub fn main(init: std.process.Init.Minimal) !void {
                 allocator,
                 buf,
                 .{},
-            ) catch null;
+            ) catch |err| {
+                log.err("Failed to parse config JSON: {any}", .{err});
+                return;
+            };
 
-            if (parsed) |p| {
-                defer p.deinit();
-                if (p.value.tools.web.search.apiKey) |key| {
-                    try doSearch(allocator, query, key);
-                    return;
-                }
+            defer parsed.deinit();
+            if (parsed.value.tools.web.search.apiKey) |key| {
+                try doSearch(allocator, query, key);
+                return;
             }
         }
 
+        log.warn("No API key provided and no config.json found with web.search.apiKey", .{});
         std.debug.print("Error: No API key provided and no config.json found with web.search.apiKey\n", .{});
         return;
     }
@@ -142,12 +149,14 @@ fn doSearch(allocator: std.mem.Allocator, query: []const u8, api_key: []const u8
     std.debug.print("URL: {s}\n\n", .{url});
 
     var response = client.get(url, headers) catch |err| {
+        log.err("Search request failed: {any}", .{err});
         std.debug.print("Error performing search: {any}\n", .{err});
         return;
     };
     defer response.deinit();
 
     if (response.status != .ok) {
+        log.err("Search API returned non-OK status: {d}", .{@intFromEnum(response.status)});
         std.debug.print("Error: Search API returned status {d}\n", .{@intFromEnum(response.status)});
         if (response.body.len > 0) {
             std.debug.print("Response: {s}\n", .{response.body});
@@ -161,6 +170,7 @@ fn doSearch(allocator: std.mem.Allocator, query: []const u8, api_key: []const u8
         response.body,
         .{ .ignore_unknown_fields = true },
     ) catch |err| {
+        log.err("Failed to parse search response: {any}", .{err});
         std.debug.print("Error parsing response: {any}\n", .{err});
         return;
     };
@@ -168,6 +178,7 @@ fn doSearch(allocator: std.mem.Allocator, query: []const u8, api_key: []const u8
 
     if (parsed.value.web) |web| {
         if (web.results.len == 0) {
+            log.warn("Search returned no results for query", .{});
             std.debug.print("No results found.\n", .{});
             return;
         }
@@ -200,7 +211,10 @@ const BraveResponse = struct {
 fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
     const path_z = try allocator.dupeZ(u8, path);
     defer allocator.free(path_z);
-    const file = std.c.fopen(path_z.ptr, "r") orelse return null;
+    const file = std.c.fopen(path_z.ptr, "r") orelse {
+        log.warn("Config file not found or cannot be opened: {s}", .{path});
+        return null;
+    };
     defer _ = std.c.fclose(file);
     var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(allocator);

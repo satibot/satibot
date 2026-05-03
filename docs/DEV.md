@@ -269,6 +269,43 @@ In Buddhist psychology, the word was expanded.
 
 > remembering the present experience
 
+## Lint Rules and Patterns
+
+This project uses `ziglint` for code style checks via `make lint`. The following rules are enforced and common patterns to keep in mind:
+
+### Common Lint Fixes
+
+| Rule | Description | Fix Pattern |
+|------|-------------|-------------|
+| `Z001` | Function naming | Use `camelCase` for functions |
+| `Z011` | Deprecated API | Replace deprecated stdlib calls (e.g. `indexOf` → `find`, `bufPrintZ` → `bufPrintSentinel`) |
+| `Z012` | Public function exposes private type | Return public struct name instead of `Self` alias |
+| `Z017` | Redundant `try` in return | Remove `try` when the outer function has same error union; **exception**: when `try` is required for type coercion (e.g. `![]u8` to `!?[]const u8`), split into `const result = try expr; return result;` |
+| `Z019` | `@This()` in named struct | Assign to `const Self = StructName;` instead of raw `@This()` |
+| `Z020` | Inline `@import` | Assign imports to top-level `const` |
+| `Z022` | `@This()` alias naming | Use `Self` as the alias name |
+| `Z023` | `comptime` parameter order | Place `comptime` parameters before runtime parameters |
+| `Z026` | Empty `catch {}` | Log the error: `catch \|err\| std.log.warn("...", .{err})` |
+| `Z028` | Unused import | Remove or use the import |
+| `Z030` | `deinit` cleanup | Set `self.* = undefined;` at end of `deinit` |
+
+### Known False Positives
+
+The `Z017` (redundant `try`) rule sometimes triggers incorrectly when `try` is required for implicit type coercion between error unions with different payload types. For example:
+
+```zig
+// Inner function returns error{OutOfMemory}![]u8
+// Outer function returns error{OutOfMemory}!?[]const u8
+// The 'try' is semantically required for the coercion, but lint flags it.
+// Workaround: split into two statements.
+const result = try buf.toOwnedSlice(allocator);
+return result;
+```
+
+### Excluded Directories
+
+Third-party packages under `zig-pkg/` are excluded from lint checks. See the `lint` target in `Makefile` for the exclusion pattern.
+
 ## Notes
 
 Every time codebase updated, please update "docs/" folder and `.agents/skills/codebase/SKILL.md` file.

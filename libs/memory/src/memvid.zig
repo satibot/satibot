@@ -302,12 +302,14 @@ pub const MemvidStore = struct {
         var header_bytes: [HEADER_SIZE]u8 = undefined;
         const bytes_read = try file.readAll(&header_bytes);
         if (bytes_read != HEADER_SIZE) {
+            log.err("Header read incomplete: got {d} bytes, expected {d}", .{ bytes_read, HEADER_SIZE });
             file.close();
             return error.InvalidHeader;
         }
 
         var header = Header.readFromBytes(&header_bytes);
         if (!header.isValid()) {
+            log.err("Invalid MV2 header magic or version", .{});
             file.close();
             return error.InvalidMagic;
         }
@@ -429,6 +431,7 @@ pub const MemvidStore = struct {
 
         // Parse TOC to find data segments
         if (!std.mem.eql(u8, toc_buffer[0..4], Toc.TOC_MAGIC)) {
+            log.warn("Invalid or missing TOC magic, treating as empty", .{});
             return; // Empty or invalid TOC
         }
 
@@ -438,7 +441,10 @@ pub const MemvidStore = struct {
         // Read segment descriptors
         var offset: usize = 10;
         for (0..segment_count) |_| {
-            if (offset + 49 > toc_buffer.len) break;
+            if (offset + 49 > toc_buffer.len) {
+                log.warn("TOC segment descriptor overflow at offset {d}", .{offset});
+                break;
+            }
 
             const seg_type: SegmentType = @enumFromInt(toc_buffer[offset]);
             const seg_offset = std.mem.readInt(u64, toc_buffer[offset + 1 .. offset + 9][0..8], .little);
@@ -490,7 +496,10 @@ pub const MemvidStore = struct {
         // Read time index entries (24 bytes each)
         var entry_buffer: [24]u8 = undefined;
         while (true) {
-            const bytes_read = file.read(&entry_buffer) catch break;
+            const bytes_read = file.read(&entry_buffer) catch |err| {
+                log.err("Failed to read time index entry: {any}", .{err});
+                break;
+            };
             if (bytes_read < 24) break;
 
             const entry: TimeIndexEntry = .{
@@ -713,9 +722,15 @@ pub const MemvidStore = struct {
     /// Create snippet from content
     fn createSnippet(self: *const Self, content: []const u8, max_chars: usize) []const u8 {
         if (content.len <= max_chars) {
-            return self.allocator.dupe(u8, content) catch "";
+            return self.allocator.dupe(u8, content) catch |err| {
+                log.err("Failed to allocate snippet: {any}", .{err});
+                return "";
+            };
         }
-        return self.allocator.dupe(u8, content[0..max_chars]) catch "";
+        return self.allocator.dupe(u8, content[0..max_chars]) catch |err| {
+            log.err("Failed to allocate snippet: {any}", .{err});
+            return "";
+        };
     }
 
     /// Convert string to lowercase
