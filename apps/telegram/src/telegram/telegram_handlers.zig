@@ -284,9 +284,8 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
             // Send typing action every 5 seconds until processing is complete
             while (!done_flag.*) {
                 // Wait 5 seconds between typing indicators
-                var req = std.c.timespec{ .sec = 5, .nsec = 0 };
-                var rem: std.c.timespec = undefined;
-                _ = std.c.nanosleep(&req, &rem);
+                const io = std.Io.Threaded.global_single_threaded.io();
+                std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
 
                 // Check if processing is complete
                 if (done_flag.*) break;

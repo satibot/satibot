@@ -360,9 +360,8 @@ fn pollAndDownload(
         } else {
             std.debug.print("Status: {s} (waiting...)\n", .{status_response.status});
             std.debug.print("Waiting {d} seconds before next check...\n\n", .{poll_interval});
-            var req = std.c.timespec{ .sec = @intCast(poll_interval), .nsec = 0 };
-            var rem: std.c.timespec = undefined;
-            _ = std.c.nanosleep(&req, &rem);
+            const io = std.Io.Threaded.global_single_threaded.io();
+            std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(poll_interval)), .real) catch {};
         }
     }
 }

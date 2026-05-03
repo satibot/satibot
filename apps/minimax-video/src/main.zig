@@ -492,9 +492,8 @@ fn pollAndDownloadVideo(allocator: std.mem.Allocator, client: *video.VideoClient
         } else {
             std.debug.print("Status: {s} (waiting...)\n", .{status_response.status});
             std.debug.print("Waiting {d} seconds before next check...\n\n", .{10});
-            var req = std.c.timespec{ .sec = 10, .nsec = 0 };
-            var rem: std.c.timespec = undefined;
-            _ = std.c.nanosleep(&req, &rem);
+            const io = std.Io.Threaded.global_single_threaded.io();
+            std.Io.sleep(io, std.Io.Duration.fromSeconds(10), .real) catch {};
         }
     }
 }

@@ -334,9 +334,8 @@ fn generateMusic(allocator: std.mem.Allocator, prompt: []const u8, lyrics: ?[]co
 
 fn saveHexAsMp3(allocator: std.mem.Allocator, hex_data: []const u8) ![]const u8 {
     // Generate filename with timestamp
-    var tv: std.c.timeval = undefined;
-    _ = std.c.gettimeofday(&tv, null);
-    const timestamp = tv.sec;
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const timestamp = std.Io.Clock.real.now(io).toSeconds();
     const filename = try std.fmt.allocPrint(allocator, "generated_music_{d}.mp3", .{timestamp});
 
     std.debug.print("Saving MP3 from hex data ({d} chars)...\n", .{hex_data.len});

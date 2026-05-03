@@ -346,9 +346,32 @@ var cond = std.Io.Condition.init();
 // ... use with std.Io.Mutex
 ```
 
+## Completed Fixes
+
+The following items have been fixed in this migration pass:
+
+### Fixed: `std.Io.sleep` Old Literal Syntax
+- `apps/telegram/src/telegram/telegram.zig` — `.nanoseconds = 100 * std.time.ns_per_ms` → `std.Io.Duration.fromMilliseconds(100)`
+- `libs/agent/src/agent.zig` — `.nanoseconds = std.time.ns_per_s` → `std.Io.Duration.fromSeconds(1)`
+
+### Fixed: `std.c.gettimeofday()` Timestamps
+- `libs/agent/src/agent.zig` — `getCurrentTimeMs()` rewritten to use `std.Io.Clock.real.now(io).toMilliseconds()`
+- `libs/agent/src/agent/cron.zig` — `tick()` and `runJob()` now use existing `nowMs()` helper
+- `libs/utils/src/xev_event_loop.zig` — `currentTimeMs()` rewritten to use `std.Io.Clock`
+
+### Fixed: `std.c.nanosleep()` / `std.c.timespec` Sleep
+- `libs/providers/src/base.zig` — `sleepSeconds()` helper rewritten to use `std.Io.sleep`
+- `libs/agent/src/agent/console.zig` — spinner animation sleep rewritten
+- `libs/agent/src/agent/gateway.zig` — CPU throttle sleep rewritten
+- `apps/telegram/src/telegram/telegram_handlers.zig` — typing indicator sleep rewritten
+- `apps/telegram/src/telegram/telegram_bot_sync.zig` — retry delay and typing thread sleep rewritten
+- `apps/speech/src/main.zig` — status polling sleep rewritten
+- `apps/minimax-video/src/main.zig` — status polling sleep rewritten
+- `libs/utils/src/xev_event_loop.zig` — `sleepMs()` helper rewritten
+
 ## Remaining Work
 
-The following areas still need attention for full Zig 0.16 compatibility based on current codebase analysis:
+The following areas still need attention for full Zig 0.16 compatibility:
 
 ### 1. C stdio File I/O Workarounds
 
@@ -367,16 +390,7 @@ Multiple apps and libraries still use `std.c.fopen` / `std.c.fread` / `std.c.fwr
 
 **Canonical migration:** Use `std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max))` for reads and `std.Io.Dir.createFileAbsolute(io, path, .{})` + `file.writeStreamingAll(io, data)` for writes.
 
-### 2. `std.c.gettimeofday()` for Timestamps
-
-Used as a workaround where `std.Io.Clock` should be used instead:
-
-- `libs/agent/src/agent.zig` - `getCurrentTimeMs()` (also `agent_start_time` tracking)
-- `libs/agent/src/agent/cron.zig` - `tick()` and `runJob()` timing
-
-**Canonical migration:** Use `std.Io.Clock.real.now(io).toMilliseconds()` (see `cron.zig` `nowMs()` for a correct example).
-
-### 3. `std.c.getenv()` for Environment Variables
+### 2. `std.c.getenv()` for Environment Variables
 
 Used throughout the codebase for API keys and `HOME` directory lookup. Should migrate to `init.environ_map` where an entry point `Init` is available, or to the new `std.process` env APIs:
 
@@ -385,21 +399,7 @@ Used throughout the codebase for API keys and `HOME` directory lookup. Should mi
 - `apps/code/src/config.zig` - `HOME`, `TEST_VAR`
 - `libs/agent/src/agent.zig` - `OPENROUTER_API_KEY`
 
-### 4. `std.c.nanosleep()` / `std.c.timespec` for Sleep
-
-Thread-level sleep workarounds that should migrate to `std.Io.sleep(io, duration, .real)`:
-
-- `apps/telegram/src/telegram/telegram_handlers.zig` - typing indicator delay
-- `apps/telegram/src/telegram/telegram_bot_sync.zig` - polling delays
-- `apps/minimax-video/src/main.zig` - status polling
-- `apps/speech/src/main.zig` - status polling
-- `libs/agent/src/agent/console.zig` - spinner animation
-- `libs/agent/src/agent/gateway.zig` - CPU throttle
-- `libs/agent/src/agent/telegram_bot_sync.zig` - retry delays
-- `libs/utils/src/xev_event_loop.zig` - generic `sleepMs` helper
-- `libs/providers/src/base.zig` - `sleepSeconds` helper with `extern "c" nanosleep`
-
-### 5. `std.posix.read(0, &buf)` for Stdin
+### 3. `std.posix.read(0, &buf)` for Stdin
 
 Standard input reading via POSIX fd 0 instead of `std.Io.Reader`:
 
@@ -408,30 +408,21 @@ Standard input reading via POSIX fd 0 instead of `std.Io.Reader`:
 - `libs/agent/src/agent/console.zig`
 - `libs/agent/src/agent/console_sync.zig`
 
-### 6. `std.c.mkdir()` for Directory Creation
+### 4. `std.c.mkdir()` for Directory Creation
 
-Used in `apps/console/src/xev_main.zig` for creating `~/.bots` directory. Should migrate to `std.Io.Dir.makePath(io, path)`.
+Used in `apps/console/src/xev_main.zig` for creating `~/.bots` directory. Should migrate to `std.Io.Dir.makePath(io, path)` (API name needs verification).
 
-### 7. `std.Io.sleep` with Old Literal Syntax
-
-Some call sites still pass anonymous struct literals instead of `std.Io.Duration`:
-
-- `apps/telegram/src/telegram/telegram.zig` - `.nanoseconds = 100 * std.time.ns_per_ms`
-- `libs/agent/src/agent.zig` - `.nanoseconds = std.time.ns_per_s`
-
-**Fix:** Replace with `std.Io.Duration.fromMilliseconds(100)` and `std.Io.Duration.fromSeconds(1)` respectively.
-
-### 8. `std.posix.setenv` in Tests
+### 5. `std.posix.setenv` in Tests
 
 - `apps/telegram/src/telegram/test_openrouter_command.zig` - mocks `HOME` via `std.posix.setenv`
 
-### 9. Network Stack (External Dependencies)
+### 6. Network Stack (External Dependencies)
 
 - `std.net.Stream` removal affects HTTP/TLS networking in provider libraries
 - TLS certificate `Bundle.rescan()` requires `io` and `now` parameters
 - `libs/http` TLS loading is stubbed out (returns empty bundle)
 
-### 10. File System Iteration
+### 7. File System Iteration
 
 - `std.fs.cwd().openDir()` with iteration is disabled in some paths; skill/rule listing and file walking may be stubbed out in certain apps
 

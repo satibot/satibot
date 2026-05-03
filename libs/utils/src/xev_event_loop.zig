@@ -3,25 +3,14 @@ const std = @import("std");
 pub const Config = @import("core").config.Config;
 const xev = @import("xev");
 
-const timeval = extern struct {
-    tv_sec: c_long,
-    tv_usec: c_long,
-};
-extern "c" fn gettimeofday(tv: *timeval, tz: ?*anyopaque) c_int;
-
 fn currentTimeMs() i64 {
-    var tv: timeval = undefined;
-    _ = gettimeofday(&tv, null);
-    return @as(i64, tv.tv_sec) * 1000 + @divTrunc(@as(i64, tv.tv_usec), 1000);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    return std.Io.Clock.real.now(io).toMilliseconds();
 }
 
 fn sleepMs(ms: u64) void {
-    var req: std.c.timespec = .{
-        .sec = @intCast(ms / 1000),
-        .nsec = @intCast((ms % 1000) * 1_000_000),
-    };
-    var rem: std.c.timespec = undefined;
-    _ = std.c.nanosleep(&req, &rem);
+    const io = std.Io.Threaded.global_single_threaded.io();
+    std.Io.sleep(io, std.Io.Duration.fromMilliseconds(@intCast(ms)), .real) catch {};
 }
 
 fn mutexLock(mutex: *std.atomic.Mutex) void {
