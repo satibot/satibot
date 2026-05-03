@@ -65,7 +65,7 @@ fn showLoadingSpinner() void {
 
         // Carriage return to overwrite current line
         std.debug.print("\r🤔 Thinking {c}...", .{spin_chars[frame]});
-        std.Io.sleep(io, std.Io.Duration.fromMilliseconds(100), .real) catch {};
+        std.Io.sleep(io, std.Io.Duration.fromMilliseconds(100), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
     }
 
     // Clear the loading line when done

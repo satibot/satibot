@@ -76,7 +76,7 @@ clean: ## Remove docs, build artifacts, and cache directories
 
 lint: ## Check code style and formatting of Zig files
 	@echo "Running code style checks..."
-	@find . -type d -name "src" -not -path "*/.*" | while read dir; do \
+	@find . -type d -name "src" -not -path "*/.*" -not -path "*/zig-pkg/*" | while read dir; do \
 		echo "Linting $${dir%/src}..."; \
 		(cd "$${dir%/src}" && ziglint --ignore Z024 --ignore Z006); \
 	done

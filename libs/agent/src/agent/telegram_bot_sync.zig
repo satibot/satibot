@@ -205,7 +205,7 @@ pub const TelegramBot = struct {
                         ) void {
                             while (!done_flag.*) {
                                 const io = std.Io.Threaded.global_single_threaded.io();
-                                std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
+                                std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
                                 if (done_flag.*) break;
                                 bot.sendChatAction(token, chat_id) catch |err| {
                                     std.debug.print("Failed to send typing action: {any}\n", .{err});
@@ -412,7 +412,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, rag_enabled: bool) !voi
         bot.tick() catch |err| {
             std.debug.print("Error in Telegram bot tick: {any}\nRetrying in 5 seconds...\n", .{err});
             const io = std.Io.Threaded.global_single_threaded.io();
-            std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
+            std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch |sleep_err| std.log.warn("sleep failed: {any}", .{sleep_err});
         };
     }
 }
@@ -502,7 +502,7 @@ test "TelegramBot typing thread coordination" {
         ) void {
             var counter: usize = 0;
             while (!done_flag.* and counter < 3) {
-                std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), std.Io.Duration.fromMilliseconds(10), .real) catch {}; // Short sleep for testing
+                std.Io.sleep(std.Io.Threaded.global_single_threaded.io(), std.Io.Duration.fromMilliseconds(10), .real) catch |err| std.log.warn("sleep failed: {any}", .{err}); // Short sleep for testing
                 counter += 1;
                 // sendChatAction will fail with fake token but thread should continue
                 bot_instance.sendChatAction(token, chat_id) catch |err| {
@@ -514,7 +514,7 @@ test "TelegramBot typing thread coordination" {
     }.run, .{ &bot, "fake-token", "123456", &typing_done });
 
     // Let thread run for a bit
-    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(50), .real) catch {};
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(50), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 
     // Signal thread to stop
     typing_done = true;

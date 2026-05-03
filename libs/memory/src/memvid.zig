@@ -37,7 +37,7 @@ pub const FrameStatus = enum(u8) {
 };
 
 /// Helper to write little-endian integers to writer
-fn writeIntLe(writer: anytype, comptime T: type, value: T) !void {
+fn writeIntLe(comptime T: type, writer: anytype, value: T) !void {
     var buf: [@divExact(@typeInfo(T).int.bits, 8)]u8 = undefined;
     std.mem.writeInt(T, &buf, value, .little);
     try writer.interface.writeAll(&buf);
@@ -123,7 +123,7 @@ pub const WalEntry = struct {
     payload: []const u8,
     checksum: u32,
 
-    const Self = @This();
+    const Self = WalEntry;
 
     pub fn calculateChecksum(self: *const Self) u32 {
         var hasher = std.hash.Crc32.init();
@@ -147,9 +147,9 @@ pub const Frame = struct {
     tags: std.StringHashMap([]const u8),
     status: FrameStatus,
 
-    const Self = @This();
+    const Self = Frame;
 
-    pub fn init(allocator: std.mem.Allocator) Self {
+    pub fn init(allocator: std.mem.Allocator) Frame {
         return .{
             .frame_id = 0,
             .uri = "",
@@ -168,6 +168,7 @@ pub const Frame = struct {
         allocator.free(self.uri);
         allocator.free(self.payload);
         self.tags.deinit();
+        self.* = undefined;
     }
 
     pub fn calculatePayloadChecksum(self: *const Self) [32]u8 {
@@ -194,9 +195,9 @@ pub const Toc = struct {
     version: u16,
     segments: std.ArrayList(SegmentDescriptor),
 
-    const Self = @This();
+    const Self = Toc;
 
-    pub fn init() Self {
+    pub fn init() Toc {
         return .{
             .version = 2,
             .segments = .empty,
@@ -205,6 +206,7 @@ pub const Toc = struct {
 
     pub fn deinit(self: *Self) void {
         self.segments.deinit();
+        self.* = undefined;
     }
 };
 
@@ -253,6 +255,7 @@ pub const SearchResponse = struct {
             allocator.free(hit.snippet);
         }
         allocator.free(self.hits);
+        self.* = undefined;
     }
 };
 
@@ -285,13 +288,13 @@ pub const MemvidStore = struct {
     next_frame_id: u64,
     is_modified: bool,
 
-    const Self = @This();
+    const Self = MemvidStore;
 
     /// Open or create a .mv2 file
-    pub fn init(allocator: std.mem.Allocator, file_path: []const u8) !Self {
+    pub fn init(allocator: std.mem.Allocator, file_path: []const u8) !MemvidStore {
         const file = std.fs.openFileAbsolute(file_path, .{ .mode = .read_write }) catch |err| {
             if (err == error.FileNotFound) {
-                return try Self.createFile(allocator, file_path);
+                return Self.createFile(allocator, file_path);
             }
             return err;
         };
@@ -309,7 +312,7 @@ pub const MemvidStore = struct {
             return error.InvalidMagic;
         }
 
-        var store = Self{
+        var store: Self = .{
             .allocator = allocator,
             .file_path = try allocator.dupe(u8, file_path),
             .file = file,
@@ -327,7 +330,7 @@ pub const MemvidStore = struct {
     }
 
     /// Create a new .mv2 file
-    pub fn createFile(allocator: std.mem.Allocator, file_path: []const u8) !Self {
+    pub fn createFile(allocator: std.mem.Allocator, file_path: []const u8) !MemvidStore {
         var file = try std.fs.createFileAbsolute(file_path, .{ .truncate = true });
         errdefer file.close();
 
@@ -357,7 +360,7 @@ pub const MemvidStore = struct {
         header.writeToBytes(&header_bytes);
         try file.writeAll(&header_bytes);
 
-        return Self{
+        return .{
             .allocator = allocator,
             .file_path = try allocator.dupe(u8, file_path),
             .file = file,
@@ -685,7 +688,7 @@ pub const MemvidStore = struct {
 
             // Check title (case-insensitive)
             if (frame.title) |title| {
-                if (std.ascii.indexOfIgnoreCase(title, term)) |_| {
+                if (std.ascii.findIgnoreCase(title, term)) |_| {
                     score += 2.0; // Title matches weighted higher
                 }
             }
@@ -694,7 +697,7 @@ pub const MemvidStore = struct {
             var count: usize = 0;
             var pos: usize = 0;
             while (pos < frame.payload.len) {
-                if (std.ascii.indexOfIgnoreCasePos(frame.payload, pos, term)) |idx| {
+                if (std.ascii.findIgnoreCasePos(frame.payload, pos, term)) |idx| {
                     count += 1;
                     pos = idx + term.len;
                 } else {

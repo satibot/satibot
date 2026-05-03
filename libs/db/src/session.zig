@@ -78,7 +78,8 @@ fn readFileAbsolute(allocator: std.mem.Allocator, path: []const u8) !?[]const u8
         try buf.appendSlice(allocator, temp[0..n]);
     }
     if (buf.items.len > 10485760) return error.FileTooBig;
-    return try buf.toOwnedSlice(allocator);
+    const result = try buf.toOwnedSlice(allocator);
+    return result;
 }
 
 fn loadInternal(allocator: std.mem.Allocator, path: []const u8) ![]base.LlmMessage {

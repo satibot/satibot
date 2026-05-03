@@ -11,7 +11,7 @@ const OpenRouterError = openrouter.OpenRouterError;
 
 fn sleepSeconds(seconds: u64) void {
     const io = std.Io.Threaded.global_single_threaded.io();
-    std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(seconds)), .real) catch {};
+    std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(seconds)), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 }
 /// Callback function for streaming response chunks.
 /// Takes a context pointer and the chunk content.

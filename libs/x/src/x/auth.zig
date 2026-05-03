@@ -63,7 +63,7 @@ fn buildAuthHeader(
     if (parsed.query) |query| {
         var qs_iter = std.mem.split(u8, query, "&");
         while (qs_iter.next()) |pair| {
-            if (std.mem.indexOf(u8, pair, "=")) |idx| {
+            if (std.mem.find(u8, pair, "=")) |idx| {
                 const key = pair[0..idx];
                 const val = if (idx + 1 < pair.len) pair[idx + 1 ..] else "";
                 try all_params.put(try allocator.dupe(u8, key), try allocator.dupe(u8, val));

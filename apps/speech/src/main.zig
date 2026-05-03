@@ -255,7 +255,8 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
         if (n == 0) break;
         try buf.appendSlice(allocator, temp[0..n]);
     }
-    return try buf.toOwnedSlice(allocator);
+    const result = try buf.toOwnedSlice(allocator);
+    return result;
 }
 
 const Config = struct {
@@ -361,7 +362,7 @@ fn pollAndDownload(
             std.debug.print("Status: {s} (waiting...)\n", .{status_response.status});
             std.debug.print("Waiting {d} seconds before next check...\n\n", .{poll_interval});
             const io = std.Io.Threaded.global_single_threaded.io();
-            std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(poll_interval)), .real) catch {};
+            std.Io.sleep(io, std.Io.Duration.fromSeconds(@intCast(poll_interval)), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
         }
     }
 }

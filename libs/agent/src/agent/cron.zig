@@ -327,11 +327,11 @@ test "CronStore: multiple jobs" {
     const id1 = try store.addJob("job1", .{ .kind = .every, .every_ms = 1000 }, "msg1");
 
     // Small delay to ensure different timestamps (1 millisecond)
-    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch {};
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 
     const id2 = try store.addJob("job2", .{ .kind = .every, .every_ms = 2000 }, "msg2");
 
-    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch {};
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 
     const id3 = try store.addJob("job3", .{ .kind = .at, .at_ms = 9999999999 }, "msg3");
 

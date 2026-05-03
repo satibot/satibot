@@ -285,7 +285,7 @@ pub fn handleTelegramTaskData(ctx: *TelegramContext, tg_data: TelegramTaskData) 
             while (!done_flag.*) {
                 // Wait 5 seconds between typing indicators
                 const io = std.Io.Threaded.global_single_threaded.io();
-                std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch {};
+                std.Io.sleep(io, std.Io.Duration.fromSeconds(5), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 
                 // Check if processing is complete
                 if (done_flag.*) break;

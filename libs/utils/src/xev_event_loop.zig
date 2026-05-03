@@ -10,7 +10,7 @@ fn currentTimeMs() i64 {
 
 fn sleepMs(ms: u64) void {
     const io = std.Io.Threaded.global_single_threaded.io();
-    std.Io.sleep(io, std.Io.Duration.fromMilliseconds(@intCast(ms)), .real) catch {};
+    std.Io.sleep(io, std.Io.Duration.fromMilliseconds(@intCast(ms)), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
 }
 
 fn mutexLock(mutex: *std.atomic.Mutex) void {

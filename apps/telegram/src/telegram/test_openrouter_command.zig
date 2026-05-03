@@ -1,13 +1,12 @@
 const std = @import("std");
+const allocator = std.testing.allocator;
+
+const config = @import("../../config.zig");
+const http = @import("../../http.zig");
+const telegram_handlers = @import("telegram_handlers.zig");
 
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 extern "c" fn unsetenv(name: [*:0]const u8) c_int;
-
-const config = @import("../../config.zig");
-const telegram_handlers = @import("telegram_handlers.zig");
-const http = @import("../../http.zig");
-
-const allocator = std.testing.allocator;
 
 test "handleOpenrouterCommand: valid model update" {
     // Create a temporary config directory
@@ -63,7 +62,7 @@ test "handleOpenrouterCommand: valid model update" {
     defer if (original_home) |home| {
         _ = std.posix.setenv("HOME", home) catch {};
     } else {
-        _ = if (unsetenv("HOME") catch {};
+        _ = unsetenv("HOME") catch {};
     };
     const temp_home = try tmp.dir.realpathAlloc(allocator, ".");
     defer allocator.free(temp_home);
@@ -155,7 +154,7 @@ test "handleOpenrouterCommand: no config file" {
     defer if (original_home) |home| {
         _ = std.posix.setenv("HOME", home) catch {};
     } else {
-        _ = if (unsetenv("HOME") catch {};
+        _ = unsetenv("HOME") catch {};
     };
     if (setenv("HOME", "/non/existent/path", 1) != 0) return error.SetenvFailed;
 

@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const memory = @import("memory");
 const graph = memory.graph;
 
@@ -34,7 +35,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         var i: usize = 3;
         while (i < args.len) : (i += 1) {
             const pair = args[i];
-            if (std.mem.indexOf(u8, pair, "=")) |idx| {
+            if (std.mem.find(u8, pair, "=")) |idx| {
                 const key = pair[0..idx];
                 const value = pair[idx + 1 ..];
                 try props.put(key, value);
@@ -58,7 +59,7 @@ pub fn main(init: std.process.Init.Minimal) !void {
         var i: usize = 5;
         while (i < args.len) : (i += 1) {
             const pair = args[i];
-            if (std.mem.indexOf(u8, pair, "=")) |idx| {
+            if (std.mem.find(u8, pair, "=")) |idx| {
                 const key = pair[0..idx];
                 const value = pair[idx + 1 ..];
                 try props.put(key, value);

@@ -97,7 +97,7 @@ pub fn readFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
         try buf.appendSlice(ctx.allocator, temp[0..n]);
     }
     if (buf.items.len > 10485760) return error.FileTooBig;
-    return try buf.toOwnedSlice(ctx.allocator);
+    return buf.toOwnedSlice(ctx.allocator);
 }
 
 fn htmlToText(allocator: std.mem.Allocator, html: []const u8) ![]u8 {
@@ -397,7 +397,7 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     if (replace_all) {
         var remaining = content;
         var found = false;
-        while (std.mem.indexOf(u8, remaining, old_string)) |idx| {
+        while (std.mem.find(u8, remaining, old_string)) |idx| {
             found = true;
             try result.appendSlice(ctx.allocator, remaining[0..idx]);
             try result.appendSlice(ctx.allocator, new_string);
@@ -409,7 +409,7 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
             return std.fmt.allocPrint(ctx.allocator, "Error: oldString not found in file: {s}", .{old_string});
         }
     } else {
-        const idx = std.mem.indexOf(u8, content, old_string) orelse {
+        const idx = std.mem.find(u8, content, old_string) orelse {
             return std.fmt.allocPrint(ctx.allocator, "Error: oldString not found in file: {s}", .{old_string});
         };
         try result.appendSlice(ctx.allocator, content[0..idx]);
@@ -426,7 +426,7 @@ pub fn editFile(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const replace_count = if (replace_all) blk: {
         var count: usize = 0;
         var search_start: usize = 0;
-        while (std.mem.indexOf(u8, result.items[search_start..], old_string)) |idx| {
+        while (std.mem.find(u8, result.items[search_start..], old_string)) |idx| {
             count += 1;
             search_start += idx + old_string.len;
         }

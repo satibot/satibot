@@ -98,7 +98,7 @@ test "HeartbeatService: tick logic and prompt" {
 
     // Wait longer than the 1-second interval to trigger next tick
     // Using 1.1 seconds to ensure we exceed the interval
-    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1100), .real) catch {};
+    std.Io.sleep(std.testing.io, std.Io.Duration.fromMilliseconds(1100), .real) catch |err| std.log.warn("sleep failed: {any}", .{err});
     try std.testing.expect(service.shouldTick());
 
     // Example: Test get_prompt with empty HEARTBEAT.md file

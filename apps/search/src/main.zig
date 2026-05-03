@@ -210,5 +210,6 @@ fn readFileAlloc(allocator: std.mem.Allocator, path: []const u8) !?[]const u8 {
         if (n == 0) break;
         try buf.appendSlice(allocator, temp[0..n]);
     }
-    return try buf.toOwnedSlice(allocator);
+    const result = try buf.toOwnedSlice(allocator);
+    return result;
 }
