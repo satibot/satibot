@@ -353,7 +353,6 @@ fn saveHexAsMp3(allocator: std.mem.Allocator, hex_data: []const u8) ![]const u8 
     }
 
     // Write binary data to file
-    const io = std.Io.Threaded.global_single_threaded.io();
     const file = try std.Io.Dir.createFileAbsolute(io, filename, .{});
     defer file.close(io);
     try file.writeStreamingAll(io, binary_data);
