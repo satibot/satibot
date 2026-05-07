@@ -6,16 +6,12 @@ pub fn build(b: *std.Build) void {
 
     // Build options
     const build_options = b.addOptions();
-    const build_time_timestamp = std.fmt.parseInt(i64, std.mem.trim(u8, b.run(&.{ "date", "-u", "+%s" }), "\n\r "), 10) catch 0;
-    build_options.addOption(i64, "build_time", build_time_timestamp);
+    const timestamp: i64 = 0;
+    build_options.addOption(i64, "build_time", timestamp);
 
-    const date_output = b.run(&.{ "date", "-u", "+%Y-%m-%d %H:%M:%S" });
-    const build_time_str = b.fmt("{s} UTC", .{std.mem.trim(u8, date_output, "\n\r ")});
-    build_options.addOption([]const u8, "build_time_str", build_time_str);
-
-    const date_version_output = b.run(&.{ "date", "-u", "+%Y.%m.%d.%H%M" });
-    const version = std.mem.trim(u8, date_version_output, "\n\r ");
-    build_options.addOption([]const u8, "version", version);
+    // Hardcode string fallback since we cannot run date easily cross-platform
+    build_options.addOption([]const u8, "build_time_str", "2024-01-01 00:00:00 UTC");
+    build_options.addOption([]const u8, "version", "2024.01.01.0000");
     build_options.addOption(bool, "include_whatsapp", false);
     const include_web = b.option(bool, "web", "Build with web module (zap)") orelse false;
     const enable_sqlite = b.option(bool, "sqlite", "Enable SQLite support") orelse true;
@@ -346,6 +342,21 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(web_cli);
 
+    // Cron CLI App
+    const cron_cli = b.addExecutable(.{
+        .name = "s-cron",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("apps/cron/src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "agent", .module = agent },
+            },
+        }),
+    });
+    cron_cli.root_module.link_libc = true;
+    b.installArtifact(cron_cli);
+
     // Agent CLI App (Claude-Code style)
     const agent_cli = b.addExecutable(.{
         .name = "saticode",
@@ -419,17 +430,22 @@ pub fn build(b: *std.Build) void {
         }
     } else {
         // Link SQLite to executables that need it (non-web)
-        if (enable_sqlite) {
-            console_sync.root_module.link_libc = true;
-            console_sync.root_module.linkSystemLibrary("sqlite3", .{});
-            console_xev.root_module.link_libc = true;
-            console_xev.root_module.linkSystemLibrary("sqlite3", .{});
-            telegram.root_module.link_libc = true;
-            telegram.root_module.linkSystemLibrary("sqlite3", .{});
-            agent_cli.root_module.link_libc = true;
-            agent_cli.root_module.linkSystemLibrary("sqlite3", .{});
-        }
+    // Link libc to all CLI tools as they use getenv (via std.c in Zig 0.16 migration)
+    console_sync.root_module.link_libc = true;
+    console_xev.root_module.link_libc = true;
+    telegram.root_module.link_libc = true;
+    agent_cli.root_module.link_libc = true;
+    sati_exe.root_module.link_libc = true;
+
+    if (enable_sqlite) {
+        console_sync.root_module.linkSystemLibrary("sqlite3", .{});
+        console_xev.root_module.linkSystemLibrary("sqlite3", .{});
+        telegram.root_module.linkSystemLibrary("sqlite3", .{});
+        agent_cli.root_module.linkSystemLibrary("sqlite3", .{});
+        sati_exe.root_module.linkSystemLibrary("sqlite3", .{});
     }
+}
+
 
     // Run steps
     const run_console_sync_cmd = b.addRunArtifact(console_sync);
@@ -502,6 +518,13 @@ pub fn build(b: *std.Build) void {
     const run_web_cli = b.step("run-web-cli", "Run web CLI app");
     run_web_cli.dependOn(&run_web_cli_cmd.step);
 
+    const run_cron_cmd = b.addRunArtifact(cron_cli);
+    if (b.args) |args| {
+        run_cron_cmd.addArgs(args);
+    }
+    const run_cron = b.step("cron", "Run cron CLI app");
+    run_cron.dependOn(&run_cron_cmd.step);
+
     // Build steps for individual binaries
     const build_console_sync = b.step("s-console-sync", "Build s-console-sync binary");
     build_console_sync.dependOn(&console_sync.step);
@@ -532,6 +555,10 @@ pub fn build(b: *std.Build) void {
 
     const build_web_cli_binary = b.step("s-web-cli", "Build s-web-cli binary");
     build_web_cli_binary.dependOn(&web_cli.step);
+
+    const build_cron_binary = b.step("s-cron", "Build s-cron binary");
+    const cron_install = b.addInstallArtifact(cron_cli, .{});
+    build_cron_binary.dependOn(&cron_install.step);
 
     const build_sati = b.step("sati", "Build sati CLI binary");
     build_sati.dependOn(&sati_exe.step);

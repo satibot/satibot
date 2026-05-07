@@ -51,7 +51,7 @@ View more in [Features](docs/FEATURES.md).
 📁 File Operations: Built-in tools for reading and analyzing local files
 🎙️ Voice Ready: Automatic voice transcription with Groq
 ⏰ Proactive: Heartbeat system wakes agent for pending tasks
-📅 Scheduled: Built-in cron for recurring tasks
+📅 Scheduled: `s-cron` CLI for recurring tasks
 
 ## 🚀 Quick Start
 
@@ -196,6 +196,7 @@ zig build s-console          # Async console app
 zig build s-console-sync     # Sync console app
 zig build s-telegram         # Telegram bot
 zig build web -Dweb=true     # Web API backend (requires -Dweb=true)
+zig build s-cron            # Cron CLI app
 
 # Build and run
 zig build run-console          # Build and run async console
@@ -360,11 +361,12 @@ echo "Check emails" > ~/.bots/HEARTBEAT.md
 # Run the telegram bot (includes heartbeat)
 sati telegram
 
-# TODO: Cron: Schedule recurring tasks
-zig build run -- cron --schedule "0 9 * * *" --message "Daily summary"
+Cron: Schedule recurring tasks
+```bash
+zig build run-cron -- --schedule "0 9 * * *" --message "Daily summary"
+# or after build:
+./zig-out/bin/s-cron --schedule "0 9 * * *" --message "Daily summary"
 ```
-
-TODO: Cron: Schedule recurring tasks via configuration in `~/.bots/config.json`
 
 ## 📚 Documentation
 

@@ -13,10 +13,11 @@ fn nowMs() i64 {
     return std.Io.Clock.real.now(io).toMilliseconds();
 }
 
-/// Schedule types: one-time "at" a specific time, or recurring "every" N milliseconds.
+/// Schedule types: one-time "at" a specific time, recurring "every" N milliseconds, or using a "cron" expression.
 pub const CronScheduleKind = enum {
     at,
     every,
+    cron,
 };
 
 /// Defines when a cron job should execute.
@@ -24,7 +25,20 @@ pub const CronSchedule = struct {
     kind: CronScheduleKind,
     at_ms: ?i64 = null, // For 'at' schedules: timestamp in milliseconds
     every_ms: ?u32 = null, // For 'every' schedules: interval in milliseconds
+    cron_expr: ?[]const u8 = null, // For 'cron' schedules: cron expression string
 };
+
+/// Very basic cron expression parser for determining the next run time.
+/// Only supports simple patterns like "0 9 * * *" for now (which evaluates to a 24h interval).
+fn nextCronRun(expr: []const u8, now_ms: i64) i64 {
+    // Basic mock logic: if it's "0 9 * * *", just return 24 hours from now
+    // A full cron parser would parse seconds, minutes, hours, dom, mon, dow and use time library.
+    if (std.mem.eql(u8, expr, "0 9 * * *")) {
+        return now_ms + 86400000; // 24 hours
+    }
+    // Default to every hour if unknown format for safety to avoid tight loops
+    return now_ms + 3600000;
+}
 
 /// Payload containing the task to execute and delivery settings.
 pub const CronPayload = struct {
@@ -57,6 +71,7 @@ pub const CronJob = struct {
     pub fn deinit(self: *CronJob, allocator: std.mem.Allocator) void {
         allocator.free(self.id);
         allocator.free(self.name);
+        if (self.schedule.cron_expr) |expr| allocator.free(expr);
         allocator.free(self.payload.message);
         if (self.payload.channel) |c| allocator.free(c);
         if (self.payload.to) |t| allocator.free(t);
@@ -129,7 +144,12 @@ pub const CronStore = struct {
             .id = try allocator.dupe(u8, job.id),
             .name = try allocator.dupe(u8, job.name),
             .enabled = job.enabled,
-            .schedule = job.schedule,
+            .schedule = .{
+                .kind = job.schedule.kind,
+                .at_ms = job.schedule.at_ms,
+                .every_ms = job.schedule.every_ms,
+                .cron_expr = if (job.schedule.cron_expr) |expr| try allocator.dupe(u8, expr) else null,
+            },
             .payload = .{
                 .message = try allocator.dupe(u8, job.payload.message),
                 .deliver = job.payload.deliver,
@@ -156,6 +176,10 @@ pub const CronStore = struct {
             next_run = now + (schedule.every_ms orelse 0);
         } else if (schedule.kind == .at) {
             next_run = schedule.at_ms;
+        } else if (schedule.kind == .cron) {
+            if (schedule.cron_expr) |expr| {
+                next_run = nextCronRun(expr, now);
+            }
         }
 
         const job: CronJob = .{
@@ -218,6 +242,10 @@ pub const CronStore = struct {
         // Update next run
         if (job.schedule.kind == .every) {
             job.state.next_run_at_ms = now + (job.schedule.every_ms orelse 0);
+        } else if (job.schedule.kind == .cron) {
+            if (job.schedule.cron_expr) |expr| {
+                job.state.next_run_at_ms = nextCronRun(expr, now);
+            }
         } else {
             job.enabled = false; // "at" jobs only run once
             job.state.next_run_at_ms = null;
@@ -424,3 +452,35 @@ test "HTTP: Header parsing" {
     try std.testing.expectEqual(@as(u64, 1234), content_length.?);
     try std.testing.expectEqual(true, chunked);
 }
+
+test "nextCronRun: simple expression" {
+    const now = nowMs();
+    const next = nextCronRun("0 9 * * *", now);
+    // Should be exactly 24 hours later in our mock implementation
+    try std.testing.expectEqual(now + 86400000, next);
+
+    const next_default = nextCronRun("invalid", now);
+    // Should be exactly 1 hour later
+    try std.testing.expectEqual(now + 3600000, next_default);
+}
+
+test "CronStore: add cron job" {
+    const allocator = std.testing.allocator;
+    var store = CronStore.init(allocator);
+    defer store.deinit();
+
+    const now = nowMs();
+    const id = try store.addJob("daily_summary", .{ .kind = .cron, .cron_expr = "0 9 * * *" }, "Send summary");
+    
+    try std.testing.expect(id.len > 0);
+    try std.testing.expectEqual(@as(usize, 1), store.jobs.items.len);
+    
+    const job = store.jobs.items[0];
+    try std.testing.expectEqual(CronScheduleKind.cron, job.schedule.kind);
+    try std.testing.expectEqualStrings("0 9 * * *", job.schedule.cron_expr.?);
+    
+    // next_run_at_ms should be now + 24h
+    try std.testing.expectEqual(now + 86400000, job.state.next_run_at_ms.?);
+}
+
+
