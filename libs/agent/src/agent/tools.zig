@@ -61,11 +61,30 @@ pub const ToolRegistry = struct {
     }
 };
 
-/// List files in the current working directory.
-/// Returns a newline-separated list of filenames.
 pub fn listFiles(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     _ = arguments;
-    return ctx.allocator.dupe(u8, "(File listing disabled in Zig 0.16)\n");
+    var dir = std.fs.openDirAbsolute(ctx.workspace_path, .{ .iterate = true }) catch |err| {
+        return std.fmt.allocPrint(ctx.allocator, "Error opening directory {s}: {any}", .{ ctx.workspace_path, err });
+    };
+    defer dir.close();
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(ctx.allocator);
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        try result.appendSlice(ctx.allocator, entry.name);
+        if (entry.kind == .directory) {
+            try result.append(ctx.allocator, '/');
+        }
+        try result.append(ctx.allocator, '\n');
+    }
+
+    if (result.items.len == 0) {
+        return ctx.allocator.dupe(u8, "Directory is empty");
+    }
+
+    return result.toOwnedSlice(ctx.allocator);
 }
 
 /// Read contents of a file specified by path in JSON arguments.
@@ -771,53 +790,53 @@ pub fn vectorSearch(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     return result_text.toOwnedSlice();
 }
 
-// pub fn graph_upsert_node(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     const parsed = try std.json.parseFromSlice(struct { id: []const u8, label: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+pub fn graphUpsertNode(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { id: []const u8, label: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     var g = graph_db.Graph.init(ctx.allocator);
-//     defer g.deinit();
+    var g = db.graph_db.Graph.init(ctx.allocator);
+    defer g.deinit();
 
-//     const path = try get_db_path(ctx.allocator, "graph_db.json");
-//     defer ctx.allocator.free(path);
+    const path = try getDbPath(ctx.allocator, "graph_db.json");
+    defer ctx.allocator.free(path);
 
-//     try g.load(path);
-//     try g.add_node(parsed.value.id, parsed.value.label);
-//     try g.save(path);
+    try g.load(path);
+    try g.addNode(parsed.value.id, parsed.value.label);
+    try g.save(path);
 
-//     return try ctx.allocator.dupe(u8, "Node upserted successfully");
-// }
+    return ctx.allocator.dupe(u8, "Node upserted successfully");
+}
 
-// pub fn graph_upsert_edge(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     const parsed = try std.json.parseFromSlice(struct { from: []const u8, to: []const u8, relation: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+pub fn graphUpsertEdge(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { from: []const u8, to: []const u8, relation: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     var g = graph_db.Graph.init(ctx.allocator);
-//     defer g.deinit();
+    var g = db.graph_db.Graph.init(ctx.allocator);
+    defer g.deinit();
 
-//     const path = try get_db_path(ctx.allocator, "graph_db.json");
-//     defer ctx.allocator.free(path);
+    const path = try getDbPath(ctx.allocator, "graph_db.json");
+    defer ctx.allocator.free(path);
 
-//     try g.load(path);
-//     try g.add_edge(parsed.value.from, parsed.value.to, parsed.value.relation);
-//     try g.save(path);
+    try g.load(path);
+    try g.addEdge(parsed.value.from, parsed.value.to, parsed.value.relation);
+    try g.save(path);
 
-//     return try ctx.allocator.dupe(u8, "Edge upserted successfully");
-// }
+    return ctx.allocator.dupe(u8, "Edge upserted successfully");
+}
 
-// pub fn graph_query(ctx: ToolContext, arguments: []const u8) ![]const u8 {
-//     const parsed = try std.json.parseFromSlice(struct { start_node: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
-//     defer parsed.deinit();
+pub fn graphQuery(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { start_node: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
 
-//     var g = graph_db.Graph.init(ctx.allocator);
-//     defer g.deinit();
+    var g = db.graph_db.Graph.init(ctx.allocator);
+    defer g.deinit();
 
-//     const path = try get_db_path(ctx.allocator, "graph_db.json");
-//     defer ctx.allocator.free(path);
+    const path = try getDbPath(ctx.allocator, "graph_db.json");
+    defer ctx.allocator.free(path);
 
-//     try g.load(path);
-//     return try g.query(parsed.value.start_node);
-// }
+    try g.load(path);
+    return g.query(parsed.value.start_node);
+}
 
 // pub fn rag_search(ctx: ToolContext, arguments: []const u8) ![]const u8 {
 //     const parsed = try std.json.parseFromSlice(struct { query: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
@@ -992,13 +1011,84 @@ pub fn runCommand(ctx: ToolContext, arguments: []const u8) ![]const u8 {
     const parsed = try std.json.parseFromSlice(struct { command: []const u8 }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
-    // Security check: Prevent dangerous commands (basic)
     const cmd = parsed.value.command;
-    if (std.mem.indexOf(u8, cmd, "rm -rf /") != null) {
+    // Security check: Prevent obviously dangerous commands
+    if (std.mem.indexOf(u8, cmd, "rm -rf /") != null or std.mem.indexOf(u8, cmd, "> /dev/sda") != null) {
         return ctx.allocator.dupe(u8, "Error: Dangerous command blocked.");
     }
 
-    return ctx.allocator.dupe(u8, "(Command execution disabled in Zig 0.16)");
+    const io = std.Io.Threaded.global_single_threaded.io();
+    var child = try std.process.spawn(io, .{
+        .argv = &[_][]const u8{ "/bin/sh", "-c", cmd },
+        .stdout = .pipe,
+        .stderr = .pipe,
+    });
+
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_reader = child.stdout.?.reader(io, &stdout_buf);
+    const stdout = stdout_reader.interface.allocRemaining(ctx.allocator, .limited(1048576)) catch |err| {
+        return std.fmt.allocPrint(ctx.allocator, "Error reading stdout: {any}", .{err});
+    };
+    defer ctx.allocator.free(stdout);
+
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr_reader = child.stderr.?.reader(io, &stderr_buf);
+    const stderr = stderr_reader.interface.allocRemaining(ctx.allocator, .limited(1048576)) catch |err| {
+        return std.fmt.allocPrint(ctx.allocator, "Error reading stderr: {any}", .{err});
+    };
+    defer ctx.allocator.free(stderr);
+
+    const term = try child.wait(io);
+
+    var out = std.Io.Writer.Allocating.init(ctx.allocator);
+    errdefer out.deinit();
+
+    if (stdout.len > 0) {
+        try out.writer.print("{s}", .{stdout});
+    }
+    if (stderr.len > 0) {
+        var current = out.toArrayList();
+        defer current.deinit(ctx.allocator);
+        if (current.items.len > 0) try out.writer.print("\n", .{});
+        try out.writer.print("Error output:\n{s}", .{stderr});
+    }
+
+    switch (term) {
+        .exited => |code| {
+            if (code != 0) {
+                var current = out.toArrayList();
+                defer current.deinit(ctx.allocator);
+                if (current.items.len > 0) try out.writer.print("\n", .{});
+                try out.writer.print("Command exited with code: {d}", .{code});
+            }
+        },
+        else => |t| {
+            var current = out.toArrayList();
+            defer current.deinit(ctx.allocator);
+            if (current.items.len > 0) try out.writer.print("\n", .{});
+            try out.writer.print("Command terminated unexpectedly: {any}", .{t});
+        },
+    }
+
+    const result = out.toArrayList();
+    defer result.deinit(ctx.allocator);
+
+    if (result.items.len == 0) {
+        return ctx.allocator.dupe(u8, "Command executed successfully (no output)");
+    }
+
+    return result.toOwnedSlice(ctx.allocator);
+}
+
+pub fn spawnSubagent(ctx: ToolContext, arguments: []const u8) ![]const u8 {
+    const parsed = try std.json.parseFromSlice(struct { task: []const u8, label: ?[]const u8 = null }, ctx.allocator, arguments, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    if (ctx.spawn_subagent) |spawn| {
+        return spawn(ctx, parsed.value.task, parsed.value.label orelse "subagent");
+    } else {
+        return ctx.allocator.dupe(u8, "Error: Subagent spawning not supported in this environment.");
+    }
 }
 
 fn buildExcludePatterns(allocator: std.mem.Allocator) ![]const u8 {

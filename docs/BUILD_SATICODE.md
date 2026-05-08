@@ -68,7 +68,7 @@ sudo cp zig-out/bin/saticode /usr/local/bin/
 
 ### System Requirements
 
-- Zig 0.15.2 or later
+- Zig 0.16.0 or later
 
 ## Configuration
 

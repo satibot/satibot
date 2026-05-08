@@ -1,18 +1,17 @@
 ## Development
 
-This project is built with Zig 0.15.2.
+This project is built with Zig 0.16.0.
 
-### Important: Zig 0.15.2 Migration
+### Important: Zig 0.16.0 Migration
 
-This version includes significant changes from previous versions:
+Zig 0.16.0 introduced major breaking changes to I/O and filesystem handling:
 
-- Async/Await Removed: Zig 0.15.2 removed async/await support. The event loop has been migrated to use `std.Thread`, `std.Thread.Mutex`, and `std.Thread.Condition`.
-- ArrayList API Changes: `init()` → `initCapacity()`, `deinit()` and `append()` now require allocator parameter.
-- Type Casting: `@intCast` now requires explicit type with `@as(Type, @intCast(...))`.
-- Signal Handling: `std.posix.empty_sigset` → `std.posix.sigemptyset()`.
-- Division: Signed integer division now requires `@divTrunc`, `@divFloor`, or `@divExact`.
-
-The event loop has been migrated to use XevEventLoop (see `libs/utils/src/xev_event_loop.zig`).
+- **Filesystem Changes**: `std.fs.cwd()` and `std.fs.Dir` iteration have been removed. Use `std.Io.Dir` or C stdio (`std.c.fopen`, `fread`) for persistence.
+- **Process Spawning**: `std.process.Child.spawn` has been replaced by `std.process.spawn`, which requires an explicit `std.Io` handle and uses `std.Io.File` for pipe management.
+- **New IO System**: Use `std.Io.Threaded.global_single_threaded.io()` for most operations. File handles are now `std.Io.File`.
+- **ArrayList API**: `ArrayList.init` now requires an allocator on every `append` and `deinit`. Favor `std.ArrayList(T).empty` initialization.
+- **Memory Safety**: Always free owned fields before deiniting containers. Use `std.Io.Writer.Allocating` for dynamic string building.
+- **LibC Linking**: Any code using `std.c` or environment variables (via `std.c.getenv`) must link libc. In `build.zig`, ensure `root_module.link_libc = true`.
 
 ### Monorepo Structure
 
@@ -40,7 +39,7 @@ You can check your Zig version with:
 
 ```bash
 zig version
-# Should be 0.15.2
+# Should be 0.16.0
 ```
 
 Simple way to build:
@@ -309,3 +308,12 @@ Third-party packages under `zig-pkg/` are excluded from lint checks. See the `li
 ## Notes
 
 Every time codebase updated, please update "docs/" folder and `.agents/skills/codebase/SKILL.md` file.
+
+### LibC Linking in Tests
+
+When running tests for modules that use C interop or environment variables, you must link libc.
+```bash
+zig test libs/db/src/graph_db.zig -lc
+# or via build system
+zig build test -Dsqlite=false
+```

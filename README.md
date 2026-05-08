@@ -7,11 +7,13 @@
 Built in Zig for performance, designed for awareness.
 `satibot` is a lightweight, memory-aware AI agent framework that never forgets. Inspired by [OpenClawd](https://github.com/openclaw/openclaw) and [nanobot](https://github.com/HKUDS/nanobot), it combines the power of ReAct loops with persistent memory to create agents that remember, learn, and assist.
 
-IMPORTANT: Currently, it only supports Openrouter (LLM provider), Telegram and console, other features are under development.
+IMPORTANT: This project is currently migrating to **Zig 0.16.0**.
 - [x] Telegram + OpenRouter (Sync version)
 - [x] Console
 - [x] chat history saved to JSON base session file, start new session with `/new` message
 - [x] VectorDB - very simple local first vector searching for similar content chat logs.
+- [x] GraphDB - Relationship mapping and entity persistence
+- [x] Subagent Spawning - Delegate complex tasks to child agents
 - [x] OpenTelemetry tracing for observability
 - [x] HTTP Web API (zap framework) for REST interface built on top of the Zap logging library (used for fast, structured logging)
 - [x] [apps/music/README.md](apps/music/README.md) - MiniMax music generation CLI
@@ -38,8 +40,8 @@ View more in [Features](docs/FEATURES.md).
 
 ## 📋 Requirements
 
-- OS: Linux, macOS, or Windows (with WSL)
-> Note: This project uses Zig 0.15.2's thread-based concurrency with XevEventLoop.
+- OS: Linux, macOS, or Windows
+> Note: This project uses Zig 0.16.0's thread-based concurrency with XevEventLoop.
 
 ## ✨ Key Features
 
@@ -61,7 +63,7 @@ Install Zig: <https://ziglang.org/learn/getting-started/>
 ```bash
 # verify zig version
 zig version
-# 0.15.2
+# 0.16.0
 
 git clone https://github.com/satibot/satibot.git
 cd satibot
@@ -297,6 +299,16 @@ zig build s-console -- -- agent -m "Run: ls -la"
 ```
 
 #### Built-in Tools
+
+🧠 GraphDB - Persistent memory for entities and relationships
+The agent can map out concepts and remember relationships over time using:
+- `graph_add_node`: Register entities or concepts.
+- `graph_add_edge`: Map relationships between entities.
+- `graph_query`: Explore the knowledge graph.
+- `graph_delete_node` / `graph_delete_edge`: Manage and clean memory.
+
+🤖 spawn_subagent - Task delegation
+Delegate sub-tasks to a child agent with specific instructions.
 
 📁 read_file - Read local files
 The `read_file` tool allows the AI agent to read contents of local files on your system.

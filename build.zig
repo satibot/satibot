@@ -595,7 +595,9 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = lib.imports,
         });
-        const test_run = b.addRunArtifact(b.addTest(.{ .root_module = test_module }));
+        const test_artifact = b.addTest(.{ .root_module = test_module });
+        test_artifact.root_module.link_libc = true;
+        const test_run = b.addRunArtifact(test_artifact);
         test_step.dependOn(&test_run.step);
     }
 

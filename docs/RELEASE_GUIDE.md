@@ -4,7 +4,7 @@ This guide explains how to build Satibot for multiple platforms and create GitHu
 
 ## Prerequisites
 
-- Zig compiler (0.15.2 or later)
+- Zig compiler (0.16.0 or later)
 - For manual releases: [GitHub CLI](https://cli.github.com/) installed and authenticated
 
 ## Building for Multiple Platforms
@@ -167,7 +167,7 @@ The workflow triggers on:
 
 ### Build Issues
 
-- Ensure Zig 0.15.2 or later is installed
+- Ensure Zig 0.16.0 or later is installed
 - Check that all dependencies are available in `build.zig.zon`
 - For Windows builds from macOS/Linux, cross-compilation should work automatically
 

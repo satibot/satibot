@@ -1,6 +1,6 @@
 # SatiBot Architecture
 
-SatiBot is built in **Zig** (version 0.15.2), focusing on performance, memory safety, and explicit controlflow. It uses a **ReAct** (Reason+Action) loop for agentic behavior.
+SatiBot is built in **Zig** (version 0.16.0), focusing on performance, memory safety, and explicit controlflow. It uses a **ReAct** (Reason+Action) loop for agentic behavior.
 
 ## Monorepo Structure
 

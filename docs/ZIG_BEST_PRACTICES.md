@@ -93,7 +93,7 @@ pub fn factorial(n: u32) !u64 {
 3. Always verify pointer lifetime when passing to threads or callbacks
 4. Free owned fields before deiniting containers
 
-### Container Patterns (Zig 0.15.2+)
+### Container Patterns (Zig 0.16.0+)
 
 Prefer `std.ArrayListUnmanaged(T)` over `std.ArrayList(T)`:
 

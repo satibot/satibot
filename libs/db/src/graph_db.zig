@@ -66,19 +66,17 @@ pub const Graph = struct {
         });
     }
 
-    /// Query the graph for relations starting from the given node.
+    /// Query the graph for relations starting from or ending at the given node.
+    /// Returns a formatted string describing the relationships.
     pub fn query(self: *Graph, start_node: []const u8) ![]const u8 {
-        var out: std.Io.Writer.Allocating = .init(self.allocator);
+        var out = std.Io.Writer.Allocating.init(self.allocator);
         errdefer out.deinit();
 
         try out.writer.print("Graph context for node: {s}\n", .{start_node});
 
         var found = false;
         for (self.edges.items) |edge| {
-            if (std.mem.eql(u8, edge.from, start_node)) {
-                try out.writer.print("- {s} --[{s}]--> {s}\n", .{ edge.from, edge.relation, edge.to });
-                found = true;
-            } else if (std.mem.eql(u8, edge.to, start_node)) {
+            if (std.mem.eql(u8, edge.from, start_node) or std.mem.eql(u8, edge.to, start_node)) {
                 try out.writer.print("- {s} --[{s}]--> {s}\n", .{ edge.from, edge.relation, edge.to });
                 found = true;
             }
@@ -91,10 +89,13 @@ pub const Graph = struct {
         return out.toOwnedSlice();
     }
 
+    /// Save the graph to a JSON file at the specified path.
     pub fn save(self: *Graph, path: []const u8) !void {
-        const io = std.Io.Threaded.global_single_threaded.io();
-        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
-        defer file.close(io);
+        const path_z = try self.allocator.dupeZ(u8, path);
+        defer self.allocator.free(path_z);
+
+        const file = std.c.fopen(path_z.ptr, "w") orelse return error.FileNotFound;
+        defer _ = std.c.fclose(file);
 
         const export_data: struct {
             nodes: []Node,
@@ -112,21 +113,35 @@ pub const Graph = struct {
             i += 1;
         }
 
-        var out: std.Io.Writer.Allocating = .init(self.allocator);
+        var out = std.Io.Writer.Allocating.init(self.allocator);
         defer out.deinit();
         try std.json.Stringify.value(export_data, .{}, &out.writer);
-        try file.writeStreamingAll(io, out.written());
+
+        var result_data = out.toArrayList();
+        defer result_data.deinit(self.allocator);
+
+        _ = std.c.fwrite(result_data.items.ptr, 1, result_data.items.len, file);
     }
 
+    /// Load the graph from a JSON file at the specified path.
     pub fn load(self: *Graph, path: []const u8) !void {
-        const io = std.Io.Threaded.global_single_threaded.io();
-        const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch return;
-        defer file.close(io);
+        const path_z = try self.allocator.dupeZ(u8, path);
+        defer self.allocator.free(path_z);
 
-        var reader_buf: [4096]u8 = undefined;
-        var reader = file.reader(io, &reader_buf);
-        const content = try reader.interface.allocRemaining(self.allocator, .unlimited);
-        defer self.allocator.free(content);
+        const file = std.c.fopen(path_z.ptr, "r") orelse return;
+        defer _ = std.c.fclose(file);
+
+        var buf: std.ArrayList(u8) = .empty;
+        defer buf.deinit(self.allocator);
+        var temp: [4096]u8 = undefined;
+        while (true) {
+            const n = std.c.fread(&temp, 1, temp.len, file);
+            if (n == 0) break;
+            try buf.appendSlice(self.allocator, temp[0..n]);
+        }
+
+        const content = buf.items;
+        if (content.len == 0) return;
 
         const ImportData = struct {
             nodes: []Node,

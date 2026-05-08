@@ -218,6 +218,62 @@ pub const Agent = struct {
             std.log.err("Failed to register find_fn_swc tool: {any}", .{err});
         };
 
+        // Register Graph database tools
+        @constCast(&self.registry).register(.{
+            .name = "graph_add_node",
+            .description = "Add a node to the Graph Database to represent an entity. Arguments: {\"id\": \"unique_id\", \"label\": \"Type\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"id\", \"label\"]}",
+            .execute = tools.graphUpsertNode,
+        }) catch |err| {
+            std.log.err("Failed to register graph_add_node tool: {any}", .{err});
+        };
+
+        @constCast(&self.registry).register(.{
+            .name = "graph_add_edge",
+            .description = "Add a directed relationship between two nodes in the Graph Database. Arguments: {\"from\": \"src_id\", \"to\": \"target_id\", \"relation\": \"type\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\", \"relation\"]}",
+            .execute = tools.graphUpsertEdge,
+        }) catch |err| {
+            std.log.err("Failed to register graph_add_edge tool: {any}", .{err});
+        };
+
+        @constCast(&self.registry).register(.{
+            .name = "graph_query",
+            .description = "Query the Graph Database for relationships of a node. Arguments: {\"start_node\": \"id\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"start_node\": {\"type\": \"string\"}}, \"required\": [\"start_node\"]}",
+            .execute = tools.graphQuery,
+        }) catch |err| {
+            std.log.err("Failed to register graph_query tool: {any}", .{err});
+        };
+
+        @constCast(&self.registry).register(.{
+            .name = "graph_delete_node",
+            .description = "Delete a node from the Graph Database. Arguments: {\"id\": \"id\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"id\": {\"type\": \"string\"}}, \"required\": [\"id\"]}",
+            .execute = tools.graphDeleteNode,
+        }) catch |err| {
+            std.log.err("Failed to register graph_delete_node tool: {any}", .{err});
+        };
+
+        @constCast(&self.registry).register(.{
+            .name = "graph_delete_edge",
+            .description = "Delete an edge from the Graph Database. Arguments: {\"from\": \"id\", \"to\": \"id\", \"relation\": \"type\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"from\": {\"type\": \"string\"}, \"to\": {\"type\": \"string\"}, \"relation\": {\"type\": \"string\"}}, \"required\": [\"from\", \"to\"]}",
+            .execute = tools.graphDeleteEdge,
+        }) catch |err| {
+            std.log.err("Failed to register graph_delete_edge tool: {any}", .{err});
+        };
+
+        // Register subagent spawning tool
+        @constCast(&self.registry).register(.{
+            .name = "spawn_subagent",
+            .description = "Spawn a subagent to perform a subtask. Arguments: {\"task\": \"instruction\", \"label\": \"name\"}",
+            .parameters = "{\"type\": \"object\", \"properties\": {\"task\": {\"type\": \"string\"}, \"label\": {\"type\": \"string\"}}, \"required\": [\"task\"]}",
+            .execute = tools.spawnSubagent,
+        }) catch |err| {
+            std.log.err("Failed to register spawn_subagent tool: {any}", .{err});
+        };
+
         return self;
     }
 
@@ -250,9 +306,9 @@ pub const Agent = struct {
 
         // Only add vector database prompts when RAG is enabled
         if (self.rag_enabled) {
-            try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also read, write, and list files in the current directory if needed.\n");
+            try prompt_builder.appendSlice(self.allocator, "You can access to a local Vector Database where you can store and retrieve information from past conversations.\nUse 'vector_search' or 'rag_search' when the user asks about something you might have discussed before or when you want confirm any knowledge from previous talk.\nUse 'vector_upsert' to remember important facts or details the user shares.\nYou can also access a Graph Database for mapping relationships between entities.\nUse 'graph_add_node', 'graph_add_edge', and 'graph_query' to manage structured relationship knowledge.\nYou can also read, write, and list files in the current directory if needed.\n");
         } else {
-            try prompt_builder.appendSlice(self.allocator, "You can read, write, and list files in the current directory if needed.\n");
+            try prompt_builder.appendSlice(self.allocator, "You can read, write, and list files in the current directory if needed.\nYou can also use the Graph Database ('graph_add_node', 'graph_add_edge', 'graph_query') to store relationship knowledge even if RAG is disabled.\n");
         }
 
         if (self.config.tools.web.search.apiKey) |key| {

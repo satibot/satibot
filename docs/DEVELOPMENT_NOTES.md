@@ -1,12 +1,12 @@
-# Development Notes - satibot Zig 0.15.2 Migration
+# Development Notes - satibot Zig 0.16.0 Migration
 
-This document tracks the technical changes made to the `satibot` project during its port to Zig 0.15.2 and the rationale behind them.
+This document tracks the technical changes made to the `satibot` project during its port to Zig 0.16.0 and the rationale behind them.
 
 ## Summary of Changes
 
-### 1. Standard Library API Migration (Zig 0.15.2)
+### 1. Standard Library API Migration (Zig 0.16.0)
 
-Zig 0.15.2 introduced significant breaking changes to the standard library, particularly in I/O, JSON, and HTTP modules.
+Zig 0.16.0 introduced significant breaking changes to the standard library, particularly in I/O, Filesystem, and Process modules.
 
 #### **JSON Stringification**
 
@@ -30,13 +30,13 @@ Zig 0.15.2 introduced significant breaking changes to the standard library, part
 - **Change**: `Reader` and `Writer` are now vtable-based interface structs.
 - **Change**: `readAllAlloc` was removed.
 - **Replacement**: Used `reader.allocRemaining(allocator, .limited(max_size))`.
-- **Rationale**: This aligns with the new I/O architecture in Zig 0.15.2 which favors explicit interfaces over duck-typing.
+- **Rationale**: This aligns with the new I/O architecture in Zig 0.16.0 which favors explicit interfaces and `std.Io` over legacy `std.fs`.
 
 #### **ArrayList Management**
 
 - **Change**: `std.ArrayList(T)` now returns an unmanaged list by default.
 - **Handling**: Provided the allocator to every method call (`append`, `deinit`, `toOwnedSlice`, `writer`).
-- **Rationale**: This is the new standard in Zig 0.15.2 to make memory management more transparent.
+- **Rationale**: This is the new standard in Zig 0.16.0 to make memory management more transparent.
 
 ### 2. Provider Implementation
 
@@ -58,4 +58,4 @@ Zig 0.15.2 introduced significant breaking changes to the standard library, part
 
 ## Skill Updates
 
-The project skill `.agent/skills/zig-best-practices/SKILL.md` has been updated with a "Zig 0.15.2 Specific Patterns" section to ensure all future code follows these new conventions.
+The project skill `.agent/skills/zig-best-practices/SKILL.md` has been updated with a "Zig 0.16.0 Specific Patterns" section to ensure all future code follows these new conventions.
